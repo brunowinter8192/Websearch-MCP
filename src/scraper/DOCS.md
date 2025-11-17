@@ -1,41 +1,8 @@
-# SearXNG MCP Server
+# Scraper Module
 
-Privacy-focused web search and URL scraping via local SearXNG metasearch engine instance.
+Web search and URL scraping tools for SearXNG MCP server.
 
-## Project Structure
-
-```
-searxng/
-├── server.py              # MCP server orchestrator
-├── src/                   # Tool modules package
-│   ├── __init__.py        # Package marker
-│   ├── search_web.py      # SearXNG API wrapper
-│   └── scrape_urls.py     # URL scraper with HTML to markdown conversion
-├── bug_fixes/             # Bug fixes and debug scripts (gitignored)
-├── docker-compose.yml     # SearXNG container config
-├── searxng/
-│   └── settings.yml       # SearXNG configuration
-├── .mcp.json              # Production MCP config (active development)
-├── .mcp.json.example      # Template for other projects
-├── README.md              # Quick start guide
-├── DOCS.md                # Module documentation
-├── CLAUDE.md              # Engineering standards
-└── .gitignore             # Excludes debug/, logs/, bug_fixes/
-```
-
-## server.py
-
-**Purpose:** MCP server orchestrator defining tool interfaces.
-
-### search_web()
-
-Exposes web search functionality to LLM clients. Accepts query string and category parameter with Literal type constraint. Delegates execution to search_web_workflow. Returns structured results with title, url, and content snippet for each result. Use when user needs to search the web for information.
-
-### scrape_urls()
-
-Exposes URL scraping functionality to LLM clients. Accepts list of URLs and concurrency parameter. Delegates execution to scrape_urls_workflow wrapped in asyncio.run. Returns list of results with url, markdown content, success status, and error information. Use when user needs to fetch full page content from URLs.
-
-## src/search_web.py
+## search_web.py
 
 **Purpose:** Wrapper for SearXNG JSON API.
 **Input:** Query string and category name.
@@ -53,7 +20,7 @@ Performs HTTP GET request to SearXNG search endpoint. Constructs query parameter
 
 Transforms raw SearXNG response into standardized output. Iterates over raw results and extracts title, url, and content fields. Returns dictionary with query metadata and cleaned results list.
 
-## src/scrape_urls.py
+## scrape_urls.py
 
 **Purpose:** URL scraper with JavaScript rendering and HTML to markdown conversion.
 **Input:** List of URLs and concurrency limit.
@@ -142,33 +109,3 @@ Removes excessive whitespace from markdown text. Collapses multiple newlines, re
 ### truncate_content()
 
 Truncates content if exceeding maximum length. Attempts to break at paragraph boundary for clean truncation. Appends truncation notice when content is cut.
-
-## docker-compose.yml
-
-**Purpose:** Container configuration for SearXNG instance.
-
-Defines SearXNG service using official Docker image. Maps port 8080 for local API access. Mounts local searxng/ directory for custom configuration. Sets base URL environment variable and restart policy for service reliability.
-
-## searxng/settings.yml
-
-**Purpose:** SearXNG instance configuration.
-
-Enables JSON output format required for API access. Disables rate limiter for local development use. Disables image proxy for simpler setup. Configures safe search, autocomplete, and default language settings. Sets request timeout to 3 seconds with maximum of 10 seconds. Configures simple UI theme and query behavior options.
-
-## .mcp.json
-
-**Purpose:** Production MCP server configuration for active development.
-
-Defines searxng server with absolute paths to fastmcp executable and server.py script. Uses virtual environment fastmcp binary. Enables Claude Code to discover and connect to the MCP server automatically. May include additional MCPs used for development workflows.
-
-## .mcp.json.example
-
-**Purpose:** Template configuration for integrating into other projects.
-
-Provides skeleton configuration with placeholder paths. Users copy this file to .mcp.json and replace paths with their actual absolute paths. Simplifies integration by providing ready-to-use structure.
-
-## bug_fixes/
-
-**Purpose:** Development directory for bug fixes and debugging scripts.
-
-Contains temporary scripts and test cases for debugging issues. Excluded from version control via .gitignore. Keeps main codebase clean while allowing iterative debugging workflows.

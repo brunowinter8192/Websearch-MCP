@@ -59,7 +59,7 @@ Returns list of results with url, content (markdown), success status.
 
 ## Configuration
 
-SearXNG settings: `searxng/settings.yml`
+SearXNG settings: `src/searxng/settings.yml`
 
 ### MCP Registration
 
@@ -80,4 +80,6 @@ Bug fixes and debugging scripts go in `bug_fixes/` directory. This folder is git
 
 ## Documentation
 
-See `DOCS.md` for complete module documentation.
+Module documentation lives in each source directory:
+- `src/scraper/DOCS.md` - Scraper module documentation
+- `src/searxng/DOCS.md` - SearXNG configuration documentation

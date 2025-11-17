@@ -1,11 +1,14 @@
 # INFRASTRUCTURE
 import asyncio
+import nest_asyncio
 from typing import Annotated, Literal
 from fastmcp import FastMCP
 from pydantic import Field
 
-from src.search_web import search_web_workflow
-from src.scrape_urls import scrape_urls_workflow
+nest_asyncio.apply()
+
+from src.scraper.search_web import search_web_workflow
+from src.scraper.scrape_urls import scrape_urls_workflow
 
 mcp = FastMCP("SearXNG")
 

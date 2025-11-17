@@ -26,18 +26,23 @@ def fetch_search_results(query: str, category: str) -> list:
     return data.get("results", [])[:MAX_RESULTS]
 
 
-# Transform raw results into clean output structure
-def format_results(query: str, category: str, raw_results: list) -> dict:
-    results = []
-    for item in raw_results:
-        results.append({
-            "title": item.get("title", ""),
-            "url": item.get("url", ""),
-            "content": item.get("content", "")
-        })
+# Transform raw results into human-readable format
+def format_results(query: str, category: str, raw_results: list) -> str:
+    lines = []
+    lines.append(f"Query: {query}")
+    lines.append(f"Category: {category}")
+    lines.append(f"Results: {len(raw_results)}")
+    lines.append("")
 
-    return {
-        "query": query,
-        "category": category,
-        "results": results
-    }
+    for i, item in enumerate(raw_results, 1):
+        title = item.get("title", "No title")
+        url = item.get("url", "")
+        content = item.get("content", "")
+
+        lines.append(f"{i}. {title}")
+        lines.append(f"   URL: {url}")
+        if content:
+            lines.append(f"   {content}")
+        lines.append("")
+
+    return "\n".join(lines)
