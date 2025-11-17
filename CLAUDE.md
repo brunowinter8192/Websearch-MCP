@@ -65,6 +65,7 @@ mcp_server/
 ├── CLAUDE.md              # Engineering standards
 ├── .mcp.json              # Claude Code MCP registration
 ├── docker-compose.yml     # Container configuration (if needed)
+├── debug/                 # Debug scripts for testing (gitignored)
 ├── bug_fixes/             # Bug fix documentation (gitignored)
 └── logs/                  # Log files (gitignored)
     └── server.log
