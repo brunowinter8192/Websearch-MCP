@@ -2,6 +2,13 @@
 
 Web search and URL scraping tools for LLM workflows.
 
+**Remote:** https://github.com/brunowinter8192/searxng-mcp
+
+After major changes, push to remote:
+```bash
+git add -A && git commit -m "Your message" && git push
+```
+
 ## Prerequisites
 
 - Docker and Docker Compose
