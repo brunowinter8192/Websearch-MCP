@@ -1,17 +1,17 @@
 # INFRASTRUCTURE
-import json
 import requests
 from mcp.types import TextContent
 
 SEARXNG_URL = "http://localhost:8080/search"
 MAX_RESULTS = 20
+SNIPPET_LENGTH = 200
 
 
 # ORCHESTRATOR
 def search_web_workflow(query: str, category: str) -> list[TextContent]:
     raw_results = fetch_search_results(query, category)
-    formatted_dict = format_results(query, category, raw_results)
-    return [TextContent(type="text", text=json.dumps(formatted_dict, indent=2))]
+    formatted_text = format_results(query, raw_results)
+    return [TextContent(type="text", text=formatted_text)]
 
 
 # FUNCTIONS
@@ -29,18 +29,22 @@ def fetch_search_results(query: str, category: str) -> list:
     return data.get("results", [])[:MAX_RESULTS]
 
 
-# Transform raw results into structured output
-def format_results(query: str, category: str, raw_results: list) -> dict:
-    return {
-        "query": query,
-        "category": category,
-        "total_results": len(raw_results),
-        "results": [
-            {
-                "title": item.get("title", "No title"),
-                "url": item.get("url", ""),
-                "content": item.get("content", "")
-            }
-            for item in raw_results
-        ]
-    }
+# Transform raw results into plain text numbered list
+def format_results(query: str, raw_results: list) -> str:
+    if not raw_results:
+        return f'No results found for "{query}"'
+
+    lines = [f'Found {len(raw_results)} results for "{query}"\n']
+
+    for idx, item in enumerate(raw_results, 1):
+        title = item.get("title", "No title")
+        url = item.get("url", "")
+        content = item.get("content", "")[:SNIPPET_LENGTH]
+
+        lines.append(f"{idx}. {title}")
+        lines.append(f"   URL: {url}")
+        if content:
+            lines.append(f"   Snippet: {content}")
+        lines.append("")
+
+    return "\n".join(lines)

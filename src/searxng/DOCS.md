@@ -6,11 +6,11 @@ SearXNG API wrapper and configuration for web search functionality.
 
 **Purpose:** Wrapper for SearXNG JSON API.
 **Input:** Query string and category name.
-**Output:** Dictionary containing query, category, and list of result objects.
+**Output:** Plain text string with numbered list of search results.
 
 ### search_web_workflow()
 
-Main orchestrator function. Coordinates fetching raw results from SearXNG API and formatting them into clean output structure. Called directly by server.py tool definition.
+Main orchestrator function. Coordinates fetching raw results from SearXNG API and formatting them into plain text output. Called directly by server.py tool definition.
 
 ### fetch_search_results()
 
@@ -18,7 +18,7 @@ Performs HTTP GET request to SearXNG search endpoint. Constructs query parameter
 
 ### format_results()
 
-Transforms raw SearXNG response into standardized output. Iterates over raw results and extracts title, url, and content fields. Returns dictionary with query metadata and cleaned results list.
+Transforms raw SearXNG response into plain text numbered list. Takes query string and raw results list. Iterates over results and extracts title, url, and content snippet (first 200 chars). Returns formatted string with result count header and numbered entries.
 
 ## settings.yml
 

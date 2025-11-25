@@ -20,17 +20,17 @@ async def scrape_url_workflow(url: str, max_content_length: int = DEFAULT_MAX_CO
         error_msg = f"Error scraping {url}: {str(raw_html)}"
         return [TextContent(type="text", text=error_msg)]
 
-    extracted_content = extract_single_content(raw_html, max_content_length)
+    extracted_content = extract_single_content(url, raw_html, max_content_length)
     return [TextContent(type="text", text=extracted_content)]
 
 
-# Parse and convert single HTML to markdown
-def extract_single_content(html: str, max_content_length: int) -> str:
+# Parse and convert single HTML to markdown with header
+def extract_single_content(url: str, html: str, max_content_length: int) -> str:
     parsed = parse_html(html)
     filtered = filter_content(parsed)
     markdown = to_markdown(filtered, max_content_length)
     truncated = truncate_content(markdown, max_content_length)
-    return truncated
+    return f"# Content from: {url}\n\n{truncated}"
 
 
 # FUNCTIONS

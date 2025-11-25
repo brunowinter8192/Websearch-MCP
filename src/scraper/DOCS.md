@@ -14,7 +14,7 @@ Main orchestrator function. Coordinates browser initialization, URL content fetc
 
 ### extract_single_content()
 
-Converts single HTML string to markdown. Orchestrates parsing (html_parser), filtering (content_filter), and markdown conversion (markdown_converter) pipeline with configurable maximum content length.
+Converts single HTML string to markdown with URL header. Takes URL, HTML string, and maximum content length. Orchestrates parsing (html_parser), filtering (content_filter), and markdown conversion (markdown_converter) pipeline. Prepends source URL header to output for clear provenance.
 
 ### init_browser()
 

@@ -42,20 +42,50 @@ fastmcp run server.py
 ### search_web
 Search the web with category filtering.
 
-Parameters:
+**Parameters:**
 - `query`: Search string
 - `category`: general | news | it | science (default: general)
 
-Returns 20 results with title, url, content snippet.
+**Returns:** Plain text numbered list with title, URL, snippet per result (max 20).
+
+**Output Format:**
+```
+Found 15 results for "query"
+
+1. Title
+   URL: https://...
+   Snippet: First 200 chars...
+```
+
+**Search Strategy:** Start with 1-2 core keywords, check results, then refine. Too many keywords yields poor results. Iterate: broad query first, then progressively more specific.
+
+**Category Guide:**
+| Question Type | Category |
+|--------------|----------|
+| Code/implementation | it |
+| Recent news | news |
+| Academic papers | science |
+| General | general |
 
 ### scrape_url
-Fetch full page content from a URL with JavaScript rendering.
+Fetch full page content as markdown with JavaScript rendering.
 
-Parameters:
+**Parameters:**
 - `url`: Single URL to scrape
 - `max_content_length`: Maximum content length in characters (default: 15000)
 
-Returns dictionary with url, content (markdown), success status. Uses networkidle wait strategy for complete JavaScript rendering.
+**Returns:** Markdown content with header showing source URL.
+
+**Output Format:**
+```
+# Content from: https://example.com
+
+[Full markdown content]
+
+[Content truncated...]
+```
+
+**When to use:** After search_web identifies relevant URLs that need full content extraction. Uses networkidle wait strategy for complete JavaScript rendering.
 
 ## Configuration
 
