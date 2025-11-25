@@ -55,27 +55,22 @@ def remove_navigation_attributes(nodes: list) -> list:
     return result
 
 
-# Remove nodes that belong to skip tags
+# Remove nodes that belong to skip tags using stack-based tracking
 def remove_skip_tags(nodes: list) -> list:
     result = []
-    skip_depth = 0
-    current_skip_tag = None
+    skip_stack = []
 
     for node in nodes:
         if node["type"] == "start" and node["tag"] in SKIP_TAGS:
-            if skip_depth == 0:
-                current_skip_tag = node["tag"]
-            skip_depth += 1
+            skip_stack.append(node["tag"])
             continue
 
-        if node["type"] == "end" and skip_depth > 0:
-            if node["tag"] == current_skip_tag:
-                skip_depth -= 1
-                if skip_depth == 0:
-                    current_skip_tag = None
+        if node["type"] == "end" and len(skip_stack) > 0:
+            if node["tag"] == skip_stack[-1]:
+                skip_stack.pop()
             continue
 
-        if skip_depth == 0:
+        if len(skip_stack) == 0:
             result.append(node)
 
     return result
