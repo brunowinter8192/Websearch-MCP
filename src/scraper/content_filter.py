@@ -1,6 +1,8 @@
 # INFRASTRUCTURE
-SKIP_TAGS = {'aside', 'script', 'style', 'noscript', 'iframe', 'svg', 'nav', 'footer'}
+SKIP_TAGS = {'aside', 'script', 'style', 'noscript', 'iframe', 'svg', 'nav', 'footer', 'header'}
 CONTENT_TAGS = {'main', 'article', 'section', 'div', 'body'}
+NOISE_TEXT_PATTERNS = ['member-only story', 'share', 'listen', 'press enter or click to view']
+NOISE_URL_PATTERNS = ['/m/signin', 'actionUrl=', 'operation=register', 'clap_footer', 'bookmark_footer']
 
 
 # ORCHESTRATOR
@@ -9,6 +11,8 @@ def filter_content(parsed: dict) -> list:
     filtered = remove_skip_tags(nodes)
     main_content = extract_main_content(filtered)
     clean_content = remove_navigation_attributes(main_content)
+    clean_content = remove_noise_links(clean_content)
+    clean_content = remove_noise_text(clean_content)
     return clean_content
 
 
@@ -124,3 +128,45 @@ def find_matching_end(nodes: list, start_idx: int) -> int:
                 return i
 
     return -1
+
+
+# Remove links that match noise URL patterns (signin, clap, bookmark)
+def remove_noise_links(nodes: list) -> list:
+    result = []
+    skip_until_link_end = False
+
+    for node in nodes:
+        if node["type"] == "start" and node["tag"] == "a":
+            href = node.get("attrs", {}).get("href", "")
+            if any(pattern in href for pattern in NOISE_URL_PATTERNS):
+                skip_until_link_end = True
+                continue
+
+        if node["type"] == "end" and node["tag"] == "a":
+            if skip_until_link_end:
+                skip_until_link_end = False
+                continue
+
+        if not skip_until_link_end:
+            result.append(node)
+
+    return result
+
+
+# Remove text nodes that match noise patterns
+def remove_noise_text(nodes: list) -> list:
+    result = []
+
+    for node in nodes:
+        if node["type"] == "text":
+            content_lower = node["content"].lower()
+            if any(pattern in content_lower for pattern in NOISE_TEXT_PATTERNS):
+                continue
+            if node["content"] in ['--', 'Share', 'Listen']:
+                continue
+            if node["content"].isdigit() and len(node["content"]) <= 5:
+                continue
+
+        result.append(node)
+
+    return result

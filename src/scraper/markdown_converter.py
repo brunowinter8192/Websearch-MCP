@@ -1,5 +1,6 @@
 # INFRASTRUCTURE
 import re
+from urllib.parse import urlparse, urlunparse
 
 INLINE_TAGS = {'a', 'strong', 'b', 'em', 'i', 'code', 'span', 'img'}
 BLOCK_TAGS = {'p', 'div', 'section', 'article', 'main', 'blockquote'}
@@ -16,6 +17,39 @@ def to_markdown(nodes: list, max_content_length: int) -> str:
 
 
 # FUNCTIONS
+
+# Strip tracking parameters from URLs
+def strip_tracking_params(url: str) -> str:
+    if not url or '?' not in url:
+        return url
+    parsed = urlparse(url)
+    return urlunparse((parsed.scheme, parsed.netloc, parsed.path, '', '', parsed.fragment))
+
+
+# Extract image markdown with lazy loading support and size filtering
+def extract_image_markdown(attrs: dict) -> str:
+    src = attrs.get("src", "")
+    if not src or src.startswith("data:"):
+        src = attrs.get("data-src", "") or attrs.get("data-lazy-src", "")
+    if not src:
+        srcset = attrs.get("srcset", "")
+        if srcset:
+            src = srcset.split(",")[-1].strip().split(" ")[0]
+    if not src:
+        return ""
+
+    width = attrs.get("width", "")
+    height = attrs.get("height", "")
+    if width and width.isdigit() and int(width) < 100:
+        return ""
+    if height and height.isdigit() and int(height) < 100:
+        return ""
+    if "resize:fill:32" in src or "resize:fill:48" in src or "resize:fill:64" in src:
+        return ""
+
+    alt = attrs.get("alt", "")
+    return f"![{alt}]({src})"
+
 
 # Check if space should be added before inline tag marker
 def should_add_space_before(result: list, last_text_node: dict | None, nodes: list, current_index: int) -> bool:
@@ -84,14 +118,14 @@ def convert_nodes_to_markdown(nodes: list) -> str:
                 pre_depth += 1
                 result.append("\n\n```\n")
             elif tag == "a":
-                link_href = attrs.get("href", "")
+                link_href = strip_tracking_params(attrs.get("href", ""))
                 if should_add_space_before(result, last_text_node, nodes, i):
                     result.append(" ")
                 result.append("[")
             elif tag == "img":
-                alt = attrs.get("alt", "image")
-                src = attrs.get("src", "")
-                result.append(f"![{alt}]({src})")
+                img_md = extract_image_markdown(attrs)
+                if img_md:
+                    result.append(img_md)
             elif tag == "ul":
                 list_stack.append("ul")
                 result.append("\n")
@@ -169,9 +203,9 @@ def convert_nodes_to_markdown(nodes: list) -> str:
             if tag == "br":
                 result.append("\n")
             elif tag == "img":
-                alt = attrs.get("alt", "image")
-                src = attrs.get("src", "")
-                result.append(f"![{alt}]({src})")
+                img_md = extract_image_markdown(attrs)
+                if img_md:
+                    result.append(img_md)
             elif tag == "hr":
                 result.append("\n\n---\n\n")
 
@@ -182,10 +216,9 @@ def convert_nodes_to_markdown(nodes: list) -> str:
 def clean_markdown_artifacts(markdown: str) -> str:
     markdown = re.sub(r'\[\[(\d+)\]\]\(#cite_note-[^)]*\)', '', markdown)
     markdown = re.sub(r'\[\[(\d+)\]\]\([^)]*cite[^)]*\)', '', markdown)
-    markdown = re.sub(r'\[!\[[^\]]*\]\([^)]+\)\]\([^)]+\)', '', markdown)
-    markdown = re.sub(r'!\[[^\]]*\]\([^)]+\)', '', markdown)
     markdown = re.sub(r'\[\]\(/wiki/[^)]*\)', '', markdown)
     markdown = re.sub(r'\[([^\]]+)\]\(/wiki/[^)]*\)', r' \1 ', markdown)
+    markdown = re.sub(r'\[\s*\]\([^)]+\)', '', markdown)
 
     replacements = {
         '%C3%A4': 'ä', '%C3%84': 'Ä',

@@ -35,19 +35,32 @@ def extract_single_content(url: str, html: str, max_content_length: int) -> str:
 
 # FUNCTIONS
 
-# Initialize headless Chromium browser instance
+# Initialize headless Chromium browser instance with stealth mode
 async def init_browser() -> Browser:
     playwright = await async_playwright().start()
-    browser = await playwright.chromium.launch(headless=True)
+    browser = await playwright.chromium.launch(
+        headless=True,
+        args=["--disable-blink-features=AutomationControlled"]
+    )
     return browser
 
 
-# Fetch HTML content from URL using Playwright with networkidle wait
+# Fetch HTML content from URL using Playwright with stealth context
 async def fetch_url_content(url: str, browser: Browser) -> str | Exception:
     try:
-        context = await browser.new_context()
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            viewport={"width": 1920, "height": 1080}
+        )
         page = await context.new_page()
-        await page.goto(url, timeout=TIMEOUT_MS, wait_until="networkidle")
+        await page.goto(url, timeout=TIMEOUT_MS, wait_until="domcontentloaded")
+
+        content_selectors = ["main", "article", "[class*='content']", "h1"]
+        try:
+            await page.wait_for_selector(", ".join(content_selectors), state="visible", timeout=5000)
+        except Exception:
+            pass
+
         content = await page.content()
         await context.close()
         return content

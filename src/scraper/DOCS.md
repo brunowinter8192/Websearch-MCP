@@ -10,7 +10,7 @@ URL scraping tool with JavaScript rendering for SearXNG MCP server.
 
 ### scrape_url_workflow()
 
-Main orchestrator function. Coordinates browser initialization, URL content fetching, and content extraction. Manages browser lifecycle and ensures cleanup. Returns plain markdown directly in TextContent on success, or error message on failure. Called directly by server.py tool definition. Uses networkidle wait strategy for complete JavaScript rendering.
+Main orchestrator function. Coordinates browser initialization, URL content fetching, and content extraction. Manages browser lifecycle and ensures cleanup. Returns plain markdown directly in TextContent on success, or error message on failure. Called directly by server.py tool definition. Uses domcontentloaded wait strategy for fast page loading without waiting for all network activity.
 
 ### extract_single_content()
 
@@ -22,7 +22,7 @@ Initializes headless Chromium browser instance using Playwright. Returns browser
 
 ### fetch_url_content()
 
-Fetches HTML content from URL using Playwright with networkidle wait strategy. Creates isolated browser context, navigates to URL with timeout, waits for all network activity to settle before extracting page HTML content, and closes context. Returns raw HTML string or exception on failure.
+Fetches HTML content from URL using Playwright with stealth browser context. Creates isolated browser context with realistic user agent and viewport, navigates to URL with domcontentloaded wait strategy, then waits for content selectors (main, article, content class, h1) to become visible before extracting HTML. This two-phase approach handles both traditional server-rendered pages and SPAs that render content via JavaScript after initial DOM load. Returns raw HTML string or exception on failure.
 
 ### cleanup_browser()
 
@@ -54,7 +54,7 @@ Custom HTMLParser subclass that builds structured representation of HTML documen
 
 ### filter_content()
 
-Main orchestrator. Filters parsed content to extract main content. Removes navigation, footer, script, and other non-content elements. Extracts content from main or article tags when present.
+Main orchestrator. Filters parsed content to extract main content. Removes navigation, footer, script, header, and other non-content elements. Extracts content from main or article tags when present. Applies noise filtering to remove UI elements like signin links, share buttons, and standalone numbers.
 
 ### remove_skip_tags()
 
@@ -76,6 +76,14 @@ Finds index of first content tag with improved priority detection. Searches for 
 
 Finds index of matching end tag for given start tag. Tracks nesting depth to handle nested same-name tags correctly.
 
+### remove_noise_links()
+
+Removes anchor tags that match noise URL patterns. Filters out signin links, clap buttons, bookmark buttons, and other UI action links that disrupt content flow. Skips entire link including inner content when href matches patterns like /m/signin, actionUrl=, clap_footer, or bookmark_footer.
+
+### remove_noise_text()
+
+Removes text nodes matching noise patterns. Filters out UI text like "Member-only story", "Share", "Listen", "Press enter or click to view", and standalone numbers (clap counts). Preserves all other text content.
+
 ## markdown_converter.py
 
 **Purpose:** Converts filtered HTML nodes to clean markdown with proper whitespace boundaries and code block preservation.
@@ -85,6 +93,14 @@ Finds index of matching end tag for given start tag. Tracks nesting depth to han
 ### to_markdown()
 
 Main orchestrator. Converts filtered nodes to markdown string with configurable maximum length. Orchestrates node conversion, artifact cleaning, and whitespace normalization. The workflow executes three steps: converts HTML nodes to raw markdown, removes Wikipedia-specific artifacts like citations and broken links, and normalizes whitespace patterns while preserving code blocks.
+
+### strip_tracking_params()
+
+Removes tracking query parameters from URLs. Takes URL string and returns clean URL without query string. Preserves scheme, host, path, and fragment while stripping all query parameters. Used to clean links from tracking suffixes like ?source=post_page or ?utm_source.
+
+### extract_image_markdown()
+
+Extracts image markdown with lazy loading support and size filtering. Checks src attribute first, falls back to data-src, data-lazy-src, or srcset for lazy-loaded images. Returns empty string if no valid source found (prevents ghost exclamation marks). Filters out small images (width or height below 100px) and avatar-sized images (Medium resize:fill patterns). Returns properly formatted markdown image syntax with alt text.
 
 ### convert_nodes_to_markdown()
 
