@@ -18,6 +18,20 @@ User defines the problem in arguments. Main Agent gathers context:
 3. Find relevant files (max 3-4, focused)
 4. Gather: Error messages, stack traces, File:Line references
 
+### Scraper-Specific Context
+
+**CRITICAL: No Overfitting**
+
+We build a GENERAL scraper, not one that overfits to the 6 baseline sites. Fixes must work for ANY website, not just the test domains.
+
+**Understand the Problem:**
+
+Read the latest iteration in `debug/scraping_suite/baselines/*/` to see what user's problem description actually looks like in the output.
+
+**Test Domains:**
+
+Agents test against URLs from `debug/scraping_suite/domains.txt`
+
 ### Phase 1 Output: Context Summary
 
 ```
