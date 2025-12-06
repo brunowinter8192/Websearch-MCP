@@ -11,15 +11,15 @@ User observes: $ARGUMENTS
 
 ## Phase 1: Context Gathering
 
-**Zweck A: Agent Prompt vorbereiten**
-- Was ist das Problem?
-- Welche Files müssen Agents anschauen?
-- Wie sollen sie das Problem angehen?
+**Purpose A: Prepare Agent Prompts**
+- What is the problem?
+- Which files should agents look at?
+- How should they approach the problem?
 
-**Zweck B: Selbst verstehen für Validierung**
-- Main Agent MUSS den Code verstehen
-- Sonst kann er nicht bewerten ob Agent-Fix Sinn macht
-- **Validierung ist das Wichtigste**
+**Purpose B: Understand for Validation**
+- Main Agent MUST understand the code
+- Otherwise cannot evaluate if Agent-Fix makes sense
+- **Validation is the most important part**
 
 ### Step 1: Check Past Attempts
 
@@ -32,35 +32,35 @@ Find relevant files (max 3-4, focused)
 
 ### Step 3: Understand the Code
 
-- Wie funktioniert der betroffene Code?
-- Welche Module/Funktionen sind involviert?
+- How does the affected code work?
+- Which modules/functions are involved?
 
 ### Step 4: Localize the Problem
 
-- Wo genau tritt das Problem auf?
-- File:Line references sammeln
+- Where exactly does the problem occur?
+- Gather File:Line references
 
-### Scraper-Specific: DOM + Code Analyse
+### Scraper-Specific: DOM + Code Analysis
 
-**Der Scraper besteht aus 4 Modulen:**
-- `scrape_url.py` - Orchestrator, holt HTML via Playwright
-- `html_parser.py` - Parst HTML zu Node-Liste (type, tag, attrs)
-- `content_filter.py` - Filtert nach Tags/Klassen/IDs/URL-Patterns
-- `markdown_converter.py` - Konvertiert zu Markdown + Regex-Cleanup
+**The scraper consists of 4 modules:**
+- `scrape_url.py` - Orchestrator, fetches HTML via Playwright
+- `html_parser.py` - Parses HTML to node list (type, tag, attrs)
+- `content_filter.py` - Filters by tags/classes/IDs/URL patterns
+- `markdown_converter.py` - Converts to Markdown + Regex cleanup
 
-**Main Agent muss verstehen:**
-1. WO im DOM sitzt das Problem? (Tag, class, id, Struktur)
-2. WIE verarbeitet der Scraper das? (Welches Modul, welche Funktion)
-3. WARUM kommt es durch? (Welcher Filter greift nicht?)
+**Main Agent must understand:**
+1. WHERE in the DOM is the problem? (Tag, class, id, structure)
+2. HOW does the scraper process it? (Which module, which function)
+3. WHY does it get through? (Which filter doesn't catch it?)
 
-**DOM-Analyse Workflow:**
-1. Baseline-Output lesen → Problem im Output sehen (`debug/scraping_suite/baselines/*/`)
-2. Raw HTML der URL holen → DOM-Struktur des Problems finden
-3. Scraper-Module lesen → Verstehen warum es durchkommt
-4. Fix-Ansatz formulieren → Welches Modul, welche Funktion
+**DOM Analysis Workflow:**
+1. Read baseline output → See problem in output (`debug/scraping_suite/baselines/*/`)
+2. Fetch raw HTML of URL → Find DOM structure of the problem
+3. Read scraper modules → Understand why it gets through
+4. Formulate fix approach → Which module, which function
 
-**No Overfitting:** Fixes müssen allgemein sein, nicht site-spezifisch.
-Test gegen `debug/scraping_suite/domains.txt`
+**No Overfitting:** Fixes must be general, not site-specific.
+Test against `debug/scraping_suite/domains.txt`
 
 ### Step 5: Context Summary
 
