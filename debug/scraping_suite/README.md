@@ -37,6 +37,11 @@ URL: https://docs.trychroma.com/docs/overview/telemetry
 
 Tests modern documentation with JavaScript-rendered content, interactive elements, and dynamic navigation. Validates networkidle wait strategy effectiveness.
 
+### Binance API Documentation
+URL: https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams
+
+Tests API documentation with WebSocket specifications, streaming data formats, JSON payload examples, and technical protocol details. Validates extraction of structured API reference content with nested code blocks.
+
 ## Usage
 
 ### Running Baseline Tests
@@ -85,7 +90,8 @@ baselines/
 ├── searxng_docs/
 ├── sklearn_docs/
 ├── medium_article/
-└── chroma_docs/
+├── chroma_docs/
+└── binance_docs/
 ```
 
 Metadata files contain iteration number, timestamp, URL, character count, and word count.

@@ -76,6 +76,8 @@ def extract_domain_name(url: str) -> str:
         return "medium_article"
     elif 'trychroma.com' in parsed.netloc:
         return "chroma_docs"
+    elif 'binance.com' in parsed.netloc:
+        return "binance_docs"
     else:
         return parsed.netloc.replace('.', '_')
 

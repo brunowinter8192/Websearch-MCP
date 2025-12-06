@@ -16,5 +16,5 @@ https://medium.com/areas-producers/llms-are-randomized-algorithms-c41e2eddedf4
 # Modern documentation with JavaScript-rendered content
 https://docs.trychroma.com/docs/overview/telemetry
 
-# 
+# API documentation with WebSocket specifications and streaming data formats
 https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams
