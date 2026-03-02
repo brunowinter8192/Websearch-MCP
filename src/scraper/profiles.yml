@@ -37,6 +37,7 @@ profiles:
       - "frb"
       - "catlinks"
       - "printfooter"
+      - "references"
     noise_url_patterns: ["#cite_ref", "#cite_note"]
     noise_text_patterns: []
     markdown_cleanup: ["wiki_citations", "wiki_links", "german_url_decode"]
