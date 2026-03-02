@@ -338,6 +338,7 @@ def clean_markdown_artifacts(markdown: str, cleanup_tags: list) -> str:
     cleanup_map = {
         "wiki_citations": clean_wiki_citations,
         "wiki_links": clean_wiki_links,
+        "wiki_redlinks": clean_wiki_redlinks,
         "sphinx_source": clean_sphinx_source,
         "german_url_decode": clean_german_url_decode,
     }
@@ -363,6 +364,12 @@ def clean_wiki_links(markdown: str) -> str:
     markdown = re.sub(r'\(\s*\[([^\]]+)\]\(/wiki/[^)]*\)\s*\)', r'(\1)', markdown)
     markdown = re.sub(r'\[\]\(/wiki/[^)]*\)', '', markdown)
     markdown = re.sub(r'\[([^\]]+)\]\(/wiki/[^)]*\)[,.:;)\*]*', r'\1', markdown)
+    return markdown
+
+
+# Remove Wikipedia redlinks (/w/index.php), keep link text
+def clean_wiki_redlinks(markdown: str) -> str:
+    markdown = re.sub(r'\[([^\]]+)\]\(/w/index\.php[^)]*\)', r'\1', markdown)
     return markdown
 
 

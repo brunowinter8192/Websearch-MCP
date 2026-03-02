@@ -40,7 +40,7 @@ profiles:
       - "references"
     noise_url_patterns: ["#cite_ref", "#cite_note"]
     noise_text_patterns: []
-    markdown_cleanup: ["wiki_citations", "wiki_links", "german_url_decode"]
+    markdown_cleanup: ["wiki_citations", "wiki_links", "wiki_redlinks", "german_url_decode"]
 
   sphinx:
     wait_until: domcontentloaded
