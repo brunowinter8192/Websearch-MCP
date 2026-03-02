@@ -1,4 +1,0 @@
-    "searxng": {
-      "command": "/Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/MCP/searxng/venv/bin/fastmcp",
-      "args": ["run", "/Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/MCP/searxng/server.py"]
-    }
