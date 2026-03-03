@@ -1,6 +1,5 @@
 fastmcp
+crawl4ai
 requests
-playwright
 nest-asyncio
 mcp
-pydantic

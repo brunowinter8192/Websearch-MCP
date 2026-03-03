@@ -19,7 +19,7 @@ Long-term thinking. Brutal honesty. No overengineering.
 
 - NO comments inside function bodies (only function header comments + section markers)
 - NO test files in root (ONLY in debug/ folders - root or per-module)
-- NO debug/ or logs/ folders in version control (MUST be in .gitignore, except debug/scraping_suite/ which is tracked as test infrastructure)
+- NO debug/ or logs/ folders in version control (MUST be in .gitignore)
 - NO emojis in production code, READMEs, DOCS.md, logs
 - NO verbose console output (use logging instead)
 
@@ -171,15 +171,14 @@ def format_response(raw_data: dict) -> dict:
 
 ---
 
-## PROFILE ASSIGNMENT RULE
+## LIBRARY DEBUGGING
 
-**CRITICAL:** When assigning cleanup patterns or filter rules to scraper profiles:
+**CRITICAL:** When scraping or content extraction has issues:
 
-- Categorize by **actual effect**, not by origin ("built for Sphinx" ≠ "Sphinx-only")
-- Before assigning a regex/pattern to a specific profile: test it against ALL test domains in `debug/scraping_suite/domains.txt`
-- If a pattern is harmless on all domains → put it in `clean_generic_artifacts` (always runs)
-- If a pattern causes false positives on other domains → put it in a profile-specific cleanup tag
-- Document the decision: "Generic because X" or "Profile-specific because breaks Y on domain Z"
+1. Read `requirements.txt` to identify which library handles the functionality
+2. Look up the library's GitHub repo — read source code, issues, docs
+3. Build the fix based on actual library API, not assumptions
+4. Test with a debug script in `debug/` before modifying production code
 
 ---
 
@@ -517,10 +516,5 @@ claude mcp list
 ## COMPLIANCE
 
 Scripts in `debug/` folders (root-level or per-module) are exempt from CLAUDE.md compliance requirements.
-
-**Exception:** The `debug/scraping_suite/` directory contains test infrastructure for continuous quality monitoring and is tracked in version control. The following files in this directory are maintained as part of the project:
-- `debug/scraping_suite/run_baseline.py` - Test runner for baseline scraping validation
-- `debug/scraping_suite/README.md` - Documentation for the scraping test suite
-- `debug/scraping_suite/compare_iterations.py` - Tool for comparing scraping iterations
 
 All other code must follow these standards strictly.
