@@ -96,6 +96,29 @@ Fetch full page content as markdown with JavaScript rendering.
 
 Use after `search_web` identifies relevant URLs that need full content extraction.
 
+## Scripts
+
+### crawl_site.py
+
+Crawl an entire website and save pages as Markdown files. Uses Crawl4AI BFS (Breadth-First Search) with automatic link discovery.
+
+```bash
+venv/bin/python crawl_site.py \
+  --url "https://docs.searxng.org/" \
+  --collection "SearXNG_Docs" \
+  --depth 3 \
+  --max-pages 100
+```
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `--url` | required | Seed URL to start crawling |
+| `--collection` | required | Output folder name |
+| `--depth` | 3 | Maximum crawl depth |
+| `--max-pages` | 100 | Maximum pages to crawl |
+
+Output is saved to the RAG data directory as individual `.md` files per page. Uses `raw_markdown` (preserves HTML in code blocks) with only permalink artifact cleanup.
+
 ## Directory Structure
 
 ```
@@ -119,6 +142,7 @@ searxng/
 │       └── DOCS.md
 ├── searxng/                 # SearXNG Docker config
 │   └── settings.yml
+├── crawl_site.py            # Website crawler (standalone script)
 ├── server.py                # MCP entry point
 ├── docker-compose.yml       # SearXNG container
 ├── mcp-start.sh             # Plugin startup script
