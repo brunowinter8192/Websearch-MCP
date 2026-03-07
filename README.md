@@ -138,15 +138,17 @@ searxng/
 ├── src/                     # Source modules
 │   ├── searxng/             # Search module
 │   │   ├── search_web.py
+│   │   ├── settings.yml
 │   │   └── DOCS.md
 │   └── scraper/             # Scraper module
 │       ├── scrape_url.py
-│       ├── html_parser.py
-│       ├── markdown_converter.py
-│       ├── content_filter.py
 │       └── DOCS.md
 ├── searxng/                 # SearXNG Docker config
 │   └── settings.yml
+├── debug/                   # Debug/test scripts (gitignored)
+│   ├── crawl4ai_test.py     # Single-URL Crawl4AI tester
+│   ├── crawling_suite/      # URL discovery testing
+│   └── scraping_suite/      # Scraper quality testing
 ├── crawl_site.py            # Website crawler (standalone script)
 ├── server.py                # MCP entry point
 ├── docker-compose.yml       # SearXNG container

@@ -11,3 +11,7 @@ __pycache__/
 .mcp.json
 .claude/
 .beads/
+
+# Dolt database files (added by bd init)
+.dolt/
+*.db
