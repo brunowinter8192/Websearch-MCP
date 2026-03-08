@@ -20,6 +20,19 @@ Seed URLs for batch crawling. Format: `label|url|depth|max_pages`
 
 Each domain represents a different HTML generator and content type for broad test coverage.
 
-## Report Format
+## 02_test_filters.py
 
-JSON with summary (total fetched, unique URLs, duplicates, content/empty counts, total chars) and URL list with per-URL content status and character counts. Reports are consumed by the scraping suite's `05_compare_content_source.py`.
+**Purpose:** Compares crawl results with and without URL filters. Runs baseline crawl (no filters) and filtered crawl (with --exclude-patterns), then reports which URLs were removed by the filter.
+**Output:** `02_reports/<label>_<timestamp>.md`
+
+```bash
+python dev/crawling_suite/02_test_filters.py https://docs.searxng.org --exclude-patterns "/genindex*,/py-modindex*,/search*"
+```
+
+ContentTypeFilter (text/html) is always active in both runs. The report shows baseline count, filtered count, removed URLs, and marks removed URLs in the full baseline list.
+
+## Report Formats
+
+**01_reports:** JSON with summary (total fetched, unique URLs, duplicates, content/empty counts, total chars) and URL list with per-URL content status and character counts. Reports are consumed by the scraping suite's `05_compare_content_source.py`.
+
+**02_reports:** Markdown with summary table, removed URLs list, and full baseline URL list with [REMOVED] markers.

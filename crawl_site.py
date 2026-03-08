@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
-from crawl4ai.deep_crawling.filters import FilterChain, DomainFilter
+from crawl4ai.deep_crawling.filters import FilterChain, DomainFilter, URLPatternFilter, ContentTypeFilter
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
 PERMALINK_PATTERN = re.compile(r'\[¶\]\([^)]+\)')
@@ -15,12 +15,13 @@ TRAILING_SLASH = re.compile(r'/$')
 
 
 # ORCHESTRATOR
-async def crawl_site_workflow(url: str, output_dir: str, depth: int, max_pages: int):
+async def crawl_site_workflow(url: str, output_dir: str, depth: int, max_pages: int,
+                              exclude_patterns: str = None, include_patterns: str = None):
     target = Path(output_dir)
     target.mkdir(parents=True, exist_ok=True)
 
     domain = urlparse(url).netloc
-    results = await crawl_website(url, domain, depth, max_pages)
+    results = await crawl_website(url, domain, depth, max_pages, exclude_patterns, include_patterns)
     unique = deduplicate(results)
     saved = save_markdown(unique, url, target)
 
@@ -30,10 +31,17 @@ async def crawl_site_workflow(url: str, output_dir: str, depth: int, max_pages: 
 # FUNCTIONS
 
 # Crawl website using BFS strategy
-async def crawl_website(url: str, domain: str, depth: int, max_pages: int) -> list:
-    filter_chain = FilterChain([
-        DomainFilter(allowed_domains=[domain])
-    ])
+async def crawl_website(url: str, domain: str, depth: int, max_pages: int,
+                        exclude_patterns: str = None, include_patterns: str = None) -> list:
+    filters = [
+        DomainFilter(allowed_domains=[domain]),
+        ContentTypeFilter(allowed_types=["text/html"]),
+    ]
+    if exclude_patterns:
+        filters.append(URLPatternFilter(patterns=exclude_patterns.split(","), reverse=True))
+    if include_patterns:
+        filters.append(URLPatternFilter(patterns=include_patterns.split(","), reverse=False))
+    filter_chain = FilterChain(filters)
 
     strategy = BFSDeepCrawlStrategy(
         max_depth=depth,
@@ -114,6 +122,11 @@ if __name__ == "__main__":
     parser.add_argument("--output-dir", required=True, help="Directory to save markdown files")
     parser.add_argument("--depth", type=int, default=3, help="Max crawl depth")
     parser.add_argument("--max-pages", type=int, default=100, help="Max pages to crawl")
+    parser.add_argument("--exclude-patterns", type=str, default=None,
+                        help="Comma-separated URL patterns to exclude (e.g. '/genindex*,/search*')")
+    parser.add_argument("--include-patterns", type=str, default=None,
+                        help="Comma-separated URL patterns to include (e.g. '/docs/*,/api/*')")
     args = parser.parse_args()
 
-    asyncio.run(crawl_site_workflow(args.url, args.output_dir, args.depth, args.max_pages))
+    asyncio.run(crawl_site_workflow(args.url, args.output_dir, args.depth, args.max_pages,
+                                    args.exclude_patterns, args.include_patterns))
