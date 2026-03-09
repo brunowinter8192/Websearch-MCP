@@ -13,11 +13,11 @@ URL: $ARGUMENTS
 
 ```
 URL (from search_web or user)
- ↓ crawl_site.py (Crawl4AI BFS)
- ↓ deduplicate + clean permalinks
-output-dir/*.md
- ↓ tmux worker (claude --model haiku)
- ↓ /rag:web-md-index (cleanup + chunk + embed)
+ | crawl_site.py (Crawl4AI BFS)
+ | deduplicate + clean permalinks
+output-dir/*.md (raw)
+ | Sonnet worker (tmux_spawn.sh)
+ | /rag:web-md-index (cleanup + chunk + embed)
 indexed in RAG
 ```
 
@@ -49,8 +49,6 @@ If `$ARGUMENTS` contains a URL, use it. Otherwise ask user for the URL to crawl.
 
 Ask user: "Where should the Markdown files be saved?"
 
-Provide context: This is the first half of a crawl-to-RAG pipeline. The output directory should be wherever the RAG tool expects its input documents.
-
 ### Step 3: Confirm Crawl Settings
 
 Present parameters and ask for confirmation:
@@ -75,7 +73,7 @@ Ask: "Start crawl with these settings? Adjust depth/max-pages if needed."
 ### Step 1: Run Crawler
 
 ```bash
-${CLAUDE_PLUGIN_ROOT}/venv/bin/python ${CLAUDE_PLUGIN_ROOT}/crawl_site.py \
+${CLAUDE_PLUGIN_ROOT}/.venv/bin/python ${CLAUDE_PLUGIN_ROOT}/crawl_site.py \
   --url "$URL" \
   --output-dir "$OUTPUT_DIR" \
   --depth $DEPTH \
@@ -104,19 +102,22 @@ STATUS:  [Success/Failed]
 
 ---
 
-**STOP** - Report results. Ask: "Spawn a worker to index these MD files into RAG? (requires RAG plugin with `web-md-index` command)"
+**STOP** - Report results. Ask: "Spawn Sonnet worker for RAG pipeline? (requires RAG plugin with `web-md-index` command)"
 
 ---
 
-## Phase 3: RAG Indexing (tmux Worker)
+## Phase 3: RAG Pipeline (Sonnet Worker)
 
 **Prerequisite:** RAG plugin must be installed with the `web-md-index` command available.
 
 ### Step 1: Spawn Worker
 
 ```bash
-tmux new-window -n "rag-index"
-tmux send-keys -t "rag-index" 'claude --model haiku "/rag:web-md-index $OUTPUT_DIR"' Enter
+source ${CLAUDE_PLUGIN_ROOT}/src/spawn/tmux_spawn.sh
+
+TASK="/rag:web-md-index $OUTPUT_DIR"
+
+spawn_claude_worker "workers" "web-cleanup" "$PWD" "sonnet" "$TASK"
 ```
 
 ### Step 2: Report
@@ -124,14 +125,15 @@ tmux send-keys -t "rag-index" 'claude --model haiku "/rag:web-md-index $OUTPUT_D
 ```
 PHASE 3: RAG Worker
 ====================
-TMUX WINDOW: rag-index
-MODEL:       haiku
-COMMAND:     /rag:web-md-index $OUTPUT_DIR
-STATUS:      Spawned
+TMUX SESSION: workers
+TMUX WINDOW:  web-cleanup
+MODEL:        sonnet
+COMMAND:      /rag:web-md-index $OUTPUT_DIR
+STATUS:       Spawned
 ```
 
-Inform user: "Worker is running in tmux window 'rag-index'. Switch to it to monitor progress."
+Inform user: "Worker spawned. Ghostty window should open. The worker runs the full RAG pipeline: cleanup (web-md-cleanup agent) -> chunk -> index."
 
 ---
 
-**STOP** - Pipeline complete. Crawl finished, RAG indexing worker spawned.
+**STOP** - Pipeline complete. Crawl finished, RAG worker spawned.

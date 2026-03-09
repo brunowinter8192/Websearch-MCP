@@ -18,9 +18,9 @@ Truncates content if exceeding maximum length. Attempts to break at paragraph bo
 
 ## explore_site.py
 
-**Purpose:** Site structure reconnaissance. Crawls a website using BFS to discover all pages and build a site map with depth distribution, page counts, and character counts. No file export — analysis only.
+**Purpose:** Site structure reconnaissance. Crawls a website using BFS to discover all pages and build a summary with depth distribution, page counts, and character counts. No file export — analysis only.
 **Input:** URL string and optional max_pages limit (default 200).
-**Output:** Dict with seed_url, domain, total_pages, total_chars, depth_distribution (count + chars per level), and sorted URL list with per-URL depth and chars.
+**Output:** Dict with seed_url, domain, total_pages, total_chars, depth_distribution (count + chars per level).
 
 ### explore_site_workflow()
 
@@ -32,7 +32,7 @@ BFS crawl with DomainFilter + ContentTypeFilter (text/html). Uses max_depth=10 i
 
 ### build_site_map()
 
-Aggregates crawl results into site map. Deduplicates URLs (trailing slash normalization), extracts depth from `result.metadata["depth"]` (set by Crawl4AI BFS strategy), computes per-depth statistics.
+Aggregates crawl results into summary. Deduplicates URLs (trailing slash normalization), extracts depth from `result.metadata["depth"]` (set by Crawl4AI BFS strategy), computes per-depth statistics. Returns only aggregated counts, no individual URL list.
 
 ## Architecture
 
