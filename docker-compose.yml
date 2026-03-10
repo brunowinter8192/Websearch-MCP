@@ -1,7 +1,14 @@
 services:
+  tor:
+    image: peterdavehello/tor-socks-proxy:latest
+    container_name: tor
+    restart: unless-stopped
+
   searxng:
     image: searxng/searxng:latest
     container_name: searxng
+    depends_on:
+      - tor
     ports:
       - "8080:8080"
     volumes:

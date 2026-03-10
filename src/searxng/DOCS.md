@@ -30,8 +30,12 @@ Search configuration sets safe search to off, disables autocomplete, and default
 
 UI configuration uses simple theme with static hash for caching. Enables query in page title. Disables infinite scroll and opening results in new tab for cleaner response handling.
 
-Outgoing request configuration sets default timeout to 5 seconds with maximum of 15 seconds. Controls how long SearXNG waits for upstream search engines to respond.
+Outgoing request configuration sets default timeout to 5 seconds with maximum of 15 seconds. A Tor SOCKS5 proxy (socks5h://tor:9150) is configured globally for IP rotation. The `using_tor_proxy: true` flag enables Tor verification checks. `extra_proxy_timeout: 10` adds seconds to account for Tor latency. The Tor proxy runs as a separate Docker container (peterdavehello/tor-socks-proxy).
 
-Engine weights override default weight=1. Google, Brave, and Startpage set to weight=2 for higher result ranking. DuckDuckGo stays at weight=1 as supplementary source. Google Scholar is enabled (disabled by default) with weight=2 for academic/science searches.
+Engine routing uses a split architecture: Brave and Startpage route through Tor (global proxy), while Google and DuckDuckGo connect directly (per-engine `proxies: {}` override). This split exists because Google and DDG actively block Tor exit nodes (HTTP 400/403), but work fine with direct connections. Startpage and Brave tolerate Tor and benefit from IP rotation.
+
+Per-engine proxy override requires BOTH `using_tor_proxy: false` AND `proxies: {}`. Setting only `using_tor_proxy: false` disables the Tor verification check but still routes traffic through the global SOCKS5 proxy. The `proxies` config is inherited from outgoing defaults independently of the tor flag. This is a SearXNG network layer behavior (network.py initialize function).
+
+Engine weights override default weight=1. Google, Brave, and Startpage set to weight=2 for higher result ranking. DuckDuckGo stays at weight=1 as supplementary source. Google Scholar is enabled (disabled by default) with weight=2 for academic/science searches. Qwant is explicitly disabled (Access Denied on both API and web-lite endpoints).
 
 Hostnames plugin configuration prioritizes high-quality domains (GitHub, StackOverflow, StackExchange, Wikipedia, Python docs, MDN, arXiv) and deprioritizes low-quality sources (Pinterest, Quora, W3Schools). Pinterest results are removed entirely.

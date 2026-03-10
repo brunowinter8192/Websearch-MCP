@@ -562,7 +562,15 @@ SearXNG engines come in two variants for some search providers:
 
 Before activating a new engine in settings.yml: check the SearXNG Docs (RAG collection `SearXNG_Docs` or `dev_engines_online_<name>.md`) for known issues, rate limits, and whether an API variant exists. Do not blindly enable engines — Bing produces spam results (porn, unrelated sites) via its scraper engine.
 
-Current reliable engines: Startpage (Google proxy, most stable), DuckDuckGo (intermittent CAPTCHA), Brave (intermittent rate limits), Google (frequently blocked). Tor proxy recommended for Google/Brave/DDG stability.
+Current engine routing: Brave and Startpage route through Tor proxy (IP rotation), Google and DuckDuckGo connect directly (Tor exit nodes are blocked by these providers). Qwant is disabled (Access Denied on API level).
+
+**Per-engine proxy override (CRITICAL):** To bypass the global Tor proxy for a specific engine, BOTH settings are required:
+```yaml
+- name: duckduckgo
+  using_tor_proxy: false  # disables Tor verification check only
+  proxies: {}             # actually removes the SOCKS5 proxy route
+```
+Setting only `using_tor_proxy: false` does NOT remove the proxy — traffic still routes through socks5h://tor:9150. The `proxies` config is inherited from `outgoing.proxies` independently. This is a SearXNG network layer behavior (network.py `initialize()` function).
 
 ---
 

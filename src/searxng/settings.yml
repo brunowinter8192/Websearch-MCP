@@ -30,20 +30,34 @@ ui:
 outgoing:
   request_timeout: 5.0
   max_request_timeout: 15.0
+  proxies:
+    all://:
+      - socks5h://tor:9150
+  using_tor_proxy: true
+  extra_proxy_timeout: 10
 
 engines:
   - name: google
     engine: google
-    weight: 2
-  - name: brave
-    engine: brave
+    disabled: false
+    using_tor_proxy: false
+    proxies: {}
     weight: 2
   - name: duckduckgo
     engine: duckduckgo
+    disabled: false
+    using_tor_proxy: false
+    proxies: {}
     weight: 1
+  - name: brave
+    engine: brave
+    weight: 2
   - name: startpage
     engine: startpage
     weight: 2
+  - name: qwant
+    engine: qwant
+    disabled: true
   - name: google scholar
     engine: google_scholar
     disabled: false
