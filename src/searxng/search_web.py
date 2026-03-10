@@ -4,12 +4,19 @@ from mcp.types import TextContent
 
 SEARXNG_URL = "http://localhost:8080/search"
 MAX_RESULTS = 20
-SNIPPET_LENGTH = 200
+SNIPPET_LENGTH = 500
 
 
 # ORCHESTRATOR
-def search_web_workflow(query: str, category: str) -> list[TextContent]:
-    raw_results = fetch_search_results(query, category)
+def search_web_workflow(
+    query: str,
+    category: str,
+    language: str = "en",
+    time_range: str | None = None,
+    engines: str | None = None,
+    pageno: int = 1
+) -> list[TextContent]:
+    raw_results = fetch_search_results(query, category, language, time_range, engines, pageno)
     formatted_text = format_results(query, raw_results)
     return [TextContent(type="text", text=formatted_text)]
 
@@ -17,12 +24,26 @@ def search_web_workflow(query: str, category: str) -> list[TextContent]:
 # FUNCTIONS
 
 # Fetch raw search results from SearXNG API
-def fetch_search_results(query: str, category: str) -> list:
+def fetch_search_results(
+    query: str,
+    category: str,
+    language: str,
+    time_range: str | None,
+    engines: str | None,
+    pageno: int
+) -> list:
     params = {
         "q": query,
         "format": "json",
-        "categories": category
+        "categories": category,
+        "language": language,
+        "pageno": pageno
     }
+    if time_range:
+        params["time_range"] = time_range
+    if engines:
+        params["engines"] = engines
+
     response = requests.get(SEARXNG_URL, params=params)
     response.raise_for_status()
     data = response.json()

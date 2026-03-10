@@ -12,6 +12,13 @@ search:
   formats:
     - html
     - json
+  suspended_times:
+    SearxEngineAccessDenied: 600
+    SearxEngineCaptcha: 600
+    SearxEngineTooManyRequests: 300
+    cf_SearxEngineCaptcha: 1800
+    cf_SearxEngineAccessDenied: 600
+    recaptcha_SearxEngineCaptcha: 3600
 
 ui:
   static_use_hash: true
@@ -21,5 +28,39 @@ ui:
   results_on_new_tab: false
 
 outgoing:
-  request_timeout: 3.0
-  max_request_timeout: 10.0
+  request_timeout: 5.0
+  max_request_timeout: 15.0
+
+engines:
+  - name: google
+    engine: google
+    weight: 2
+  - name: brave
+    engine: brave
+    weight: 2
+  - name: duckduckgo
+    engine: duckduckgo
+    weight: 1
+  - name: startpage
+    engine: startpage
+    weight: 2
+  - name: google scholar
+    engine: google_scholar
+    disabled: false
+    weight: 2
+
+hostnames:
+  high_priority:
+    - '(.*\.)?github\.com$'
+    - '(.*\.)?stackoverflow\.com$'
+    - '(.*\.)?stackexchange\.com$'
+    - '(.*\.)?wikipedia\.org$'
+    - '(.*\.)?docs\.python\.org$'
+    - '(.*\.)?developer\.mozilla\.org$'
+    - '(.*\.)?arxiv\.org$'
+  low_priority:
+    - '(.*\.)?pinterest\.'
+    - '(.*\.)?quora\.com$'
+    - '(.*\.)?w3schools\.com$'
+  remove:
+    - '(.*\.)?pinterest\.'

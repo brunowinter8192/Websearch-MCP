@@ -1,0 +1,15 @@
+# --- Metasearch / SearXNG ---
+searxng configuration best practices
+metasearch engine architecture design
+metasearch engine result fusion ranking paper
+
+# --- Trading Bot / Quant Finance ---
+advances financial machine learning lopez de prado
+freqai freqtrade machine learning trading bot
+walk-forward validation time series cross-validation trading
+look-ahead bias backtesting machine learning finance
+feature engineering financial time series prediction
+
+# --- General Tech ---
+python async web scraping tutorial
+vector database comparison 2025

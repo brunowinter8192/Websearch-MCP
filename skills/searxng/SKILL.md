@@ -33,6 +33,17 @@ Two fundamentally different workflows:
 
 **Detection:** "Find me articles about X" → quick search. "What does article X say about Y?" → deep research. "Read this URL" → direct scraping.
 
+## search_web Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `query` | required | Search query string |
+| `category` | "general" | general, news, it, science |
+| `language` | "en" | ISO language code (en, de, fr...) |
+| `time_range` | None | day, month, year |
+| `engines` | None | Comma-separated engine list (e.g., "google,brave") |
+| `pageno` | 1 | Page number for pagination |
+
 ## Tool Selection
 
 | Goal | Primary Tool | Secondary |
@@ -187,5 +198,6 @@ ${CLAUDE_PLUGIN_ROOT}/venv/bin/python ${CLAUDE_PLUGIN_ROOT}/crawl_site.py \
 - **SearXNG container must be running** on `localhost:8080` — `mcp-start.sh` handles this automatically
 - **Max 20 search results** per query — use specific queries for better relevance
 - **Scraper optimized for content sites** — complex SPAs, heavy JavaScript apps, or login-protected pages may not render well
-- **Snippet length is 200 chars** — for full content, always scrape the URL
-- **No pagination** — one search returns up to 20 results, then done
+- **Snippet length is 500 chars** — for full content, always scrape the URL
+- **Pagination supported** — use `pageno` parameter for additional result pages
+- **Engine availability varies** — Google/Brave/DDG may be temporarily suspended (CAPTCHA, rate limits). Startpage is the most reliable engine.
