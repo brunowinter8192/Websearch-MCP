@@ -113,6 +113,7 @@ python crawl_site.py --url "https://docs.pytorch.org/docs/stable/mps.html" --out
 ## Architecture
 
 Content extraction is delegated entirely to Crawl4AI (v0.8.0):
+- **Anti-bot evasion:** Level 3 always active — BrowserConfig(enable_stealth=True) + UndetectedAdapter + AsyncPlaywrightCrawlerStrategy. Removes navigator.webdriver, modifies fingerprints, applies deep-level CDP patches. Limitation: Cloudflare with headless=True still blocks (ResearchGate).
 - **Browser management:** Crawl4AI manages Playwright/Patchright internally
 - **JavaScript rendering:** scrape_url uses `networkidle` with `domcontentloaded` fallback; explore_site uses `prefetch=True` (HTML + links only, no rendering)
 - **Noise removal:** Three layers — DOM cleanup (overlays), CSS selector exclusion (cookie banners), content scoring (PruningFilter)
