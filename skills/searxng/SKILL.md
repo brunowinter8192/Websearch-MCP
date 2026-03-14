@@ -161,16 +161,40 @@ Use `explore_site` when the user wants to understand a website's structure befor
 
 ## Crawl Site (/crawl-site)
 
-Slash command for full website crawling. Crawls all pages via BFS, exports as individual markdown files.
+Slash command for full website crawling. Multi-phase pipeline: explore, filter, crawl, optional RAG indexing.
 
 **Usage:** `/crawl-site https://docs.example.com`
 
-**The command walks through 3 phases:**
-1. **Confirm Parameters** — URL, output directory, depth, max-pages
-2. **Crawl** — runs `crawl_site.py` with Crawl4AI BFS strategy
-3. **RAG Indexing** — optional: spawns tmux worker for `/rag:web-md-index`
+**The command walks through 4 phases:**
+1. **Explore** — explore_site.py auto-detects strategy (sitemap/prefetch/BFS), discovers URLs, saves URL list to output directory
+2. **Review & Filter** — user reviews URL samples, grep -v filters noise patterns
+3. **Crawl** — crawl_site.py batch-crawls filtered URLs to markdown
+4. **RAG Pipeline** — optional: runs /rag:web-md-index (cleanup + chunk + embed)
 
-**crawl_site.py CLI reference:**
+**Default export path:** `~/Documents/ai/Meta/ClaudeCode/MCP/RAG/data/documents/<website>/`
+
+### Crawl Strategy Selection
+
+crawl_site.py has a 3-level auto-detection cascade (`--strategy auto`, default):
+1. **Sitemap** (AsyncUrlSeeder) — seconds for thousands of URLs, no rendering
+2. **Prefetch BFS** — ~200-500ms per page, HTML+links only
+3. **BFS full rendering** — ~2-5s per page, networkidle (fallback for SPA/JS-heavy)
+
+Each level falls back to the next if it fails. Force a specific strategy with `--strategy sitemap|prefetch|bfs`.
+
+### Crawl4AI Config (Production)
+
+Two scraping modes with different content filter strategies:
+
+- **scrape_url (MCP tool):** `PruningContentFilter(threshold=0.48)` + `fit_markdown` — filters navigation, sidebars, cookie banners. Trade-off: code block formatting destroyed. Acceptable for MCP use case.
+- **crawl_site (export script):** `DefaultMarkdownGenerator()` without content filter + `raw_markdown` — full fidelity. Noise handled by downstream RAG cleanup agent.
+
+Both use `wait_until="networkidle"` and `BrowserConfig(headless=True, verbose=False)`.
+
+Config changes: test via dev/scraping_suite and dev/crawling_suite scripts.
+
+### crawl_site.py CLI reference
+
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/venv/bin/python ${CLAUDE_PLUGIN_ROOT}/crawl_site.py \
   --url "https://docs.example.com" \
@@ -182,11 +206,23 @@ ${CLAUDE_PLUGIN_ROOT}/venv/bin/python ${CLAUDE_PLUGIN_ROOT}/crawl_site.py \
 ```
 
 **Filters:**
-- `--exclude-patterns` — comma-separated URL patterns to exclude (e.g., index pages, search pages)
-- `--include-patterns` — comma-separated URL patterns to include (e.g., only docs subtree)
+- `--exclude-patterns` — comma-separated URL patterns to exclude
+- `--include-patterns` — comma-separated URL patterns to include
 - ContentTypeFilter (text/html) is always active
 
-**Default export path:** `~/Documents/ai/Meta/ClaudeCode/MCP/RAG/data/documents/<website>/`
+### SearXNG Engine Types
+
+Scraper engines (brave, google, duckduckgo) parse web UI HTML — no API key but get blocked. API engines (braveapi) use official REST API — stable but require registration.
+
+Current engine routing: Brave and Startpage via Tor proxy (IP rotation), Google and DuckDuckGo direct (Tor exit nodes blocked).
+
+**Per-engine proxy override:** To bypass global Tor proxy, BOTH settings required:
+```yaml
+- name: duckduckgo
+  using_tor_proxy: false
+  proxies: {}
+```
+`using_tor_proxy: false` alone does NOT remove the proxy — `proxies` config is inherited from `outgoing.proxies` independently.
 
 ## Scraping Tips
 

@@ -10,7 +10,7 @@ URL scraping and site exploration tools powered by Crawl4AI for SearXNG MCP serv
 
 ### scrape_url_workflow()
 
-Main orchestrator. Attempts scrape with `networkidle` wait strategy first, falls back to `domcontentloaded` on timeout/error. Three noise-removal layers applied in sequence:
+Main orchestrator. Uses Stealth Mode + UndetectedAdapter (Level 3 anti-bot evasion) for all requests. Attempts scrape with `networkidle` wait strategy first, falls back to `domcontentloaded` on timeout/error. Three noise-removal layers applied in sequence:
 
 1. `remove_overlay_elements=True` — JS-based removal of cookie banners, modals, sticky elements from DOM before scraping
 2. `excluded_selector=COOKIE_CONSENT_SELECTOR` — CSS selector matching 16 common cookie consent frameworks (CookieYes, OneTrust, Cookiebot, cc-banner, GDPR etc.), elements removed from HTML before markdown conversion
@@ -66,34 +66,45 @@ Formats site map dict as readable Markdown. Includes domain, seed URL, total pag
 
 ## crawl_site.py (root level)
 
-**Purpose:** Full website crawl with markdown export. Two-phase approach: fast prefetch URL discovery, then parallel content crawl via `arun_many()` with `SemaphoreDispatcher(concurrency=10)`. Falls back to serial BFS with full rendering for JS-heavy/SPA sites via `--no-prefetch` flag.
-**Input:** URL, output directory, depth, max_pages, optional include/exclude URL patterns, optional --no-prefetch flag.
+**Purpose:** Full website crawl with markdown export. Supports 3-level auto-detection cascade (sitemap → prefetch → BFS), direct URL file input, and parallel crawl via `arun_many()` with `SemaphoreDispatcher(concurrency=10)`.
+**Input:** URL, output directory, depth, max_pages, optional include/exclude URL patterns, optional --strategy flag, optional --url-file for pre-filtered URL lists.
 **Output:** Markdown files in output directory (one per page), with source URL comment header.
 
 ### crawl_site_workflow()
 
-Main orchestrator. Two modes based on `no_prefetch` flag: (1) Default: discover_urls → crawl_urls parallel, (2) --no-prefetch: crawl_bfs serial. Deduplicates results, saves as markdown files.
+Main orchestrator. Strategy selection: (1) --url-file: read URLs from file, skip discovery. (2) --strategy auto: cascade sitemap → prefetch → BFS with SPA auto-detection. (3) --strategy sitemap/prefetch/bfs: force specific strategy. Deduplicates results, saves as markdown files.
+
+### discover_urls_sitemap()
+
+Fastest discovery strategy. Uses AsyncUrlSeeder with SeedingConfig(source="sitemap") to fetch sitemap URLs. Supports optional include_patterns for sitemap filtering. Returns list of URL strings, empty list on failure.
+
+### read_url_file()
+
+Reads URL list from text file (one URL per line). Used with --url-file flag to skip discovery entirely and crawl a pre-curated list.
 
 ### discover_urls()
 
-Phase 1: BFS crawl with `prefetch=True` for fast URL discovery. Applies DomainFilter, ContentTypeFilter, optional URLPatternFilter. Returns deduplicated URL list.
+BFS crawl with `prefetch=True` for fast URL discovery. Applies DomainFilter, ContentTypeFilter, optional URLPatternFilter. Returns deduplicated URL list with trailing slash normalization.
 
 ### crawl_urls()
 
-Phase 2: Parallel crawl of discovered URLs via `arun_many()` with `SemaphoreDispatcher(max_session_permit=10)`. Uses `networkidle` wait strategy and `DefaultMarkdownGenerator` for full content extraction.
+Parallel crawl of discovered URLs via `arun_many()` with `SemaphoreDispatcher(max_session_permit=10)`. Uses `networkidle` wait strategy and `DefaultMarkdownGenerator` for full content extraction.
 
 ### crawl_bfs()
 
-Fallback: Serial BFS crawl with full browser rendering. For JS-heavy/SPA sites where prefetch cannot discover links (e.g., developer.apple.com). Same filters as discover_urls but with `networkidle` and `DefaultMarkdownGenerator`.
+Fallback: Serial BFS crawl with full browser rendering. For JS-heavy/SPA sites where prefetch cannot discover links. Same filters as discover_urls but with `networkidle` and `DefaultMarkdownGenerator`.
 
 ### CLI
 
 ```bash
-# Default (prefetch + parallel) — for static/SSR sites
-python crawl_site.py --url "https://sbert.net" --output-dir "./output" --depth 2 --max-pages 100
+# Auto-detection cascade (sitemap → prefetch → BFS)
+python crawl_site.py --url "https://sbert.net" --output-dir "./output"
 
-# SPA/JS-heavy sites — serial BFS with full rendering
-python crawl_site.py --url "https://developer.apple.com/documentation/metal" --output-dir "./output" --no-prefetch
+# Force specific strategy
+python crawl_site.py --url "https://docs.example.com" --output-dir "./output" --strategy sitemap
+
+# Pre-filtered URL file (skips discovery)
+python crawl_site.py --url "https://playwright.dev" --url-file urls_filtered.txt --output-dir "./output"
 
 # With URL pattern filter
 python crawl_site.py --url "https://docs.pytorch.org/docs/stable/mps.html" --output-dir "./output" --include-patterns "*stable*mps*"

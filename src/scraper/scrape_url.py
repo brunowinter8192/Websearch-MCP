@@ -1,5 +1,6 @@
 # INFRASTRUCTURE
-from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
+from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode, UndetectedAdapter
+from crawl4ai.async_crawler_strategy import AsyncPlaywrightCrawlerStrategy
 from crawl4ai.content_filter_strategy import PruningContentFilter
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
@@ -30,12 +31,17 @@ async def scrape_url_workflow(url: str, max_content_length: int = DEFAULT_MAX_CO
     markdown_generator = DefaultMarkdownGenerator(
         content_filter=PruningContentFilter(threshold=0.48)
     )
-    browser_config = BrowserConfig(headless=True, verbose=False)
+    browser_config = BrowserConfig(headless=True, verbose=False, enable_stealth=True)
+    adapter = UndetectedAdapter()
+    crawler_strategy = AsyncPlaywrightCrawlerStrategy(
+        browser_config=browser_config,
+        browser_adapter=adapter
+    )
 
-    content = await try_scrape(browser_config, markdown_generator, url, "networkidle")
+    content = await try_scrape(browser_config, crawler_strategy, markdown_generator, url, "networkidle")
 
     if not content:
-        content = await try_scrape(browser_config, markdown_generator, url, "domcontentloaded")
+        content = await try_scrape(browser_config, crawler_strategy, markdown_generator, url, "domcontentloaded")
 
     if not content:
         hint = get_plugin_hint(url)
@@ -51,7 +57,7 @@ async def scrape_url_workflow(url: str, max_content_length: int = DEFAULT_MAX_CO
 # FUNCTIONS
 
 # Attempt scrape with given wait strategy, return content or empty string
-async def try_scrape(browser_config, markdown_generator, url: str, wait_until: str) -> str:
+async def try_scrape(browser_config, crawler_strategy, markdown_generator, url: str, wait_until: str) -> str:
     run_config = CrawlerRunConfig(
         cache_mode=CacheMode.BYPASS,
         wait_until=wait_until,
@@ -60,7 +66,7 @@ async def try_scrape(browser_config, markdown_generator, url: str, wait_until: s
         markdown_generator=markdown_generator,
     )
     try:
-        async with AsyncWebCrawler(config=browser_config) as crawler:
+        async with AsyncWebCrawler(crawler_strategy=crawler_strategy, config=browser_config) as crawler:
             result = await crawler.arun(url=url, config=run_config)
         return result.markdown.fit_markdown if result.markdown else ""
     except Exception:

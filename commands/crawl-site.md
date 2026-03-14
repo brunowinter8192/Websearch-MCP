@@ -60,8 +60,11 @@ Default: `~/Documents/ai/Meta/ClaudeCode/MCP/RAG/data/documents/<sitename>/`
 ${CLAUDE_PLUGIN_ROOT}/venv/bin/python ${CLAUDE_PLUGIN_ROOT}/explore_site.py \
   --url "$URL" \
   --strategy auto \
+  --output "$OUTPUT_DIR/urls.txt" \
   > /tmp/explore_output.txt 2>&1
 ```
+
+Note: If the plugin venv python does not exist, use `./venv/bin/python` (project venv) instead.
 
 Redirect output to file, then show the summary lines and URL samples:
 
@@ -103,8 +106,8 @@ Based on URL samples, discuss with user which patterns are noise. Examples:
 Apply user-approved filters:
 
 ```bash
-grep -v -E "PATTERN1|PATTERN2" /tmp/explore_<domain>_urls.txt > /tmp/explore_<domain>_filtered.txt
-wc -l /tmp/explore_<domain>_filtered.txt
+grep -v -E "PATTERN1|PATTERN2" "$OUTPUT_DIR/urls.txt" > "$OUTPUT_DIR/urls_filtered.txt"
+wc -l "$OUTPUT_DIR/urls_filtered.txt"
 ```
 
 Show filtered count and a few samples from the filtered list.
@@ -160,38 +163,42 @@ STATUS:    [Success/Failed]
 
 ---
 
-**STOP** - Report results. Ask: "Spawn Sonnet worker for RAG pipeline? (requires RAG plugin with `web-md-index` command)"
+**STOP** - Report results. Then check if RAG plugin is available (see Phase 4).
 
 ---
 
-## Phase 4: RAG Pipeline (optional)
+## Phase 4: RAG Pipeline (auto-detect)
 
-**Prerequisite:** RAG plugin must be installed with the `web-md-index` command available.
+### Step 1: Check RAG Plugin
 
-### Step 1: Spawn Worker
+Check if the RAG plugin is active by looking for the `web-md-index` command:
 
 ```bash
-PLUGIN_DIR=$(find ~/.claude/plugins/cache/brunowinter-plugins/iterative-dev -maxdepth 1 -type d | tail -1)
-source $PLUGIN_DIR/src/spawn/tmux_spawn.sh
-
-TASK="/rag:web-md-index $OUTPUT_DIR"
-
-spawn_claude_worker "workers" "web-cleanup" "$PWD" "sonnet" "$TASK"
+ls ~/.claude/plugins/cache/brunowinter-plugins/rag/*/commands/web-md-index.md 2>/dev/null
 ```
 
-### Step 2: Report
+- If found → RAG plugin is active. Ask user: "RAG Plugin erkannt. Soll ich /rag:web-md-index starten? (cleanup + chunk + embed)"
+- If not found → Report: "RAG Plugin nicht installiert. Crawl abgeschlossen." → **STOP**
+
+### Step 2: Run RAG Pipeline
+
+If user confirms, invoke the skill directly:
 
 ```
-PHASE 4: RAG Worker
-====================
-TMUX SESSION: workers
-TMUX WINDOW:  web-cleanup
-MODEL:        sonnet
-COMMAND:      /rag:web-md-index $OUTPUT_DIR
-STATUS:       Spawned
+Skill(skill="rag:web-md-index", args="$OUTPUT_DIR")
 ```
 
-Inform user: "Worker spawned. The worker runs the full RAG pipeline: cleanup (web-md-cleanup agent) -> chunk -> index."
+This runs the full RAG pipeline inline: cleanup (web-md-cleanup agent) → chunk → index.
+
+### Phase 4 Report
+
+```
+PHASE 4: RAG Pipeline
+======================
+PLUGIN:    [detected / not found]
+DIRECTORY: $OUTPUT_DIR
+STATUS:    [Started / Skipped]
+```
 
 ---
 
