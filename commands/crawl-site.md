@@ -1,27 +1,44 @@
 ---
 description: Crawl a website and save pages as Markdown files
-argument-hint: [url]
 ---
 
-## Input
+## Config
 
-URL: $ARGUMENTS
+```
+OUTPUT_DIR=~/Documents/ai/Meta/ClaudeCode/MCP/RAG/data/documents/searxng
+DECISIONS_DIR=decisions/
+```
+
+## Plugin Domains (SKIP — handled by dedicated MCP plugins)
+
+These domains are NEVER crawled. They have their own plugins:
+- `github.com` → github-research plugin
+- `reddit.com` → reddit plugin
+- `arxiv.org` → arxiv plugin
+- `huggingface.co` → separate project
+
+If a decision file references these domains, note them as "Plugin-Domain (SKIP)" in the inventory.
 
 ---
 
 ## Pipeline Flow
 
 ```
-URL (from search_web or user)
- | explore_site.py (Strategy auto-detect + URL list)
- | User reviews URL samples for noise
- | grep -v filters noise patterns
- | crawl_site.py --url-file (batch crawl filtered URLs)
- | deduplicate + clean permalinks
-output-dir/*.md (raw)
- | (optional) Sonnet worker
- | /rag:web-md-index (cleanup + chunk + embed)
-indexed in RAG
+Phase 1: Preparation
+ | Step 1: Extract all URLs from decision files
+ | Step 2: Show output directory + existing documents inventory
+ | Step 3: Explore domains (explore_site.py per crawlable domain)
+Phase 2: Assessment
+ | Evaluate which URLs/patterns are relevant per domain
+ | User confirms selection
+Phase 3: Crawl
+ | crawl_site.py per domain with filtered URL lists
+ | Save as Markdown to $OUTPUT_DIR
+Phase 4: Cleanup
+ | Clean up crawled Markdown files (web-md-cleanup agent)
+Phase 5: Indexing
+ | Ask user if ready to index into RAG
+ | /rag:web-md-index (chunk + embed)
 ```
 
 ---
@@ -42,111 +59,87 @@ indexed in RAG
 
 ---
 
-## Phase 1: Explore
+## Phase 1: URL Input
 
-### Step 1: Resolve URL
+Ask user: "Welche URLs/Domains sollen gecrawlt werden?"
 
-If `$ARGUMENTS` contains a URL, use it. Otherwise ask user for the URL to crawl.
+User provides one or more URLs. These can be:
+- A single URL (e.g., `https://docs.crawl4ai.com`)
+- Multiple URLs
+- A domain name to explore
 
-### Step 2: Ask for Output Directory
-
-Ask user: "Where should the Markdown files be saved?"
-
-Default: `~/Documents/ai/Meta/ClaudeCode/MCP/RAG/data/documents/<sitename>/`
-
-### Step 3: Run Exploration
-
-```bash
-${CLAUDE_PLUGIN_ROOT}/venv/bin/python ${CLAUDE_PLUGIN_ROOT}/explore_site.py \
-  --url "$URL" \
-  --strategy auto \
-  --output "$OUTPUT_DIR/urls.txt" \
-  > /tmp/explore_output.txt 2>&1
-```
-
-Note: If the plugin venv python does not exist, use `./venv/bin/python` (project venv) instead.
-
-Redirect output to file, then show the summary lines and URL samples:
-
-```bash
-cat /tmp/explore_output.txt
-```
+Check provided URLs against Plugin-Domain skip list. If a Plugin-Domain is provided, inform user and skip it.
 
 ### Phase 1 Report
 
-```
-PHASE 1: Explore
-================
-URL:       [url]
-STRATEGY:  [sitemap/prefetch/bfs]
-URLs:      [N] discovered
-DURATION:  [X.X]s
-URL FILE:  [path]
-```
-
-Show URL samples from the output so user can identify noise patterns.
+List the confirmed URLs to process.
 
 ---
 
-**STOP** - User reviews URL samples and identifies noise patterns to filter.
+**STOP** - User confirms URL list.
 
 ---
 
-## Phase 2: Review & Filter
+## Phase 2: Assessment
 
-### Step 1: Discuss Noise
+### Step 1: Relevance Evaluation
 
-Based on URL samples, discuss with user which patterns are noise. Examples:
-- Language variants: `/java/`, `/dotnet/`, `/docs/` (without `/python/`)
-- Test/CI pages: `/test-*`, `/ci-*`
-- Non-content: `/search`, `/genindex`, `/community/`
+For each explored domain, evaluate discovered URLs:
+- Which URL patterns are relevant for our pipeline decisions?
+- Which patterns are noise (language variants, non-content, duplicates)?
 
-### Step 2: Filter URL List
+Present per domain:
+```
+DOMAIN: [domain]
+RELEVANT PATTERNS: [list with examples]
+NOISE PATTERNS:    [list with examples]
+KEEP: [N] URLs
+SKIP: [M] URLs
+```
 
-Apply user-approved filters:
+### Step 2: Filter URL Lists
+
+Apply filters per domain:
 
 ```bash
-grep -v -E "PATTERN1|PATTERN2" "$OUTPUT_DIR/urls.txt" > "$OUTPUT_DIR/urls_filtered.txt"
-wc -l "$OUTPUT_DIR/urls_filtered.txt"
+grep -v -E "NOISE_PATTERN" "/tmp/explore_${DOMAIN}_urls.txt" > "/tmp/filtered_${DOMAIN}_urls.txt"
+wc -l "/tmp/filtered_${DOMAIN}_urls.txt"
 ```
-
-Show filtered count and a few samples from the filtered list.
 
 ### Phase 2 Report
 
 ```
-PHASE 2: Filter
-================
-ORIGINAL:  [N] URLs
-FILTERED:  [M] URLs
-REMOVED:   [N-M] URLs
-PATTERNS:  [list of excluded patterns]
-FILE:      [filtered file path]
+PHASE 2: Assessment
+====================
+[domain]: [N] relevant / [M] total
+[domain]: [N] relevant / [M] total
+TOTAL:    [N] URLs to crawl
 ```
 
 ---
 
-**STOP** - User confirms filtered list before crawling.
+**STOP** - User confirms filtered URL lists before crawling.
 
 ---
 
 ## Phase 3: Crawl
 
-### Step 1: Run Crawler
+### Step 1: Run Crawler Per Domain
+
+For each confirmed domain:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/venv/bin/python ${CLAUDE_PLUGIN_ROOT}/crawl_site.py \
-  --url "$URL" \
-  --url-file "$FILTERED_URL_FILE" \
+  --url "$DOMAIN_URL" \
+  --url-file "/tmp/filtered_${DOMAIN}_urls.txt" \
   --output-dir "$OUTPUT_DIR" \
-  > /tmp/crawl_output.txt 2>&1
+  > /tmp/crawl_${DOMAIN}_output.txt 2>&1
 ```
 
 ### Step 2: Verify Output
 
 ```bash
-grep -E "^(Reading|Loaded|Crawled|Unique|Done)" /tmp/crawl_output.txt
-ls "$OUTPUT_DIR" | head -10
+grep -E "^(Reading|Loaded|Crawled|Unique|Done)" /tmp/crawl_${DOMAIN}_output.txt
 ls "$OUTPUT_DIR" | wc -l
 ```
 
@@ -155,49 +148,79 @@ ls "$OUTPUT_DIR" | wc -l
 ```
 PHASE 3: Crawl
 ==============
-URL FILE:  [filtered file path]
-OUTPUT:    [output-dir]
-FILES:     [N] markdown files
-STATUS:    [Success/Failed]
+[domain]: [N] files crawled — [Success/Failed]
+[domain]: [N] files crawled — [Success/Failed]
+TOTAL:    [N] new markdown files
+OUTPUT:   $OUTPUT_DIR
 ```
 
 ---
 
-**STOP** - Report results. Then check if RAG plugin is available (see Phase 4).
+**STOP** - Report results before cleanup.
 
 ---
 
-## Phase 4: RAG Pipeline (auto-detect)
+## Phase 4: Cleanup
 
-### Step 1: Check RAG Plugin
+### Step 1: Run Cleanup
 
-Check if the RAG plugin is active by looking for the `web-md-index` command:
+Dispatch web-md-cleanup agent(s) on the newly crawled Markdown files.
+
+For each domain batch, use the `web-md-cleanup` agent:
+
+```
+Agent(subagent_type="web-md-cleanup", prompt="Clean these markdown files in $OUTPUT_DIR matching pattern ${DOMAIN}__*")
+```
+
+### Step 2: Verify Cleanup
+
+Spot-check a few cleaned files to ensure quality.
+
+### Phase 4 Report
+
+```
+PHASE 4: Cleanup
+=================
+FILES CLEANED: [N]
+QUALITY:       [spot-check summary]
+```
+
+---
+
+**STOP** - Report cleanup results before indexing.
+
+---
+
+## Phase 5: Indexing
+
+### Step 1: Ask User
+
+"Alle Domains gecrawlt und aufgeraeumt. Soll ich jetzt in RAG indexieren? (chunk + embed)"
+
+### Step 2: Check RAG Plugin
 
 ```bash
 ls ~/.claude/plugins/cache/brunowinter-plugins/rag/*/commands/web-md-index.md 2>/dev/null
 ```
 
-- If found → RAG plugin is active. Ask user: "RAG Plugin erkannt. Soll ich /rag:web-md-index starten? (cleanup + chunk + embed)"
-- If not found → Report: "RAG Plugin nicht installiert. Crawl abgeschlossen." → **STOP**
+- If not found → "RAG Plugin nicht installiert. Crawl abgeschlossen."
 
-### Step 2: Run RAG Pipeline
+### Step 3: Run RAG Pipeline
 
-If user confirms, invoke the skill directly:
+If user confirms:
 
 ```
 Skill(skill="rag:web-md-index", args="$OUTPUT_DIR")
 ```
 
-This runs the full RAG pipeline inline: cleanup (web-md-cleanup agent) → chunk → index.
-
-### Phase 4 Report
+### Phase 5 Report
 
 ```
-PHASE 4: RAG Pipeline
-======================
+PHASE 5: Indexing
+==================
 PLUGIN:    [detected / not found]
 DIRECTORY: $OUTPUT_DIR
-STATUS:    [Started / Skipped]
+STATUS:    [Indexed / Skipped]
 ```
 
 ---

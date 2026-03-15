@@ -276,6 +276,14 @@ Current engine routing: Brave and Startpage via Tor proxy (IP rotation), Google 
 | it | Technical topics, programming, software |
 | science | Academic, scientific topics |
 
+**Category Selection Rule:**
+- Do NOT default to `general` for every query — actively match category to content type
+- Academic papers, books, courses → `science`
+- Library docs, package guides, technical tutorials → `it`
+- Blog posts, opinions, mixed content → `general`
+- When researching a topic across multiple content types: run parallel queries with DIFFERENT categories
+- Concrete failure (2026-03-15): All 4 search queries used category=general for ML Trading research. `science` would have surfaced better academic sources.
+
 ## Known Limitations
 
 - **SearXNG container must be running** on `localhost:8080` — `mcp-start.sh` handles this automatically
