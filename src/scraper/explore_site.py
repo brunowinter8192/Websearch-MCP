@@ -17,12 +17,12 @@ CRAWL_TIMEOUT = 120
 async def explore_site_workflow(url: str, max_pages: int = DEFAULT_MAX_PAGES, url_pattern: str | None = None) -> list[TextContent]:
     domain = urlparse(url).netloc
 
-    sitemap_count = await check_sitemap(domain)
+    sitemap_urls = await check_sitemap(domain)
     timed_out, results = await crawl_for_discovery(url, domain, max_pages, url_pattern)
-    site_map = build_site_map(url, domain, results, timed_out)
+    site_map = build_site_map(url, domain, results, timed_out, sitemap_urls)
 
-    if sitemap_count > 0:
-        site_map["recommended_strategy"] = f"sitemap ({sitemap_count} URLs in sitemap)"
+    if sitemap_urls:
+        site_map["recommended_strategy"] = f"sitemap ({len(sitemap_urls)} URLs in sitemap)"
     elif site_map["total_pages"] > 1:
         site_map["recommended_strategy"] = "prefetch"
     else:
@@ -33,15 +33,15 @@ async def explore_site_workflow(url: str, max_pages: int = DEFAULT_MAX_PAGES, ur
 
 # FUNCTIONS
 
-# Check if site has a sitemap and count URLs
-async def check_sitemap(domain: str) -> int:
+# Check if site has a sitemap and return discovered URLs
+async def check_sitemap(domain: str) -> list[str]:
     try:
         async with AsyncUrlSeeder() as seeder:
             config = SeedingConfig(source="sitemap")
             urls = await seeder.urls(domain, config)
-            return len(urls) if urls else 0
+            return list(urls) if urls else []
     except Exception:
-        return 0
+        return []
 
 
 # BFS crawl to discover site structure with timeout
@@ -88,7 +88,7 @@ async def crawl_for_discovery(url: str, domain: str, max_pages: int, url_pattern
 
 
 # Aggregate crawl results into site map with depth distribution and URL samples
-def build_site_map(seed_url: str, domain: str, results: list, timed_out: bool = False) -> dict:
+def build_site_map(seed_url: str, domain: str, results: list, timed_out: bool = False, sitemap_urls: list[str] | None = None) -> dict:
     seen = set()
     urls = []
     depth_stats = defaultdict(lambda: {"count": 0, "chars": 0})
@@ -106,6 +106,19 @@ def build_site_map(seed_url: str, domain: str, results: list, timed_out: bool = 
         urls.append({"url": url, "depth": depth, "chars": chars})
         depth_stats[depth]["count"] += 1
         depth_stats[depth]["chars"] += chars
+        depth_urls[depth].append(url)
+
+    for raw_url in (sitemap_urls or []):
+        url = raw_url.rstrip('/')
+        if not url or url in seen:
+            continue
+        seen.add(url)
+
+        path = urlparse(url).path.strip('/')
+        depth = len(path.split('/')) if path else 0
+
+        urls.append({"url": url, "depth": depth, "chars": 0})
+        depth_stats[depth]["count"] += 1
         depth_urls[depth].append(url)
 
     total_chars = sum(u["chars"] for u in urls)
