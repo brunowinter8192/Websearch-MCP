@@ -116,3 +116,72 @@ def get_plugin_hint(url: str) -> str:
         if domain in url:
             return hint
     return ""
+
+
+# Scrape URL with raw markdown (no content filter) and save to file
+async def scrape_url_raw_workflow(url: str, output_dir: str) -> list[TextContent]:
+    import re
+    from pathlib import Path
+    from urllib.parse import urlparse
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    markdown_generator = DefaultMarkdownGenerator()
+
+    normal_config = BrowserConfig(headless=True, verbose=False)
+    content = await try_scrape_raw(normal_config, None, markdown_generator, url, "networkidle")
+
+    if not content:
+        content = await try_scrape_raw(normal_config, None, markdown_generator, url, "domcontentloaded")
+
+    if not content:
+        stealth_config = BrowserConfig(headless=True, verbose=False, enable_stealth=True)
+        adapter = UndetectedAdapter()
+        stealth_strategy = AsyncPlaywrightCrawlerStrategy(
+            browser_config=stealth_config,
+            browser_adapter=adapter
+        )
+        content = await try_scrape_raw(stealth_config, stealth_strategy, markdown_generator, url, "networkidle")
+
+    if not content:
+        hint = get_plugin_hint(url)
+        msg = f"Error scraping {url}: No content extracted"
+        if hint:
+            msg += f"\n\nHint: {hint}"
+        return [TextContent(type="text", text=msg)]
+
+    # Generate filename from URL
+    parsed = urlparse(url)
+    path = parsed.netloc + parsed.path
+    safe_name = re.sub(r'[^\w\-.]', '_', path).strip('_')[:120] + ".md"
+
+    # Save with source comment header
+    filepath = output_path / safe_name
+    filepath.write_text(f"<!-- source: {url} -->\n\n{content}")
+
+    return [TextContent(type="text", text=f"Saved: {filepath} ({len(content):,} chars)")]
+
+
+# Attempt raw scrape (no content filter), return content or empty string
+async def try_scrape_raw(browser_config, crawler_strategy, markdown_generator, url: str, wait_until: str) -> str:
+    run_config = CrawlerRunConfig(
+        cache_mode=CacheMode.BYPASS,
+        wait_until=wait_until,
+        excluded_selector=COOKIE_CONSENT_SELECTOR,
+        markdown_generator=markdown_generator,
+    )
+    try:
+        kwargs = {"config": browser_config}
+        if crawler_strategy:
+            kwargs["crawler_strategy"] = crawler_strategy
+        async with AsyncWebCrawler(**kwargs) as crawler:
+            result = await crawler.arun(url=url, config=run_config)
+        if not result.markdown:
+            return ""
+        content = result.markdown.raw_markdown
+        if not content or len(content) < MIN_CONTENT_THRESHOLD:
+            return ""
+        return content
+    except Exception:
+        return ""

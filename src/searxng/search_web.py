@@ -3,8 +3,8 @@ import requests
 from mcp.types import TextContent
 
 SEARXNG_URL = "http://localhost:8080/search"
-MAX_RESULTS = 20
-SNIPPET_LENGTH = 500
+MAX_RESULTS = 50
+SNIPPET_LENGTH = 5000
 
 
 # ORCHESTRATOR

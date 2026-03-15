@@ -1,23 +1,35 @@
-# --- RAG & Retrieval ---
+# --- Contextual Retrieval ---
 @profile: research
-contextual retrieval chunking RAG best practices
-HyDE hypothetical document embeddings query expansion
-late chunking vs contextual retrieval comparison
+contextual retrieval anthropic chunking RAG
+contextual chunking prepend context before embedding
+LLM generated context prefix per chunk retrieval
 
-# --- Technical / Code ---
+# --- HyDE (Hypothetical Document Embeddings) ---
 @profile: research
-pgvector HNSW tuning production
+HyDE hypothetical document embeddings implementation
+query expansion RAG retrieval augmented generation
+HyDE vs direct retrieval comparison benchmark
+
+# --- Parent-Child Chunking ---
+@profile: research
+parent child chunking retrieval augmented generation
+hierarchical chunking small retrieval large context
+sentence window retrieval vs parent document retrieval
+
+# --- ColBERT Late Interaction ---
+@profile: research
 ColBERT late interaction retrieval implementation
-semantic chunking parent child retrieval
+ColBERT pgvector integration token level embeddings
+ColBERT vs dense retrieval benchmark recall comparison
 
-# --- Quant Finance ---
-@profile: general
-advances financial machine learning lopez de prado
-freqai freqtrade machine learning trading bot
-walk-forward validation time series cross-validation trading
+# --- pgvector HNSW Tuning ---
+@profile: research
+pgvector HNSW ef_search tuning production settings
+pgvector 0.8 iterative scan HNSW performance
+HNSW index parameters recall vs latency tradeoff
 
-# --- General Tech ---
-@profile: general
-python async web scraping tutorial
-vector database comparison 2025
-RAG evaluation RAGAS metrics benchmark
+# --- Chunk-Size Tuning ---
+@profile: research
+optimal chunk size RAG benchmark evaluation
+recursive chunking vs semantic chunking comparison
+chunk overlap size impact retrieval quality embedding

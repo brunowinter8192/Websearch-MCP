@@ -12,7 +12,8 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 SEARXNG_URL = "http://localhost:8080/search"
-TOP_K = 10
+TOP_K = 30
+MAX_PAGES = 3
 SETTINGS_PATH = Path(__file__).parent.parent.parent / "src" / "searxng" / "settings.yml"
 PROFILES_PATH = Path(__file__).parent / "profiles.yml"
 REPORTS_DIR = Path(__file__).parent / "01_reports"
@@ -79,23 +80,41 @@ def compute_settings_hash() -> str:
     return hashlib.md5(content.encode()).hexdigest()[:8]
 
 
-# Execute single query against SearXNG API with profile parameters
+# Execute single query against SearXNG API with profile parameters and pagination
 def run_query(query: str, profile: dict) -> list[dict]:
-    params = {
-        "q": query,
-        "format": "json",
-        "categories": profile.get("category", "general"),
-        "language": profile.get("language", "en"),
-    }
-    if profile.get("time_range"):
-        params["time_range"] = profile["time_range"]
-    if profile.get("engines"):
-        params["engines"] = profile["engines"]
+    all_results = []
+    seen_urls = set()
 
-    response = requests.get(SEARXNG_URL, params=params)
-    response.raise_for_status()
-    data = response.json()
-    return data.get("results", [])[:TOP_K]
+    for page in range(1, MAX_PAGES + 1):
+        params = {
+            "q": query,
+            "format": "json",
+            "categories": profile.get("category", "general"),
+            "language": profile.get("language", "en"),
+            "pageno": page,
+        }
+        if profile.get("time_range"):
+            params["time_range"] = profile["time_range"]
+        if profile.get("engines"):
+            params["engines"] = profile["engines"]
+
+        response = requests.get(SEARXNG_URL, params=params)
+        response.raise_for_status()
+        data = response.json()
+        results = data.get("results", [])
+
+        if not results:
+            break
+
+        for r in results:
+            url = r.get("url", "")
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                all_results.append(r)
+
+        time.sleep(DELAY_BETWEEN_REQUESTS)
+
+    return all_results[:TOP_K]
 
 
 # Extract domain from URL
@@ -167,7 +186,7 @@ def build_report(all_results: dict, settings_hash: str, compare: bool) -> str:
                 domain = extract_domain(item.get("url", ""))
                 title = item.get("title", "")[:80]
                 url = item.get("url", "")
-                snippet = item.get("content", "")[:200].replace("\n", " ").replace("|", "/")
+                snippet = item.get("content", "").replace("\n", " ").replace("|", "/")
                 lines.append(f"| {idx} | {score:.1f} | {engines} | {domain} | {title} | {url} | {snippet} |")
 
             lines.append("")

@@ -59,7 +59,7 @@ query three
 
 - `load_queries()` — Parses queries.txt with `@profile:` directives, returns `list[dict]` with `{query, profile}`
 - `load_profiles()` — Reads profiles.yml
-- `run_query(query, profile)` — Executes query with profile parameters (category, engines, language, time_range)
+- `run_query(query, profile)` — Executes query with profile parameters (category, engines, language, time_range). Paginates across MAX_PAGES (3) pages per query, deduplicates by URL, returns up to TOP_K (30) results
 - `build_report()` — Summary + per-query tables showing profile, score, engines, domain, URL, snippet. In compare mode: comparison tables per query with result count, avg score, domain overlap.
 - `compute_settings_hash()` — MD5 hash of settings.yml for config identification
 
@@ -69,7 +69,7 @@ query three
 **Input:** Latest search report from 01_reports/ (or path via CLI argument).
 **Output:** Summary report in 02_reports/ plus individual .md files per URL in 02_content_<report_stem>/.
 
-Imports `scrape_url_workflow` from `src/scraper/scrape_url` to ensure identical scraping behavior as the MCP tool. Scrapes top 3 URLs per query with 2s delay. Content truncated to 4000 chars at paragraph boundary.
+Imports `scrape_url_workflow` from `src/scraper/scrape_url` to ensure identical scraping behavior as the MCP tool. Scrapes top 5 URLs per query (TOP_N_PER_QUERY) with 2s delay. Content truncated to 50000 chars at paragraph boundary (EXCERPT_LENGTH) — effectively no truncation.
 
 Fallback chain: scrape_url_workflow → SearXNG snippet → error marker. Each result tagged with source (scraped, snippet, failed). Garbage detection for cookie banners, cloudflare, login walls.
 

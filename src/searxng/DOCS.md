@@ -14,11 +14,11 @@ Main orchestrator function. Coordinates fetching raw results from SearXNG API an
 
 ### fetch_search_results()
 
-Performs HTTP GET request to SearXNG search endpoint. Constructs query parameters: q, format, categories, language, pageno. Conditionally adds time_range and engines when provided. Raises exception on HTTP errors. Extracts results array from response and limits to MAX_RESULTS (20). Snippet length per result is 500 characters (SNIPPET_LENGTH constant).
+Performs HTTP GET request to SearXNG search endpoint. Constructs query parameters: q, format, categories, language, pageno. Conditionally adds time_range and engines when provided. Raises exception on HTTP errors. Extracts results array from response and limits to MAX_RESULTS (50). Snippet length per result is 5000 characters (SNIPPET_LENGTH constant) — effectively no truncation, takes whatever engines deliver.
 
 ### format_results()
 
-Transforms raw SearXNG response into plain text numbered list. Takes query string and raw results list. Iterates over results and extracts title, url, and content snippet (first 500 chars). Returns formatted string with result count header and numbered entries.
+Transforms raw SearXNG response into plain text numbered list. Takes query string and raw results list. Iterates over results and extracts title, url, and content snippet (up to SNIPPET_LENGTH chars). Returns formatted string with result count header and numbered entries.
 
 ## settings.yml
 

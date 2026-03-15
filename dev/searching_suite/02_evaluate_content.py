@@ -12,8 +12,8 @@ from urllib.parse import urlparse
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.scraper.scrape_url import scrape_url_workflow
 
-TOP_N_PER_QUERY = 3
-EXCERPT_LENGTH = 4000
+TOP_N_PER_QUERY = 5
+EXCERPT_LENGTH = 50000
 MIN_USEFUL_CONTENT = 200
 REPORTS_DIR = Path(__file__).parent / "02_reports"
 SEARCH_REPORTS_DIR = Path(__file__).parent / "01_reports"

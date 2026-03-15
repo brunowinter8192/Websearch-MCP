@@ -10,8 +10,9 @@ description: SearXNG web search and URL scraping strategy
 ### MCP Tools (ad-hoc, in-conversation)
 
 ```
-search_web("topic")          → find interesting URLs
-scrape_url("url")            → quick single-page check
+search_web("topic")          → find interesting URLs (up to 50 results, full snippets)
+scrape_url("url")            → quick single-page check (filtered markdown)
+scrape_url_raw("url", "dir") → full-fidelity scrape, saved as .md file (for RAG indexing)
 explore_site("domain.com")   → ad-hoc site check (max 50 pages, strategy recommendation)
 ```
 
@@ -27,13 +28,27 @@ crawl_site.py --url-file     → batch crawl filtered URLs
 
 MCP explore_site is for quick ad-hoc checks in chat. The crawl pipeline uses explore_site.py (CLI script) for full discovery — they are separate tools for separate purposes.
 
+## Plugin Routing (CRITICAL)
+
+Search results often contain URLs from domains with dedicated MCP plugins. **Do NOT scrape these — use the appropriate plugin instead.**
+
+| Domain | Plugin | Action |
+|--------|--------|--------|
+| arxiv.org | RAG (`rag`) | Search indexed papers via `mcp__rag__search_hybrid`, or fetch PDF via `/rag:pdf-convert` |
+| github.com | GitHub Research (`github-research`) | Use `github__get_file_content`, `github__get_repo_tree`, etc. |
+| reddit.com | Reddit (`reddit`) | Use `reddit__search_posts`, `reddit__get_post_comments` |
+| youtube.com | — | Skip entirely. Video content cannot be scraped meaningfully. |
+
+**When processing search results:** Check domains BEFORE scraping. Route to plugin if available. Only scrape domains without dedicated plugins.
+
 ## Search Strategy
 
-Two fundamentally different workflows:
+Three fundamentally different workflows:
 
 - **Quick search** (user wants links, overviews, or pointers):
-  Use `search_web` alone. Returns up to 20 results with title, URL, and snippet.
+  Use `search_web` alone. Returns up to 50 results with title, URL, and full snippet.
   Good for: finding URLs, getting a topic overview, discovering sources.
+  Use `pageno` for additional pages (pageno=1,2,3 → up to 150 results).
 
 - **Deep research** (user wants actual content, analysis, or synthesis):
   Use `search_web` first, then `scrape_url` on the most relevant results.
@@ -43,7 +58,12 @@ Two fundamentally different workflows:
   Skip search entirely. Use `scrape_url` directly on the given URL.
   Good for: reading a specific page, extracting content from a known source.
 
-**Detection:** "Find me articles about X" → quick search. "What does article X say about Y?" → deep research. "Read this URL" → direct scraping.
+- **Scrape for RAG indexing** (user wants to index a URL into knowledge base):
+  Use `scrape_url_raw(url, output_dir)` to save full-fidelity raw markdown as .md file.
+  Then run `/rag:web-md-index` on the output directory to cleanup + chunk + index.
+  Good for: building knowledge bases from individual URLs or search results.
+
+**Detection:** "Find me articles about X" → quick search. "What does article X say about Y?" → deep research. "Read this URL" → direct scraping. "Index this URL" / "Save this for later" → scrape_url_raw.
 
 ## search_web Parameters
 
@@ -62,10 +82,12 @@ Two fundamentally different workflows:
 |------|-------------|-----------|
 | Find URLs on a topic | search_web | — |
 | Get topic overview with snippets | search_web | — |
-| Read a specific page | scrape_url | — |
+| Read a specific page (in conversation) | scrape_url | — |
 | Research a topic in depth | search_web | scrape_url (top 3-5) |
 | Compare information across sources | search_web | scrape_url (multiple) |
 | Extract documentation content | scrape_url | — |
+| Save URL content for RAG indexing | scrape_url_raw | /rag:web-md-index |
+| Index multiple search results | search_web → scrape_url_raw (loop) | /rag:web-md-index |
 | Understand site structure before crawling | explore_site | — |
 | Crawl entire site to markdown files | /crawl-site | explore_site (optional) |
 
@@ -244,8 +266,7 @@ Current engine routing: Brave and Startpage via Tor proxy (IP rotation), Google 
 ## Known Limitations
 
 - **SearXNG container must be running** on `localhost:8080` — `mcp-start.sh` handles this automatically
-- **Max 20 search results** per query — use specific queries for better relevance
+- **Max 50 search results** per query — use `pageno` for additional pages (up to 150 results across 3 pages)
 - **Scraper optimized for content sites** — complex SPAs, heavy JavaScript apps, or login-protected pages may not render well
-- **Snippet length is 500 chars** — for full content, always scrape the URL
-- **Pagination supported** — use `pageno` parameter for additional result pages
+- **scrape_url uses PruningContentFilter** — destroys code block formatting. Use `scrape_url_raw` when full fidelity is needed (RAG indexing, code-heavy pages)
 - **Engine availability varies** — Google/Brave/DDG may be temporarily suspended (CAPTCHA, rate limits). Startpage is the most reliable engine.

@@ -21,7 +21,11 @@ On empty result, returns error message with plugin hint if URL matches a known d
 
 ### try_scrape()
 
-Attempts a single scrape with given browser config, optional crawler strategy, and wait strategy. Content selection: `fit_markdown` if >= 200 chars (MIN_CONTENT_THRESHOLD), otherwise falls back to `raw_markdown`. This prevents PruningContentFilter from destroying table-heavy content (e.g. Wikipedia).
+Attempts a single scrape with given browser config, optional crawler strategy, and wait strategy. Content selection: `fit_markdown` if >= 200 chars (MIN_CONTENT_THRESHOLD), otherwise falls back to `raw_markdown`. This prevents PruningContentFilter from destroying table-heavy content (e.g. Wikipedia). Checks content via `is_crawl4ai_error()` — if Crawl4AI returned an error message as markdown content, returns empty string to trigger fallback chain.
+
+### is_crawl4ai_error()
+
+Detects Crawl4AI error messages that are returned as markdown content instead of raised exceptions. Checks for patterns: "Crawl4AI Error:", "Document is empty", "page is not fully supported". Returns True if any pattern found. Called by `try_scrape()` after content extraction.
 
 ### truncate_content()
 
@@ -38,6 +42,14 @@ Checks URL against PLUGIN_HINTS dict. Returns hint string for domains with dedic
 - `DEFAULT_MAX_CONTENT_LENGTH` — 15000 chars
 - `MIN_CONTENT_THRESHOLD` — 200 chars. fit_markdown below this triggers raw_markdown fallback.
 
+### scrape_url_raw_workflow()
+
+Raw markdown scraping orchestrator for RAG indexing. Same two-phase browser strategy as `scrape_url_workflow` but uses `DefaultMarkdownGenerator()` without PruningContentFilter and `raw_markdown` output. Saves result as .md file with `<!-- source: URL -->` header to specified output directory. Generates safe filename from URL (domain + path, max 120 chars). Returns file path and char count on success.
+
+### try_scrape_raw()
+
+Raw variant of `try_scrape()`. Uses `raw_markdown` instead of `fit_markdown`, no content filter. Returns empty string if content below MIN_CONTENT_THRESHOLD.
+
 ## explore_site.py
 
 **Purpose:** Site structure reconnaissance. Fast URL discovery via prefetch mode (~200-500ms per page instead of 2-5s). Returns page counts, depth distribution, and URL samples for noise pattern identification. No file export — analysis only.
@@ -50,7 +62,7 @@ Main orchestrator. Checks sitemap first, then runs BFS discovery. Recommends str
 
 ### check_sitemap()
 
-Checks if site has a sitemap via AsyncUrlSeeder. Returns URL count (0 if no sitemap found).
+Checks if site has a sitemap via AsyncUrlSeeder. Returns list of discovered URLs (empty list if no sitemap found).
 
 ### crawl_for_discovery()
 
@@ -58,7 +70,7 @@ BFS crawl with DomainFilter + ContentTypeFilter (text/html) + optional URLPatter
 
 ### build_site_map()
 
-Aggregates crawl results into summary dict. Deduplicates URLs (trailing slash normalization), extracts depth from metadata, computes per-depth statistics, picks URL samples via `pick_url_samples()`.
+Aggregates crawl results into summary dict. Deduplicates URLs (trailing slash normalization), extracts depth from metadata, computes per-depth statistics, picks URL samples via `pick_url_samples()`. When `sitemap_urls` provided: integrates sitemap URLs with depth estimated from URL path segments (chars=0 since not fetched), deduplicates against BFS results.
 
 ### pick_url_samples()
 
@@ -99,6 +111,8 @@ Content extraction is delegated entirely to Crawl4AI (v0.8.0):
 - **Browser strategy:** Normal browser first, Stealth (Level 3) as fallback. UndetectedAdapter breaks some sites (Wikipedia) by patching the browser too aggressively.
 - **Cookie removal:** CSS selector exclusion via `excluded_selector`. Specific selectors per framework (CookieYes, OneTrust, Cookiebot, GDPR etc.). `remove_overlay_elements` is NOT used — it removes legitimate content on some sites.
 - **Content filtering:** PruningContentFilter(0.48) + fit_markdown for relevance assessment. raw_markdown fallback when filtered content < 200 chars (table-heavy pages).
-- **Markdown generation:** Two modes:
-  - **scrape_url (MCP tool):** PruningContentFilter + fit_markdown — noise-filtered, for relevance assessment
-  - **crawl_site (export script):** DefaultMarkdownGenerator + raw_markdown — full fidelity, noise handled by downstream RAG cleanup agent
+- **Markdown generation:** Three modes:
+  - **scrape_url (MCP tool):** PruningContentFilter + fit_markdown — noise-filtered, for in-conversation reading
+  - **scrape_url_raw (MCP tool):** DefaultMarkdownGenerator + raw_markdown — full fidelity, saves to file for RAG indexing
+  - **crawl_site (export script):** DefaultMarkdownGenerator + raw_markdown — full fidelity, batch crawl, noise handled by downstream RAG cleanup agent
+- **Known issue:** Crawl4AI captures stdout — always write debug output to files, not print()

@@ -9,7 +9,7 @@ from pydantic import Field
 nest_asyncio.apply()
 
 from src.searxng.search_web import search_web_workflow
-from src.scraper.scrape_url import scrape_url_workflow
+from src.scraper.scrape_url import scrape_url_workflow, scrape_url_raw_workflow
 from src.scraper.explore_site import explore_site_workflow
 
 mcp = FastMCP("SearXNG")
@@ -53,6 +53,16 @@ def scrape_url(
 ) -> list[TextContent]:
     """Scrape URL."""
     return asyncio.run(scrape_url_workflow(url, max_content_length))
+
+
+@mcp.tool
+def scrape_url_raw(
+    url: Annotated[str, Field(description="URL to scrape and save as markdown file")],
+    output_dir: Annotated[str, Field(description="Directory to save the markdown file (created if not exists)")]
+) -> list[TextContent]:
+    """Scrape URL with full-fidelity raw markdown (no content filter) and save as .md file.
+    Use for RAG indexing: scrape → save → /rag:web-md-index. Preserves code blocks, tables, all formatting."""
+    return asyncio.run(scrape_url_raw_workflow(url, output_dir))
 
 
 @mcp.tool
