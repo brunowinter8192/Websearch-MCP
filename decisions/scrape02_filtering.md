@@ -60,5 +60,13 @@
 ## Quellen
 
 - `src/scraper/scrape_url.py` (Code-Inspektion)
-- Crawl4AI Docs — PruningContentFilter, DefaultMarkdownGenerator, content_source (RAG Collection: Crawl4AIDocs)
+- Crawl4AI Docs (RAG Collection: Crawl4AIDocs) — PruningContentFilter, DefaultMarkdownGenerator, content_source
 - Session-Findings: CookieYes cky-modal Fix, TDS Cookie-Wall, Truncation-Logik
+
+### Zum Indexieren (für systematische Verbesserung)
+
+- Crawl4AI GitHub Issues "PruningContentFilter" — Threshold-Tuning, Code-Block-Destruction: https://github.com/unclecode/crawl4ai/issues?q=pruning+filter
+- Crawl4AI Content Filter Source — PruningContentFilter Algorithmus: https://github.com/unclecode/crawl4ai/blob/main/crawl4ai/content_filter_strategy.py
+- Trafilatura Docs — Alternative Content-Extraction (Benchmark-Vergleich): https://trafilatura.readthedocs.io/
+- Mozilla Readability — Reference Content-Extraction-Algorithmus: https://github.com/mozilla/readability
+- CookieYes Developer Docs — DOM-Struktur, Klassen-Konventionen: https://www.cookieyes.com/documentation/

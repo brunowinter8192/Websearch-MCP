@@ -158,6 +158,12 @@ Focus on: Concrete configuration examples, performance tuning, security hardenin
 
 ## Site Exploration (explore_site)
 
+**Explore Output Rule:**
+- Explore results MUST be saved as a file (URL list), not just displayed in chat
+- The explore_site.py CLI script has `--output` flag for this: `--output urls.txt`
+- MCP explore_site returns text in chat — if you need the URL list for filtering, use the CLI script instead
+- Purpose: the URL list file is the INPUT for Phase 2 (Filter) and Phase 3 (Crawl)
+
 Use `explore_site` when the user wants to understand a website's structure before committing to a full crawl.
 
 **Output:** Site map with depth distribution, page counts per level, total character count, and full URL list.
@@ -194,6 +200,13 @@ Slash command for full website crawling. Multi-phase pipeline: explore, filter, 
 4. **RAG Pipeline** — optional: runs /rag:web-md-index (cleanup + chunk + embed)
 
 **Default export path:** `~/Documents/ai/Meta/ClaudeCode/MCP/RAG/data/documents/<website>/`
+
+**Crawl Output Rule (MANDATORY):**
+- NEVER crawl directly into the final collection directory
+- ALWAYS crawl to a temp directory first: `/tmp/crawl_<sitename>/`
+- After crawl: review files, rename with prefix, THEN copy to target
+- crawl_site.py names files by URL-slug (no prefix system) — mixing with existing prefixed files creates chaos
+- Workflow: crawl → /tmp/ → review → prefix-rename → cp to target
 
 ### Crawl Strategy Selection
 

@@ -67,4 +67,5 @@ For single-topic tasks, global count remains appropriate.
 - `agents/web-research.md` — Step 3 scrape instructions and stop conditions
 - Eval session findings (2026-03-15): Agent 5 (Topic 1=5, Topic 3=8), Agent 6 (Topic 2=5, Topic 3=4)
 - Agent run metadata: Agent 4 (21 tool_uses), Agent 5 (35), Agent 6 (30)
+- Eval proposals (Plan-File Session 2026-03-15c): Proposals 1-3 (Pagination, Science-Category, Per-Topic Coverage)
 - Eval proposals from session: 4 proposals covering pagination, science category, and per-topic coverage gaps

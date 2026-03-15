@@ -48,4 +48,10 @@ Phase 1a (`networkidle`) wartet, bis keine Netzwerkrequests mehr offen sind — 
 ## Quellen
 
 - `src/scraper/scrape_url.py` (Code-Inspektion)
-- Crawl4AI Docs — BrowserConfig, CrawlerRunConfig, wait_until-Optionen (RAG Collection: Crawl4AIDocs)
+- Crawl4AI Docs (RAG Collection: Crawl4AIDocs) — BrowserConfig, CrawlerRunConfig, wait_until-Optionen
+
+### Zum Indexieren (für systematische Verbesserung)
+
+- Crawl4AI GitHub Issues "stealth" — UndetectedAdapter Bugs, Browser-Detection: https://github.com/unclecode/crawl4ai/issues?q=stealth+undetected
+- Crawl4AI Page Interaction Docs — js_code, wait_for, session_id: https://docs.crawl4ai.com/core/page-interaction
+- Playwright Docs — Browser Contexts, Network Interception: https://playwright.dev/python/docs/browser-contexts

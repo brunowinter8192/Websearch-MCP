@@ -78,3 +78,9 @@ Split-Routing-Architektur: **Default Tor, Ausnahmen direkt.** Rationale:
 - `src/searxng/settings.yml` — Routing-Konfiguration
 - SearXNG Docs (RAG Collection: SearXNG_Docs) — outgoing, proxy, suspended_times Parameter
 - search01_engines.md — Engine-Auswahl und Tor-Kompatibilität
+
+### Zum Indexieren (für systematische Verbesserung)
+
+- SearXNG network.py Source — Proxy-Inheritance-Logik (proxies vs using_tor_proxy): https://github.com/searxng/searxng/blob/master/searx/network.py
+- SearXNG GitHub Issues "proxy" — Tor-Routing-Probleme, Suspension-Verhalten: https://github.com/searxng/searxng/issues?q=proxy+tor
+- Tor Project FAQ — Exit-Node-Blocking, Circuit-Renewal: https://support.torproject.org/

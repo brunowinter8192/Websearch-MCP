@@ -51,3 +51,9 @@ Engine-Set und Weights wurden empirisch gewählt — kein formaler Benchmark. Kr
 - `src/searxng/settings.yml` — Engine-Konfiguration
 - SearXNG Docs (RAG Collection: SearXNG_Docs) — Engine-Parameter, Weight-Semantik
 - Erfahrungswerte aus Betrieb (Qwant-Deaktivierung, DDG-Weight)
+
+### Zum Indexieren (für systematische Verbesserung)
+
+- SearXNG GitHub Issues — Engine-spezifische Bugs, neue Engines, Tor-Kompatibilität: https://github.com/searxng/searxng/issues
+- SearXNG Engine Docs — Engine-Implementierungen, supported_languages, timeouts: https://docs.searxng.org/dev/engines/
+- Brave Search API Docs — falls Umstieg von Scraper-Engine auf API-Engine: https://api.search.brave.com/app/documentation

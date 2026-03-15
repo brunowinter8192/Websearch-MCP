@@ -60,4 +60,11 @@
 
 - `src/scraper/scrape_url.py` (Code-Inspektion)
 - Session-Findings: CookieYes cky-modal, TDS Cookie-Wall, LanceDB 404
-- Crawl4AI Docs — Error-Format, result.markdown-Struktur (RAG Collection: Crawl4AIDocs)
+- Crawl4AI Docs (RAG Collection: Crawl4AIDocs) — Error-Format, result.markdown-Struktur
+
+### Zum Indexieren (für systematische Verbesserung)
+
+- Crawl4AI GitHub Issues "empty content" — Error-as-Content Pattern, Browser-Failures: https://github.com/unclecode/crawl4ai/issues?q=empty+content
+- CookieYes DOM Reference — Klassen-Naming für neue Selector-Patterns: https://www.cookieyes.com/documentation/
+- OneTrust Developer Docs — Cookie-Banner DOM-Struktur: https://developer.onetrust.com/
+- Cookiebot Developer Docs — Dialog-Klassen: https://www.cookiebot.com/en/developer/

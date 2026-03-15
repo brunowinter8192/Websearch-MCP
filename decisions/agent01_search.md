@@ -64,3 +64,8 @@ Recommendation: Restructure Step 1 as a numbered checklist with explicit "MANDAT
 - `skills/agent-web-research/SKILL.md` — MCP tool reference with pagination docs
 - Eval session findings (2026-03-15): pageno=3 used 0/3 agents, science category underused
 - Agent run metadata: Agent 4 (21 tool_uses), Agent 5 (35), Agent 6 (30)
+
+### Zum Indexieren (für systematische Verbesserung)
+
+- Anthropic Prompt Engineering Guide — Haiku instruction-following patterns: https://docs.anthropic.com/en/docs/build-with-claude/prompt-engineering
+- SearXNG Search API — pageno behavior, category interaction: https://docs.searxng.org/dev/search_api.html

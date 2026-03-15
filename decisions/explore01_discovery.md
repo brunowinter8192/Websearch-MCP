@@ -93,3 +93,9 @@ Zwei-Phasen-Architektur wurde iterativ entwickelt:
 - `src/scraper/explore_site.py` — vollständige Implementation
 - Crawl4AI Docs (RAG Collection: Crawl4AIDocs) — BFSDeepCrawlStrategy, CrawlerRunConfig, prefetch, AsyncUrlSeeder
 - `src/scraper/DOCS.md` — Scraper-Übersicht
+
+### Zum Indexieren (für systematische Verbesserung)
+
+- Crawl4AI Deep Crawl Docs — BFS Strategy, FilterChain, max_depth: https://docs.crawl4ai.com/core/deep-crawl
+- Crawl4AI GitHub Issues "sitemap" — AsyncUrlSeeder Bugs, dict-vs-string: https://github.com/unclecode/crawl4ai/issues?q=sitemap
+- Sitemap Protocol Spec — XML Sitemap Format, Sitemap Index: https://www.sitemaps.org/protocol.html

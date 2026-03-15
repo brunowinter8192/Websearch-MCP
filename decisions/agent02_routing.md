@@ -51,3 +51,8 @@ One gap: no routing for `huggingface.co` (model cards, papers with code — freq
 - `agents/web-research.md` — Step 2 routing instructions
 - `skills/agent-web-research/SKILL.md` — Plugin Routing table (canonical reference)
 - Eval session findings (2026-03-15): 22/28/40+ plugin-routed URLs, no misrouting observed
+
+### Zum Indexieren (für systematische Verbesserung)
+
+- HuggingFace API Docs — Model Card, Datasets API: https://huggingface.co/docs/hub/api
+- arxiv API Docs — Bulk metadata access: https://info.arxiv.org/help/api/index.html

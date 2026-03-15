@@ -92,3 +92,8 @@ Hostname-Liste und Limits wurden manuell kuratiert — kein A/B-Test oder Recall
 - `src/searxng/settings.yml` — hostnames Konfiguration
 - `src/searxng/search_web.py` — MAX_RESULTS, SNIPPET_LENGTH Konstanten
 - SearXNG Docs (RAG Collection: SearXNG_Docs) — hostname Plugin, Score-Berechnung
+
+### Zum Indexieren (für systematische Verbesserung)
+
+- SearXNG Hostname Plugin Source — Score-Modifikation, Priority-Multiplikatoren: https://github.com/searxng/searxng/blob/master/searx/plugins/hostnames.py
+- SearXNG Result Ranking Source — Engine-Weight × Position, Score-Aggregation: https://github.com/searxng/searxng/blob/master/searx/results.py
