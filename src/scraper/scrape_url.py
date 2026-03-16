@@ -12,6 +12,7 @@ _LINK_LINE_RE = re.compile(r'^\[.+\]\(.+\)$')
 
 DEFAULT_MAX_CONTENT_LENGTH = 15000
 MIN_CONTENT_THRESHOLD = 200
+CLOUDFLARE_SENTINEL = "__cloudflare__"
 
 PLUGIN_HINTS = {
     "reddit.com": "Use the Reddit MCP plugin (reddit search_posts/get_post_comments) for Reddit content.",
@@ -122,6 +123,25 @@ def is_garbage_content(content: str) -> bool:
     if cookie_signals > 15 and cookie_wall_signals:
         return True
 
+    # Cloudflare / JS challenge pages — tiny responses with challenge keywords
+    if len(content) < 500:
+        if "checking your browser" in lower or "enable javascript and cookies" in lower:
+            return True
+
+    if "just a moment" in lower and "cloudflare" in lower:
+        return True
+
+    return False
+
+
+# Detect Cloudflare / JS challenge interstitial pages
+def is_cloudflare_content(content: str) -> bool:
+    lower = content.lower()
+    if len(content) < 500:
+        if "checking your browser" in lower or "enable javascript and cookies" in lower:
+            return True
+    if "just a moment" in lower and "cloudflare" in lower:
+        return True
     return False
 
 
@@ -158,8 +178,14 @@ async def scrape_url_raw_workflow(url: str, output_dir: str) -> list[TextContent
     normal_config = BrowserConfig(headless=True, verbose=False)
     content = await try_scrape_raw(normal_config, None, markdown_generator, url, "networkidle")
 
+    if content == CLOUDFLARE_SENTINEL:
+        return [TextContent(type="text", text=f"Error scraping {url}: Cloudflare-protected page. Find an alternative source.")]
+
     if not content:
         content = await try_scrape_raw(normal_config, None, markdown_generator, url, "domcontentloaded")
+
+    if content == CLOUDFLARE_SENTINEL:
+        return [TextContent(type="text", text=f"Error scraping {url}: Cloudflare-protected page. Find an alternative source.")]
 
     if not content:
         stealth_config = BrowserConfig(headless=True, verbose=False, enable_stealth=True)
@@ -169,6 +195,9 @@ async def scrape_url_raw_workflow(url: str, output_dir: str) -> list[TextContent
             browser_adapter=adapter
         )
         content = await try_scrape_raw(stealth_config, stealth_strategy, markdown_generator, url, "networkidle")
+
+    if content == CLOUDFLARE_SENTINEL:
+        return [TextContent(type="text", text=f"Error scraping {url}: Cloudflare-protected page. Find an alternative source.")]
 
     if not content:
         hint = get_plugin_hint(url)
@@ -206,7 +235,11 @@ async def try_scrape_raw(browser_config, crawler_strategy, markdown_generator, u
         if not result.markdown:
             return ""
         content = result.markdown.raw_markdown
-        if not content or len(content) < MIN_CONTENT_THRESHOLD:
+        if not content:
+            return ""
+        if is_cloudflare_content(content):
+            return CLOUDFLARE_SENTINEL
+        if len(content) < MIN_CONTENT_THRESHOLD:
             return ""
         if is_garbage_content(content):
             return ""

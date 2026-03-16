@@ -19,3 +19,7 @@ https://blog.lancedb.com/advanced-rag-precise-zero-shot-dense-retrieval-with-hyd
 
 # --- cookie walls ---
 https://towardsdatascience.com/langchains-parent-document-retriever-revisited-1fca8791f5a0/
+
+# --- cloudflare block ---
+https://blog.voyageai.com/2025/01/07/voyage-3-large
+https://blog.voyageai.com/2024/05/29/voyage-rerank-1-cutting-edge-general-purpose-and-multilingual-reranker
