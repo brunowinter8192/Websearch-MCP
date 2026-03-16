@@ -1,10 +1,14 @@
 # INFRASTRUCTURE
+import re
+
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode, UndetectedAdapter
 from crawl4ai.async_crawler_strategy import AsyncPlaywrightCrawlerStrategy
 from crawl4ai.content_filter_strategy import PruningContentFilter
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
 from mcp.types import TextContent
+
+_LINK_LINE_RE = re.compile(r'^\[.+\]\(.+\)$')
 
 DEFAULT_MAX_CONTENT_LENGTH = 15000
 MIN_CONTENT_THRESHOLD = 200
@@ -89,7 +93,7 @@ async def try_scrape(browser_config, crawler_strategy, markdown_generator, url: 
         return ""
 
 
-# Detect garbage content: error pages, cookie walls, login walls
+# Detect garbage content: error pages, cookie walls, login walls, navigation dumps
 def is_garbage_content(content: str) -> bool:
     lower = content.lower()
 
@@ -104,10 +108,18 @@ def is_garbage_content(content: str) -> bool:
         if any(k in lower for k in error_keywords):
             return True
 
+    # Navigation dumps — high ratio of standalone link lines (e.g., AWS nav pages)
+    lines = [l.strip() for l in content.splitlines() if l.strip()]
+    if len(lines) >= 20:
+        link_lines = sum(1 for l in lines if _LINK_LINE_RE.match(l))
+        if link_lines / len(lines) > 0.6:
+            return True
+
     # Cookie consent walls — high density of cookie-related terms
     sample = lower[:5000]
     cookie_signals = sample.count("cookie") + sample.count("consent") + sample.count("duration")
-    if cookie_signals > 15 and ("consent preferences" in sample or "cookieyes" in sample):
+    cookie_wall_signals = ("consent preferences" in sample or "cookieyes" in sample or "cookie preferences" in sample)
+    if cookie_signals > 15 and cookie_wall_signals:
         return True
 
     return False
