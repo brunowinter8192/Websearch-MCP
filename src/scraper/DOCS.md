@@ -25,12 +25,18 @@ Attempts a single scrape with given browser config, optional crawler strategy, a
 
 ### is_garbage_content()
 
-Detects three categories of garbage content returned as markdown:
+Detects five categories of garbage content returned as markdown:
 1. **Crawl4AI errors:** "Crawl4AI Error:", "Document is empty", "page is not fully supported"
 2. **HTTP error pages:** Short content (<1000 chars) with 404/403/NOT_FOUND/Access Denied keywords
-3. **Cookie consent walls:** High density of cookie-related terms (>15 occurrences of "cookie"/"consent"/"duration" in first 5000 chars + "consent preferences" or "cookieyes" present)
+3. **Cookie consent walls:** High density of cookie-related terms (>15 occurrences of "cookie"/"consent"/"duration" in first 5000 chars + "consent preferences" or "cookieyes" or "cookie preferences" present). Note: Amazon uses "cookie preferences" instead of "consent preferences".
+4. **Navigation dump pages:** ≥20 non-empty lines AND >60% are standalone markdown link lines (`[text](url)` on their own line). Catches large pages that are pure navigation with no content (e.g. 162KB AWS announcement pages).
+5. **Cloudflare/JS challenges:** Short content (<500 chars) containing "checking your browser" or "enable javascript and cookies", OR "just a moment" + "cloudflare" anywhere.
 
 Called by both `try_scrape()` and `try_scrape_raw()` after content extraction.
+
+### is_cloudflare_content()
+
+Separate Cloudflare detection function with same patterns as is_garbage_content() check #5. Used by `try_scrape_raw()` to return `CLOUDFLARE_SENTINEL` instead of empty string, enabling `scrape_url_raw_workflow()` to give a specific "Cloudflare-protected" error message to the user instead of generic "No content extracted".
 
 ### truncate_content()
 
@@ -53,7 +59,7 @@ Raw markdown scraping orchestrator for RAG indexing. Same two-phase browser stra
 
 ### try_scrape_raw()
 
-Raw variant of `try_scrape()`. Uses `raw_markdown` instead of `fit_markdown`, no content filter. Returns empty string if content below MIN_CONTENT_THRESHOLD.
+Raw variant of `try_scrape()`. Uses `raw_markdown` instead of `fit_markdown`, no content filter. Checks `is_cloudflare_content()` BEFORE `MIN_CONTENT_THRESHOLD` check (CF responses are 168-224 bytes, below the 200-byte threshold). Returns `CLOUDFLARE_SENTINEL` on CF detection, empty string on other failures.
 
 ## explore_site.py
 
@@ -126,6 +132,12 @@ Filters sitemap URLs to match the seed URL's path prefix. Fixes: `playwright.dev
 ### Redirect detection in discover_urls()
 
 HEAD request before constructing DomainFilter. If seed URL redirects to a different domain, uses the final domain for filtering. Same fix as explore_site.py but applied to the BFS discovery function directly.
+
+### save_markdown()
+
+Saves crawled pages as markdown files. Two pre-write checks:
+1. **HTTP status check:** Skips pages with `status_code >= 400` (404, 403, etc.). Prints `[skip] <url> (HTTP <code>)`.
+2. **Garbage content check:** Calls `is_garbage_content()` (imported from `src/scraper/scrape_url.py`) on the raw markdown. Catches soft-404s (status 200 but "Page not found" content). Prints `[skip] <url> (garbage content)`.
 
 ### url_to_filename()
 

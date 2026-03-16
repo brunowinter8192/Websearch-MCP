@@ -219,27 +219,52 @@ OUTPUT:   $OUTPUT_DIR
 
 ## Phase 5: Cleanup
 
-### Step 1: Run Cleanup
+### Step 1: Run Cleanup — Parallel Agents Per Domain
 
-Dispatch web-md-cleanup agent(s) on the newly crawled Markdown files.
+Dispatch one `web-md-cleanup` agent per domain prefix, all in parallel via `run_in_background: true`.
 
-For each domain batch, use the `web-md-cleanup` agent:
+**Grouping rules:**
+- Large domains (>50 files): one agent each
+- Small domains (<50 files): group 2-3 into one agent
+- Skip domains that don't need web cleanup: `paper__` (PDF-converted), `web__` (individually scraped)
+
+**Dispatch all agents in a single message** (parallel tool calls):
 
 ```
-Agent(subagent_type="web-md-cleanup", prompt="Clean these markdown files in $OUTPUT_DIR matching pattern ${DOMAIN}__*")
+Agent(subagent_type="web-md-cleanup", run_in_background=true, prompt="
+Clean up website-crawled markdown files.
+INPUT DIRECTORY: $OUTPUT_DIR
+FILE PATTERN: ${DOMAIN}__*.md ([N] files)
+These are [site description] pages crawled via Crawl4AI.
+Remove navigation, footer, sidebar, breadcrumbs, and other UI chrome.
+Preserve content and <!-- source: URL --> headers.
+Sample 3-5 files first to identify common patterns,
+then build a cleanup script that processes all matching files.
+")
 ```
 
-### Step 2: Verify Cleanup
+Each agent will:
+1. Sample files to identify site-specific chrome patterns
+2. Create cleanup script in `dev/cleanup/`
+3. Run script on all matching files
+4. Report patterns found and char reduction
 
-Spot-check a few cleaned files to ensure quality.
+### Step 2: Verify Cleanup (after all agents complete)
+
+**CRITICAL:** Never trust subagent output. Verify independently.
+
+1. **Spot-check per domain:** Read first 20 lines of 1-2 cleaned files per domain. Should start with content, not navigation.
+2. **Source comments preserved:** `grep -l "<!-- source:" "$OUTPUT_DIR"/${DOMAIN}__*.md | wc -l` should equal file count per domain.
+3. **Char reduction:** Compare total chars before/after per domain. 10-50% reduction expected. >60% = possible content loss.
 
 ### Phase 5 Report
 
 ```
 PHASE 5: Cleanup
 =================
-FILES CLEANED: [N]
-QUALITY:       [spot-check summary]
+[domain]: [N] files — [X%] reduction — [Success/Failed]
+[domain]: [N] files — [X%] reduction — [Success/Failed]
+TOTAL:    [N] files cleaned across [M] agents
 ```
 
 ---
