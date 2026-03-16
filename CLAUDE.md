@@ -4,19 +4,25 @@ Web search and scraping via local SearXNG instance.
 
 ## Sources
 
-**Crawl4AI Docs** — Indexed in RAG. Search with `mcp__rag__search_hybrid(collection="Crawl4AIDocs")`.
-**SearXNG Docs** — Indexed in RAG. Search with `mcp__rag__search_hybrid(collection="SearXNG_Docs")`.
+**searxng** — Single RAG collection with all indexed sources. Search with `mcp__rag__search_hybrid(collection="searxng")`.
 
 | Source | Type | Pipeline Steps | Status |
 |--------|------|---------------|--------|
-| Crawl4AIDocs | RAG Collection | scrape01, scrape02, explore01 | Indexed |
-| SearXNG_Docs | RAG Collection | search01, search02, search03 | Indexed |
-| anthropic.com/news/contextual-retrieval | Web | agent02 (plugin routing rationale) | Not indexed |
-| blog.vectorchord.ai/.../colbert-rerank-postgresql | Web | scrape02 (content quality comparison) | Not indexed |
-| developer.nvidia.com/.../chunking-strategy | Web | scrape02 (filter evaluation) | Not indexed |
-| research.trychroma.com/evaluating-chunking | Web | scrape02 (filter metrics) | Not indexed |
-| weaviate.io/blog/late-chunking | Web | scrape01 (browser strategy for long docs) | Not indexed |
-| crunchydata.com/.../hnsw-indexes | Web | explore01 (crawl performance) | Not indexed |
+| searxng | RAG Collection | search01, search02, search03, scrape01, scrape02, scrape03, explore01 | Indexed |
+| docs.searxng.org | Web Domain | search01, search02, search03, agent01 | Indexed |
+| docs.crawl4ai.com | Web Domain | scrape01, scrape02, scrape03, explore01 | Indexed |
+| docs.anthropic.com | Web Domain | agent01 | Indexed |
+| playwright.dev | Web Domain | scrape01 | Indexed |
+| trafilatura.readthedocs.io | Web Domain | scrape02 | Indexed |
+| cookieyes.com | Web Domain | scrape02, scrape03 | Indexed |
+| cookiebot.com | Web Domain | scrape03 | Indexed |
+| developer.onetrust.com | Web Domain | scrape03 | Indexed |
+| sitemaps.org | Web Domain | explore01 | Indexed |
+| support.torproject.org | Web Domain | search02 | Indexed |
+| github.com | Web Domain | search01, search02, search03, scrape01, scrape02, scrape03, explore01 | Not indexed |
+| api.search.brave.com | Web Domain | search01 | Not indexed |
+| huggingface.co | Web Domain | agent02 | Not indexed |
+| info.arxiv.org | Web Domain | agent02 | Not indexed |
 
 Consult via RAG search before making assumptions. Pipeline step references match `decisions/` files.
 
