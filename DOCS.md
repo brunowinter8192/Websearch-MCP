@@ -82,3 +82,8 @@ Filters sitemap URLs to match the seed URL's path prefix. Fixes: `playwright.dev
 
 - `SITEMAP_MIN_THRESHOLD` — 5. Sitemap with fewer URLs triggers prefetch fallback.
 - `UNLIMITED_PAGES` — 100000. Used when `--max-pages 0`.
+
+## Documentation Tree
+
+- [src/DOCS.md](src/DOCS.md) — Source modules (scraper, searxng, spawn)
+- [dev/DOCS.md](dev/DOCS.md) — Development pipelines and cleanup scripts
