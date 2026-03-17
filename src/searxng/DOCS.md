@@ -43,3 +43,9 @@ Per-engine proxy override requires BOTH `using_tor_proxy: false` AND `proxies: {
 Weight strategy: weight=2 for high-quality proven engines (Google, Brave, Google Scholar, Semantic Scholar, ArXiv), weight=1 for new/redundant/niche engines (Bing, Startpage, Mojeek, CrossRef, GitHub, Reddit). Startpage reduced from weight=2 to weight=1 because it proxies Google results — having both at weight=2 caused multiplicative over-representation of Google URLs in the scoring algorithm. Qwant and DDG are disabled (Qwant: Access Denied without account; DDG: persistent CAPTCHA, upstream issue #4824). MAX_RESULTS increased from 50 to 80 to accommodate more engines producing unique results.
 
 Hostnames plugin configuration prioritizes high-quality domains (GitHub, StackOverflow, StackExchange, Wikipedia, Python docs, MDN, arXiv) and deprioritizes low-quality sources (Pinterest, Quora, W3Schools). Pinterest results are removed entirely.
+
+## patches/mojeek.py
+
+**Purpose:** Patched Mojeek engine for SearXNG. Fixes bot detection triggered by the `arc=us` locale combination in the default engine. Drop-in replacement for SearXNG's built-in Mojeek engine, mounted via Docker volume at `/usr/local/searxng/searx/engines/mojeek.py`.
+**Input:** SearXNG engine request (query parameters from search_web).
+**Output:** Parsed search results (title, URL, content snippet) returned to SearXNG result aggregator.

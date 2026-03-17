@@ -77,8 +77,12 @@ Consult via RAG search before making assumptions. Pipeline step references match
 ```
 searxng/
 ├── server.py
+├── crawl_site.py
+├── explore_site.py
+├── mcp-start.sh
 ├── requirements.txt
 ├── README.md                       → [Setup & External Docs](README.md)
+├── DOCS.md                         → [Root Module Docs](DOCS.md)
 ├── decisions/                      → Pipeline decisions & evidence per step
 │   ├── search01_engines.md
 │   ├── search02_routing.md
@@ -90,13 +94,15 @@ searxng/
 │   ├── agent01_search.md
 │   ├── agent02_routing.md
 │   └── agent03_coverage.md
-├── src/
+├── src/                            → [DOCS.md](src/DOCS.md)
 │   ├── scraper/                    → [DOCS.md](src/scraper/DOCS.md)
-│   └── searxng/                    → [DOCS.md](src/searxng/DOCS.md)
-├── dev/
+│   ├── searxng/                    → [DOCS.md](src/searxng/DOCS.md)
+│   │   └── patches/                → SearXNG engine patches (Docker volume-mounted)
+│   └── spawn/                      → Worker spawn utilities (in src/DOCS.md)
+├── dev/                            → [DOCS.md](dev/DOCS.md)
 │   ├── search_pipeline/            → [DOCS.md](dev/search_pipeline/DOCS.md)
 │   ├── scrape_pipeline/            → [DOCS.md](dev/scrape_pipeline/DOCS.md)
 │   ├── explore_pipeline/           → [DOCS.md](dev/explore_pipeline/DOCS.md)
 │   ├── agent_pipeline/             → [DOCS.md](dev/agent_pipeline/DOCS.md)
-│   └── cleanup/                    → Web-MD cleanup scripts
+│   └── cleanup/                    → [DOCS.md](dev/cleanup/DOCS.md)
 ```
