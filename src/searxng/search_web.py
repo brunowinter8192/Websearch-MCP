@@ -14,10 +14,18 @@ def search_web_workflow(
     language: str = "en",
     time_range: str | None = None,
     engines: str | None = None,
-    pageno: int = 1
+    pages: int = 3
 ) -> list[TextContent]:
-    raw_results = fetch_search_results(query, category, language, time_range, engines, pageno)
-    formatted_text = format_results(query, raw_results)
+    seen_urls: set[str] = set()
+    all_results: list = []
+    for pageno in range(1, pages + 1):
+        page_results = fetch_search_results(query, category, language, time_range, engines, pageno)
+        for r in page_results:
+            url = r.get("url", "")
+            if url not in seen_urls:
+                seen_urls.add(url)
+                all_results.append(r)
+    formatted_text = format_results(query, all_results)
     return [TextContent(type="text", text=formatted_text)]
 
 

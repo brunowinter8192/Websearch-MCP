@@ -24,11 +24,11 @@ description: SearXNG MCP tool reference for web research agents
 | language | str | "en" | ISO language code |
 | time_range | str/None | None | day, month, year |
 | engines | str/None | None | Comma-separated engine list (e.g., "google,brave,google scholar") |
-| pageno | int | 1 | Page number for pagination (1-3 recommended) |
+| pages | int | 3 | Number of pages to fetch and combine (default 3 = ~150 results) |
 
 **Output:** Plain text numbered list with title, URL, and full snippet per result. Up to 50 results per page.
 
-**Pagination:** Use pageno=1, pageno=2, pageno=3 for up to 150 results per query. Results are deduplicated by URL.
+**Pagination:** The server fetches multiple pages automatically. Use `pages=3` (default) to get up to ~150 deduplicated results per query. Do NOT use `pageno` — pass `pages` instead.
 
 ### scrape_url
 
@@ -71,19 +71,18 @@ description: SearXNG MCP tool reference for web research agents
 ## Aggressive Search Pattern
 
 ```
-1. search_web("topic keywords", category="general") → page 1
-2. search_web("topic keywords", category="general", pageno=2) → page 2
-3. search_web("topic variation", category="general") → different angle
-4. search_web("topic keywords", category="science") → academic results
-5. Filter results: skip plugin domains, deduplicate
-6. scrape_url(url) for each non-plugin URL → read content
-7. Report: scraped content + plugin-routed URLs separately
+1. search_web("topic keywords", category="general") → fetches 3 pages automatically (~150 results)
+2. search_web("topic variation", category="general") → different angle
+3. search_web("topic keywords", category="science") → academic results
+4. Filter results: skip plugin domains, deduplicate
+5. scrape_url(url) for each non-plugin URL → read content
+6. Report: scraped content + plugin-routed URLs separately
 ```
 
 ## Known Limitations
 
 - **SearXNG instance required** — must be running on localhost:8080
-- **Up to 50 results per page** — use pageno for more (up to 150 across 3 pages)
+- **Up to ~150 results per query** — server fetches 3 pages by default and deduplicates
 - **Scraper optimized for content sites** — articles, docs, wikis work best
 - **scrape_url uses PruningContentFilter** — may damage code blocks. Use scrape_url_raw for full fidelity
 - **Login-protected pages** will return login forms, not content

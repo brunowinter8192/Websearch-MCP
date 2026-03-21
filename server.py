@@ -23,10 +23,10 @@ def search_web(
     language: str = "en",
     time_range: Literal["day", "month", "year"] | None = None,
     engines: str | None = None,
-    pageno: int = 1
+    pages: int = 3
 ) -> list[TextContent]:
-    """Search the web."""
-    return search_web_workflow(query, category, language, time_range, engines, pageno)
+    """Search the web. Fetches `pages` result pages and returns combined deduplicated results."""
+    return search_web_workflow(query, category, language, time_range, engines, pages)
 
 
 @mcp.tool
