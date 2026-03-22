@@ -20,6 +20,8 @@ MCP server entry point, batch crawl tools, and startup script.
 
 ## crawl_site.py
 
+> Moved to `src/crawler/crawl_site.py`. See [src/crawler/DOCS.md](src/crawler/DOCS.md).
+
 **Purpose:** Full website crawl with markdown export. Supports auto-detection cascade (sitemap → prefetch → BFS with SPA auto-detection), direct URL file input, and parallel crawl via `arun_many()` with `SemaphoreDispatcher(concurrency=10)`.
 **Input:** URL, output directory, depth, max_pages, optional include/exclude URL patterns, optional `--strategy` flag, optional `--url-file` for pre-filtered URL lists.
 **Output:** Markdown files in output directory (one per page), with `<!-- source: URL -->` comment header and domain-prefixed filenames.
@@ -59,6 +61,8 @@ python crawl_site.py --url "https://playwright.dev" --url-file urls_filtered.txt
 
 ## explore_site.py
 
+> Moved to `src/crawler/explore_site.py`. See [src/crawler/DOCS.md](src/crawler/DOCS.md).
+
 **Purpose:** URL discovery CLI for the `/crawl-site` command pipeline. Discovers all URLs of a website and saves to a text file. Wraps `crawl_site.discover_urls()` and `crawl_site.discover_urls_sitemap()` with auto-strategy cascade and fixes for common discovery failures.
 **Input:** URL, strategy (auto/sitemap/prefetch), optional max-pages/depth/include-patterns/exclude-patterns/output/append.
 **Output:** Text file with one URL per line + console summary with URL samples.
@@ -85,5 +89,5 @@ Filters sitemap URLs to match the seed URL's path prefix. Fixes: `playwright.dev
 
 ## Documentation Tree
 
-- [src/DOCS.md](src/DOCS.md) — Source modules (scraper, searxng, spawn)
+- [src/DOCS.md](src/DOCS.md) — Source modules (scraper, searxng, crawler, spawn)
 - [dev/DOCS.md](dev/DOCS.md) — Development pipelines and cleanup scripts

@@ -1,5 +1,6 @@
 # INFRASTRUCTURE
 import asyncio
+import logging
 from collections import defaultdict
 from urllib.parse import urlparse
 
@@ -8,6 +9,8 @@ from crawl4ai.deep_crawling import BFSDeepCrawlStrategy
 from crawl4ai.deep_crawling.filters import FilterChain, DomainFilter, ContentTypeFilter, URLPatternFilter
 from mcp.types import TextContent
 
+logger = logging.getLogger(__name__)
+
 MAX_DEPTH = 10
 DEFAULT_MAX_PAGES = 50
 CRAWL_TIMEOUT = 120
@@ -15,9 +18,11 @@ CRAWL_TIMEOUT = 120
 
 # ORCHESTRATOR
 async def explore_site_workflow(url: str, max_pages: int = DEFAULT_MAX_PAGES, url_pattern: str | None = None) -> list[TextContent]:
+    logger.info("Exploring: %s (max_pages=%d)", url, max_pages)
     domain = urlparse(url).netloc
 
     sitemap_urls = await check_sitemap(domain)
+    logger.debug("Sitemap: %d URLs", len(sitemap_urls))
     timed_out, results = await crawl_for_discovery(url, domain, max_pages, url_pattern)
     site_map = build_site_map(url, domain, results, timed_out, sitemap_urls)
 
@@ -28,6 +33,7 @@ async def explore_site_workflow(url: str, max_pages: int = DEFAULT_MAX_PAGES, ur
     else:
         site_map["recommended_strategy"] = "bfs (JS-heavy, prefetch found only 1 page)"
 
+    logger.info("Discovery complete: %d pages", site_map["total_pages"])
     return [TextContent(type="text", text=format_site_map(site_map))]
 
 
@@ -42,7 +48,8 @@ async def check_sitemap(domain: str) -> list[str]:
             if not urls:
                 return []
             return [u if isinstance(u, str) else u.get("url", str(u)) for u in urls]
-    except Exception:
+    except Exception as e:
+        logger.warning("Failed to check sitemap for %s: %s", domain, e)
         return []
 
 

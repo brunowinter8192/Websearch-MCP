@@ -5,16 +5,18 @@ from typing import Literal
 from fastmcp import FastMCP
 from mcp.types import TextContent
 
-nest_asyncio.apply()
-
+from src.routing import check_plugin_routed
 from src.searxng.search_web import search_web_workflow
-from src.scraper.scrape_url import scrape_url_workflow, scrape_url_raw_workflow
+from src.scraper.scrape_url import scrape_url_workflow
+from src.scraper.scrape_url_raw import scrape_url_raw_workflow
 from src.scraper.explore_site import explore_site_workflow
+
+nest_asyncio.apply()
 
 mcp = FastMCP("SearXNG")
 
 
-# TOOLS
+# TOOL REGISTRATION
 
 @mcp.tool
 def search_web(
@@ -32,12 +34,16 @@ def search_web(
 @mcp.tool
 def scrape_url(url: str, max_content_length: int = 15000) -> list[TextContent]:
     """Scrape URL."""
+    if blocked := check_plugin_routed(url):
+        return blocked
     return asyncio.run(scrape_url_workflow(url, max_content_length))
 
 
 @mcp.tool
 def scrape_url_raw(url: str, output_dir: str) -> list[TextContent]:
     """Scrape URL to markdown file."""
+    if blocked := check_plugin_routed(url):
+        return blocked
     return asyncio.run(scrape_url_raw_workflow(url, output_dir))
 
 

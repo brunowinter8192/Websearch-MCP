@@ -1,6 +1,7 @@
 # INFRASTRUCTURE
 import argparse
 import asyncio
+import logging
 import re
 from pathlib import Path
 from urllib.parse import urlparse
@@ -12,6 +13,8 @@ from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from crawl4ai.async_dispatcher import SemaphoreDispatcher
 
 from src.scraper.scrape_url import is_garbage_content
+
+logger = logging.getLogger(__name__)
 
 PERMALINK_PATTERN = re.compile(r'\[¶\]\([^)]+\)')
 TRAILING_SLASH = re.compile(r'/$')
@@ -29,50 +32,50 @@ async def crawl_site_workflow(url: str, output_dir: str, depth: int, max_pages: 
     domain = urlparse(url).netloc
 
     if url_file:
-        print(f"Reading URLs from {url_file}")
+        logger.info("Reading URLs from %s", url_file)
         urls = read_url_file(url_file)
-        print(f"Loaded {len(urls)} URLs")
+        logger.info("Loaded %d URLs", len(urls))
         results = await crawl_urls(urls)
     elif strategy == "bfs":
-        print(f"Strategy: BFS full rendering (depth={depth}, max_pages={max_pages})")
+        logger.info("Strategy: BFS full rendering (depth=%d, max_pages=%d)", depth, max_pages)
         results = await crawl_bfs(url, domain, depth, max_pages, exclude_patterns, include_patterns)
     elif strategy == "sitemap":
-        print(f"Strategy: Sitemap discovery")
+        logger.info("Strategy: Sitemap discovery")
         urls = await discover_urls_sitemap(domain, include_patterns)
         if not urls:
-            print("No sitemap found. Aborting.")
+            logger.info("No sitemap found. Aborting.")
             return
-        print(f"Sitemap: {len(urls)} URLs")
+        logger.info("Sitemap: %d URLs", len(urls))
         results = await crawl_urls(urls)
     elif strategy == "prefetch":
-        print(f"Strategy: Prefetch BFS (depth={depth}, max_pages={max_pages})")
+        logger.info("Strategy: Prefetch BFS (depth=%d, max_pages=%d)", depth, max_pages)
         urls = await discover_urls(url, domain, depth, max_pages, exclude_patterns, include_patterns)
-        print(f"Prefetch: {len(urls)} URLs")
+        logger.info("Prefetch: %d URLs", len(urls))
         results = await crawl_urls(urls)
     elif strategy == "auto":
-        print("Auto-detection: trying sitemap...")
+        logger.info("Auto-detection: trying sitemap...")
         urls = await discover_urls_sitemap(domain, include_patterns)
         if urls:
-            print(f"Sitemap: {len(urls)} URLs")
+            logger.info("Sitemap: %d URLs", len(urls))
             results = await crawl_urls(urls)
         else:
-            print("No sitemap. Trying prefetch BFS...")
+            logger.info("No sitemap. Trying prefetch BFS...")
             urls = await discover_urls(url, domain, depth, max_pages, exclude_patterns, include_patterns)
             if len(urls) > 1:
-                print(f"Prefetch: {len(urls)} URLs")
+                logger.info("Prefetch: %d URLs", len(urls))
                 results = await crawl_urls(urls)
             else:
-                print(f"SPA detected (prefetch found {len(urls)} URLs). Falling back to BFS full rendering.")
+                logger.info("SPA detected (prefetch found %d URLs). Falling back to BFS full rendering.", len(urls))
                 results = await crawl_bfs(url, domain, depth, max_pages, exclude_patterns, include_patterns)
     else:
-        print(f"Crawling {url} via BFS with full rendering (depth={depth}, max_pages={max_pages})")
+        logger.info("Crawling %s via BFS with full rendering (depth=%d, max_pages=%d)", url, depth, max_pages)
         results = await crawl_bfs(url, domain, depth, max_pages, exclude_patterns, include_patterns)
 
-    print(f"Crawled {len(results)} pages")
+    logger.info("Crawled %d pages", len(results))
     unique = deduplicate(results)
     saved = save_markdown(unique, url, target)
 
-    print(f"\nDone: {saved} files saved to {target}")
+    logger.info("Done: %d files saved to %s", saved, target)
 
 
 # FUNCTIONS
@@ -86,7 +89,8 @@ async def discover_urls_sitemap(domain: str, include_patterns: str = None) -> li
         async with AsyncUrlSeeder() as seeder:
             results = await seeder.urls(f"https://{domain}", config=config)
             return [r["url"] for r in results if "url" in r]
-    except Exception:
+    except Exception as e:
+        logger.warning("Sitemap discovery failed for %s: %s", domain, e)
         return []
 
 
@@ -99,7 +103,6 @@ def read_url_file(path: str) -> list[str]:
 # Phase 1: Fast URL discovery via prefetch BFS
 async def discover_urls(url: str, domain: str, depth: int, max_pages: int,
                         exclude_patterns: str = None, include_patterns: str = None) -> list[str]:
-    # Resolve redirects to use final domain for DomainFilter
     try:
         import requests as _req
         resp = _req.head(url, allow_redirects=True, timeout=10)
@@ -107,8 +110,8 @@ async def discover_urls(url: str, domain: str, depth: int, max_pages: int,
         if final_domain != domain:
             domain = final_domain
             url = resp.url
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Redirect resolution failed for %s: %s", url, e)
 
     filters = [
         DomainFilter(allowed_domains=[domain]),
@@ -216,7 +219,7 @@ def deduplicate(results: list) -> list:
             continue
         seen.add(normalized)
         unique.append(r)
-    print(f"Unique after dedup: {len(unique)}")
+    logger.info("Unique after dedup: %d", len(unique))
     return unique
 
 
@@ -229,10 +232,10 @@ def save_markdown(results: list, seed_url: str, output_dir: Path) -> int:
         if not url or not raw_md:
             continue
         if r.status_code and r.status_code >= 400:
-            print(f"  [skip] {url} (HTTP {r.status_code})")
+            logger.info("skip %s (HTTP %d)", url, r.status_code)
             continue
         if is_garbage_content(raw_md):
-            print(f"  [skip] {url} (garbage content)")
+            logger.info("skip %s (garbage content)", url)
             continue
 
         clean_md = PERMALINK_PATTERN.sub('', raw_md)
@@ -245,7 +248,7 @@ def save_markdown(results: list, seed_url: str, output_dir: Path) -> int:
             f.write(f"<!-- source: {url} -->\n\n{clean_md}")
 
         saved += 1
-        print(f"  [{saved}] {filename} ({len(clean_md)} chars)")
+        logger.debug("[%d] %s (%d chars)", saved, filename, len(clean_md))
 
     return saved
 
@@ -294,11 +297,12 @@ if __name__ == "__main__":
     parser.add_argument("--no-prefetch", action="store_true",
                         help="Use serial BFS with full rendering (for JS-heavy/SPA sites where prefetch finds no links)")
     parser.add_argument("--strategy", choices=["auto", "sitemap", "prefetch", "bfs"], default="auto",
-                        help="Force discovery strategy: auto (cascade: sitemap→prefetch→bfs), sitemap, prefetch, bfs")
+                        help="Force discovery strategy: auto (cascade: sitemap->prefetch->bfs), sitemap, prefetch, bfs")
     parser.add_argument("--url-file", type=str, default=None,
                         help="Path to text file with URLs (one per line) — skips discovery entirely")
     args = parser.parse_args()
 
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     asyncio.run(crawl_site_workflow(args.url, args.output_dir, args.depth, args.max_pages,
                                     args.exclude_patterns, args.include_patterns, args.no_prefetch,
                                     args.strategy, args.url_file))

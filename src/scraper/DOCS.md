@@ -34,32 +34,25 @@ Detects five categories of garbage content returned as markdown:
 
 Called by both `try_scrape()` and `try_scrape_raw()` after content extraction.
 
-### is_cloudflare_content()
-
-Separate Cloudflare detection function with same patterns as is_garbage_content() check #5. Used by `try_scrape_raw()` to return `CLOUDFLARE_SENTINEL` instead of empty string, enabling `scrape_url_raw_workflow()` to give a specific "Cloudflare-protected" error message to the user instead of generic "No content extracted".
-
 ### truncate_content()
 
 Truncates content if exceeding maximum length. Attempts to break at paragraph boundary for clean truncation. Appends truncation notice when content is cut.
 
 ### get_plugin_hint()
 
-Checks URL against PLUGIN_HINTS dict. Returns hint string for domains with dedicated MCP plugins (reddit.com, arxiv.org), empty string otherwise.
+Returns generic plugin routing hint for failed scrapes on domains that may have dedicated MCP plugins.
 
 ### Constants
 
 - `COOKIE_CONSENT_SELECTOR` — CSS selector string matching common cookie consent frameworks: CookieYes (cky-consent, cky-banner, cky-modal), OneTrust, Cookiebot, cc-banner, GDPR, cookie-banner, cookie-consent, cookie-notice, cookie-law. Note: `cky-modal` is critical — CookieYes stores the full Consent Preferences dialog (12K+ chars of cookie descriptions) in this container. Without it, only the small banner (236 chars) is removed.
-- `PLUGIN_HINTS` — Dict mapping domains to plugin usage hints
 - `DEFAULT_MAX_CONTENT_LENGTH` — 15000 chars
 - `MIN_CONTENT_THRESHOLD` — 200 chars. fit_markdown below this triggers raw_markdown fallback.
 
-### scrape_url_raw_workflow()
+## scrape_url_raw.py
 
-Raw markdown scraping orchestrator for RAG indexing. Same two-phase browser strategy as `scrape_url_workflow` but uses `DefaultMarkdownGenerator()` without PruningContentFilter and `raw_markdown` output. Saves result as .md file with `<!-- source: URL -->` header to specified output directory. Generates safe filename from URL (domain + path, max 120 chars). Returns file path and char count on success.
-
-### try_scrape_raw()
-
-Raw variant of `try_scrape()`. Uses `raw_markdown` instead of `fit_markdown`, no content filter. Checks `is_cloudflare_content()` BEFORE `MIN_CONTENT_THRESHOLD` check (CF responses are 168-224 bytes, below the 200-byte threshold). Returns `CLOUDFLARE_SENTINEL` on CF detection, empty string on other failures.
+**Purpose:** Raw markdown scraping orchestrator for RAG indexing. Same two-phase browser strategy as `scrape_url.py` (normal → stealth fallback) but uses `DefaultMarkdownGenerator()` without PruningContentFilter and saves `raw_markdown` output to a .md file with `<!-- source: URL -->` header. Generates safe filename from URL (domain + path, max 120 chars).
+**Input:** URL string and output directory path.
+**Output:** TextContent with file path and char count on success, or error message on failure (Cloudflare-specific message when CF-protected).
 
 ## explore_site.py
 

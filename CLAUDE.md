@@ -45,8 +45,12 @@ See [sources/sources.md](sources/sources.md).
 |------|-----------|
 | `src/searxng/search_web.py` | Search API wrapper |
 | `src/searxng/settings.yml` | SearXNG instance config (engines, proxy, hostnames) |
-| `src/scraper/scrape_url.py` | URL scraping (filtered + raw) |
+| `src/scraper/scrape_url.py` | URL scraping (filtered) |
+| `src/scraper/scrape_url_raw.py` | Raw URL scraping (for RAG indexing) |
 | `src/scraper/explore_site.py` | Site discovery (sitemap + BFS) |
+| `src/routing.py` | Plugin domain routing |
+| `src/crawler/crawl_site.py` | Full website crawl with markdown export |
+| `src/crawler/explore_site.py` | URL discovery CLI for /crawl-site pipeline |
 | `server.py` | MCP tool registration |
 | `agents/web-research.md` | Agent definition |
 | `skills/searxng/SKILL.md` | SearXNG skill (strategy, dispatch) |
@@ -57,8 +61,6 @@ See [sources/sources.md](sources/sources.md).
 ```
 searxng/
 ├── server.py
-├── crawl_site.py
-├── explore_site.py
 ├── mcp-start.sh
 ├── requirements.txt
 ├── README.md                       → [Setup & External Docs](README.md)
@@ -75,9 +77,11 @@ searxng/
 │   ├── agent02_routing.md
 │   └── agent03_coverage.md
 ├── src/                            → [DOCS.md](src/DOCS.md)
+│   ├── routing.py                  → Plugin domain routing
 │   ├── scraper/                    → [DOCS.md](src/scraper/DOCS.md)
 │   ├── searxng/                    → [DOCS.md](src/searxng/DOCS.md)
 │   │   └── patches/                → SearXNG engine patches (Docker volume-mounted)
+│   ├── crawler/                    → [DOCS.md](src/crawler/DOCS.md)
 │   └── spawn/                      → Worker spawn utilities (in src/DOCS.md)
 ├── dev/                            → [DOCS.md](dev/DOCS.md)
 │   ├── search_pipeline/            → [DOCS.md](dev/search_pipeline/DOCS.md)

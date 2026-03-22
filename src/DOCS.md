@@ -1,6 +1,12 @@
 # Source Modules
 
-Python packages for web search and scraping. Utility script for spawning Claude Code workers.
+Python packages for web search, scraping, and crawling. Utility script for spawning Claude Code workers.
+
+## routing.py
+
+**Purpose:** Plugin domain routing. Maps known domains that must be accessed via dedicated MCP plugins (GitHub, Reddit, arXiv, YouTube) and returns a blocking TextContent error when a scrape is attempted on those domains.
+**Input:** URL string.
+**Output:** List with one TextContent (error + plugin instruction) if domain is plugin-routed, else None.
 
 ## tmux_spawn.sh
 
@@ -28,3 +34,4 @@ pane=$(spawn_claude_worker_from_file "workers" "my-task" "/path/to/project" "opu
 
 - [scraper/DOCS.md](scraper/DOCS.md) — URL scraping and site exploration tools
 - [searxng/DOCS.md](searxng/DOCS.md) — SearXNG API wrapper and configuration
+- [crawler/DOCS.md](crawler/DOCS.md) — Full-site crawl and URL discovery CLI tools

@@ -1,11 +1,14 @@
 # INFRASTRUCTURE
 import argparse
 import asyncio
+import logging
 import time
 from urllib.parse import urlparse
 
 import requests
-from crawl_site import discover_urls, discover_urls_sitemap
+from src.crawler.crawl_site import discover_urls, discover_urls_sitemap
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_PAGES = 200
 SITEMAP_MIN_THRESHOLD = 5
@@ -21,14 +24,13 @@ async def explore_site_workflow(url: str, strategy: str, max_pages: int, output:
     if output is None:
         output = f"/tmp/explore_{domain}_urls.txt"
 
-    # Resolve redirects to get final URL and domain
     resolved_url, resolved_domain = resolve_redirect(url)
     if resolved_domain != domain:
-        print(f"Redirect detected: {url} → {resolved_url} (domain: {domain} → {resolved_domain})")
+        logger.info("Redirect detected: %s -> %s (domain: %s -> %s)", url, resolved_url, domain, resolved_domain)
         url = resolved_url
         domain = resolved_domain
 
-    print(f"Exploring {url} (strategy: {strategy})")
+    logger.info("Exploring %s (strategy: %s)", url, strategy)
 
     start = time.time()
     seed_path = urlparse(url).path
@@ -38,12 +40,12 @@ async def explore_site_workflow(url: str, strategy: str, max_pages: int, output:
         urls = filter_sitemap_by_seed_path(urls, seed_path)
         strategy_used = "sitemap"
         duration = time.time() - start
-        print(f"Sitemap: {len(urls)} URLs found in {duration:.1f}s")
+        logger.info("Sitemap: %d URLs found in %.1fs", len(urls), duration)
     elif strategy == "prefetch":
         urls = await discover_urls(url, domain, depth, effective_max, exclude_patterns, include_patterns)
         strategy_used = "prefetch"
         duration = time.time() - start
-        print(f"Prefetch: {len(urls)} URLs found in {duration:.1f}s")
+        logger.info("Prefetch: %d URLs found in %.1fs", len(urls), duration)
     else:
         sitemap_urls = await discover_urls_sitemap(domain, include_patterns)
         sitemap_urls = filter_sitemap_by_seed_path(sitemap_urls, seed_path)
@@ -52,12 +54,12 @@ async def explore_site_workflow(url: str, strategy: str, max_pages: int, output:
             urls = sitemap_urls
             strategy_used = "sitemap"
             duration = time.time() - start
-            print(f"Sitemap: {len(urls)} URLs found in {duration:.1f}s")
+            logger.info("Sitemap: %d URLs found in %.1fs", len(urls), duration)
         else:
             if sitemap_urls:
-                print(f"Sitemap too shallow ({len(sitemap_urls)} URLs). Trying prefetch BFS...")
+                logger.info("Sitemap too shallow (%d URLs). Trying prefetch BFS...", len(sitemap_urls))
             else:
-                print("No sitemap found. Trying prefetch BFS...")
+                logger.info("No sitemap found. Trying prefetch BFS...")
             prefetch_urls = await discover_urls(url, domain, depth, effective_max, exclude_patterns, include_patterns)
             if len(prefetch_urls) > len(sitemap_urls):
                 urls = prefetch_urls
@@ -66,21 +68,21 @@ async def explore_site_workflow(url: str, strategy: str, max_pages: int, output:
                 urls = sitemap_urls
                 strategy_used = "sitemap (shallow, prefetch found fewer)"
             duration = time.time() - start
-            print(f"{strategy_used}: {len(urls)} URLs found in {duration:.1f}s")
+            logger.info("%s: %d URLs found in %.1fs", strategy_used, len(urls), duration)
 
-    # Deduplicate against existing URLs if appending
     if append:
         existing = load_existing_urls(output)
         new_urls = [u for u in urls if u not in existing]
-        print(f"New URLs: {len(new_urls)} (filtered {len(urls) - len(new_urls)} duplicates)")
+        logger.info("New URLs: %d (filtered %d duplicates)", len(new_urls), len(urls) - len(new_urls))
         urls = new_urls
 
     print_url_samples(urls)
     save_url_list(urls, output, append=append)
-    print(f"Saved {len(urls)} URLs to {output}")
+    logger.info("Saved %d URLs to %s", len(urls), output)
 
     if len(urls) >= effective_max:
-        print(f"\n⚠ Hit max_pages limit ({effective_max}). Run again with --max-pages {effective_max * 2} --append to discover more.")
+        logger.info("Hit max_pages limit (%d). Run again with --max-pages %d --append to discover more.",
+                    effective_max, effective_max * 2)
 
 
 # FUNCTIONS
@@ -92,7 +94,8 @@ def resolve_redirect(url: str) -> tuple[str, str]:
         final_url = resp.url
         final_domain = urlparse(final_url).netloc
         return final_url, final_domain
-    except Exception:
+    except Exception as e:
+        logger.warning("Redirect resolution failed for %s: %s", url, e)
         return url, urlparse(url).netloc
 
 
@@ -118,10 +121,9 @@ def print_url_samples(urls: list[str], max_samples: int = 15) -> None:
         for i in range(5):
             indices.add(min(i * step, total - 1))
     sorted_indices = sorted(indices)[:max_samples]
-    print(f"\n=== URL Samples ({len(sorted_indices)} of {total}) ===")
+    logger.info("=== URL Samples (%d of %d) ===", len(sorted_indices), total)
     for i in sorted_indices:
-        print(f"[{i+1:>4}] {urls[i]}")
-    print()
+        logger.info("[%4d] %s", i + 1, urls[i])
 
 
 # Load existing URLs from file (for dedup on append)
@@ -145,7 +147,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Discover all URLs of a website and save to a file")
     parser.add_argument("--url", required=True, help="Seed URL to explore")
     parser.add_argument("--strategy", choices=["auto", "sitemap", "prefetch"], default="auto",
-                        help="Discovery strategy: auto (sitemap→prefetch), sitemap, prefetch")
+                        help="Discovery strategy: auto (sitemap->prefetch), sitemap, prefetch")
     parser.add_argument("--max-pages", type=int, default=DEFAULT_MAX_PAGES,
                         help=f"Max pages to discover (default: {DEFAULT_MAX_PAGES})")
     parser.add_argument("--append", action="store_true",
@@ -160,6 +162,7 @@ if __name__ == "__main__":
                         help="Comma-separated URL patterns to exclude (e.g. '/genindex*,/search*')")
     args = parser.parse_args()
 
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     asyncio.run(explore_site_workflow(args.url, args.strategy, args.max_pages, args.output,
                                      args.depth, args.include_patterns, args.exclude_patterns,
                                      args.append))

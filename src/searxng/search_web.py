@@ -1,6 +1,9 @@
 # INFRASTRUCTURE
+import logging
 import requests
 from mcp.types import TextContent
+
+logger = logging.getLogger(__name__)
 
 SEARXNG_URL = "http://localhost:8080/search"
 MAX_RESULTS = 80
@@ -16,10 +19,12 @@ def search_web_workflow(
     engines: str | None = None,
     pages: int = 3
 ) -> list[TextContent]:
+    logger.info("Searching: %s (category=%s, pages=%d)", query, category, pages)
     seen_urls: set[str] = set()
     all_results: list = []
     for pageno in range(1, pages + 1):
         page_results = fetch_search_results(query, category, language, time_range, engines, pageno)
+        logger.debug("Page %d: %d results", pageno, len(page_results))
         for r in page_results:
             url = r.get("url", "")
             if url not in seen_urls:
