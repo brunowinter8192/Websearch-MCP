@@ -59,8 +59,7 @@ See [sources/sources.md](sources/sources.md).
 | `src/crawler/explore_site.py` | URL discovery CLI for /crawl-site pipeline |
 | `server.py` | MCP tool registration |
 | `agents/web-research.md` | Agent definition |
-| `skills/searxng/SKILL.md` | SearXNG skill (strategy, dispatch) |
-| `skills/agent-web-research/SKILL.md` | Agent tool reference |
+| `skills/agent-web-research/SKILL.md` | Subagent tool reference + usage strategies |
 
 ## Project Structure
 

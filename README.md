@@ -163,5 +163,5 @@ searxng/
 |-----|---------|
 | `src/searxng/DOCS.md` | Search module implementation details |
 | `src/scraper/DOCS.md` | Scraper module implementation details |
-| `skills/searxng/SKILL.md` | Tool usage guide |
-| `agents/web-research.md` | Subagent instructions |
+| `skills/agent-web-research/SKILL.md` | Subagent tool reference + usage strategies |
+| `agents/web-research.md` | Subagent system prompt |

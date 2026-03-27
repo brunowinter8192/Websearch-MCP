@@ -187,6 +187,12 @@ ${CLAUDE_PLUGIN_ROOT}/venv/bin/python ${CLAUDE_PLUGIN_ROOT}/crawl_site.py \
   > /tmp/crawl_${DOMAIN}_output.txt 2>&1
 ```
 
+**Optional CLI flags:**
+- `--depth N` — crawl depth limit (default: 3)
+- `--max-pages N` — max pages to crawl (default: 100)
+- `--exclude-patterns "pattern1,pattern2"` — comma-separated URL patterns to exclude
+- `--include-patterns "pattern1,pattern2"` — comma-separated URL patterns to include
+
 ### Step 2: Verify Output + Garbage Detection
 
 ```bash

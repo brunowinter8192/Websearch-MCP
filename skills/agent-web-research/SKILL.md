@@ -13,6 +13,36 @@ description: SearXNG MCP tool reference for web research agents
 | scrape_url | Fetch page content as filtered markdown (PruningContentFilter). For in-conversation reading |
 | scrape_url_raw | Fetch page content as raw markdown and save as .md file. For RAG indexing |
 
+## Search Strategy
+
+Four fundamentally different workflows:
+
+- **Quick search** (user wants links, overviews, or pointers):
+  Use `search_web` alone. Returns up to 50 results with title, URL, and full snippet.
+  Good for: finding URLs, getting a topic overview, discovering sources.
+
+- **Deep research** (user wants actual content, analysis, or synthesis):
+  Use `search_web` first, then `scrape_url` on the most relevant results.
+  Good for: reading documentation, extracting tutorials, comparing approaches, analyzing articles.
+
+- **Direct scraping** (user provides a URL):
+  Skip search entirely. Use `scrape_url` directly on the given URL.
+  Good for: reading a specific page, extracting content from a known source.
+
+- **Scrape for RAG indexing** (user wants to index a URL into knowledge base):
+  Use `scrape_url_raw(url, output_dir)` to save full-fidelity raw markdown as .md file.
+  Then run `/rag:web-md-index` on the output directory to cleanup + chunk + index.
+
+**Detection:** "Find me articles about X" → quick search. "What does article X say about Y?" → deep research. "Read this URL" → direct scraping. "Index this URL" / "Save this for later" → scrape_url_raw.
+
+## Scraping Tips
+
+- **Default max_content_length is 15000** — sufficient for most articles/docs. Increase for long documentation pages.
+- **JavaScript-rendered content** is supported — Playwright renders the page before extraction.
+- **Content-focused sites** (articles, docs, wikis) produce the best results. The scraper is optimized for semantic HTML.
+- **Truncation** preserves paragraph boundaries — content is cut at the nearest double newline.
+- **Images** are included as markdown references (small/avatar images are filtered out).
+
 ## Parameter Reference
 
 ### search_web
