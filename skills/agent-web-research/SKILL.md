@@ -116,3 +116,4 @@ Four fundamentally different workflows:
 - **Scraper optimized for content sites** — articles, docs, wikis work best
 - **scrape_url uses PruningContentFilter** — may damage code blocks. Use scrape_url_raw for full fidelity
 - **Login-protected pages** will return login forms, not content
+- **PDF URLs (.pdf) cannot be scraped** — scrape_url returns only the header `# Content from: <url>` with no content. Do NOT attempt to scrape PDF URLs. Log them as `[PDF — nicht scrapebar]` in the report and note the URL for manual access.
