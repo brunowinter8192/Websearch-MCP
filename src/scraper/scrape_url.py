@@ -96,6 +96,9 @@ async def try_scrape(browser_config, crawler_strategy, markdown_generator, url: 
             kwargs["crawler_strategy"] = crawler_strategy
         async with AsyncWebCrawler(**kwargs) as crawler:
             result = await crawler.arun(url=url, config=run_config)
+        if hasattr(result, 'status_code') and result.status_code and result.status_code >= 400:
+            logger.warning("HTTP %d detected: %s", result.status_code, url)
+            return "", "http_error"
         if not result.markdown:
             return "", None
         content = result.markdown.fit_markdown
