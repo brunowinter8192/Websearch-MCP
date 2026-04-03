@@ -21,7 +21,7 @@ On empty result, returns error message with plugin hint if URL matches a known d
 
 ### try_scrape()
 
-Attempts a single scrape with given browser config, optional crawler strategy, and wait strategy. Checks `result.status_code` first — if >= 400, returns `("", "http_error")` immediately without content analysis (catches padded 404 pages). Content selection: `fit_markdown` if >= 200 chars (MIN_CONTENT_THRESHOLD), otherwise falls back to `raw_markdown`. This prevents PruningContentFilter from destroying table-heavy content (e.g. Wikipedia). Checks content via `is_garbage_content()` — if content is an error page, cookie wall, or Crawl4AI error message, returns empty string to trigger fallback chain.
+Attempts a single scrape with given browser config, optional crawler strategy, and wait strategy. Returns `(content, garbage_type, status_code)` tuple. Checks `result.status_code` first — if >= 400, returns `("", "http_error", status_code)` immediately without content analysis (catches padded 404 pages). Content selection: `fit_markdown` if >= 200 chars (MIN_CONTENT_THRESHOLD), otherwise falls back to `raw_markdown`. This prevents PruningContentFilter from destroying table-heavy content (e.g. Wikipedia). Checks content via `is_garbage_content()` — if content is an error page, cookie wall, or Crawl4AI error message, returns empty string to trigger fallback chain.
 
 ### is_garbage_content()
 
@@ -41,9 +41,13 @@ Called by both `try_scrape()` and `try_scrape_raw()` after content extraction.
 
 Truncates content if exceeding maximum length. Attempts to break at paragraph boundary for clean truncation. Appends truncation notice when content is cut.
 
+### log_scrape_failure()
+
+Appends one JSONL failure record to `dev/scrape_pipeline/failures.jsonl`. Called at the final failure exit in `scrape_url_workflow()` when all 3 attempts are exhausted. Fields: `ts` (ISO 8601 UTC), `url`, `garbage_type`, `status_code`. Requires `SEARXNG_PROJECT_ROOT` env variable — silently skips if not set. Silent fail on any I/O error.
+
 ### get_plugin_hint()
 
-Returns generic plugin routing hint for failed scrapes on domains that may have dedicated MCP plugins.
+Returns plugin hint only for domains with dedicated MCP plugins (uses `PLUGIN_ROUTED_DOMAINS` from `routing.py`). Returns empty string for all other domains.
 
 ### Constants
 
