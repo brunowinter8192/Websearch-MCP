@@ -92,6 +92,27 @@ PDF-URLs: Eigenes MCP Tool `download_pdf` statt Scraping-Versuch. Agent-Instruct
 
 **File path:** `dev/scrape_pipeline/failures.jsonl` (gitignored, local analysis only). See `dev/scrape_pipeline/DOCS.md` for jq usage examples.
 
+## Consent-Prefix Stripping (2026-04)
+
+**Added:** `strip_consent_prefix()` in `src/scraper/scrape_url.py` as a recovery mechanism for `cookie_wall` pages.
+
+**What it does:** When `is_garbage_content()` returns `cookie_wall`, `try_scrape()` attempts to strip the leading consent block and recover actual page content instead of immediately discarding.
+
+**When it triggers:** Only on `cookie_wall` detection. All other garbage types are still discarded immediately.
+
+**Algorithm:**
+1. Count CONSENT_WORDS (`cookie`, `consent`, `einwilligung`, `tracking`, `akzeptieren`, `datenschutz`, `zweck`) in first 3000 chars
+2. If density ≤ 5 (CONSENT_DENSITY_THRESHOLD): return original content unchanged (baseline pages safe)
+3. Search for first `#` or `##` heading after offset 300 (CONSENT_SKIP_OFFSET)
+4. If heading found: return content from that heading onward
+5. If no heading: return original content unchanged
+
+**Recovery condition:** Stripped content must (a) differ from original and (b) pass `is_garbage_content()` returning None. If either condition fails, falls through to normal garbage discard.
+
+**Prototype source:** `dev/scrape_pipeline/09_garbage_fix_prototype.py` — constants and algorithm taken directly. Evidence in `dev/scrape_pipeline/09_reports/`.
+
+**`cookie_wall` threshold item:** Partially addressed — stripping recovers content from pages that mix consent prefix with real content. Pages that are pure consent walls (no heading after offset) are still discarded. Threshold calibration (>15 cookie-signals for detection) remains open.
+
 ## Quellen
 
 - `src/scraper/scrape_url.py` (Code-Inspektion)

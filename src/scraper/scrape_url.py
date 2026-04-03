@@ -20,6 +20,10 @@ _LINK_LINE_RE = re.compile(r'^\[.+\]\(.+\)$')
 DEFAULT_MAX_CONTENT_LENGTH = 15000
 MIN_CONTENT_THRESHOLD = 200
 
+CONSENT_WORDS = ["cookie", "consent", "einwilligung", "tracking", "akzeptieren", "datenschutz", "zweck"]
+CONSENT_DENSITY_THRESHOLD = 5
+CONSENT_SKIP_OFFSET = 300
+
 COOKIE_CONSENT_SELECTOR = ", ".join([
     "[class*='cookie-banner']", "[id*='cookie-banner']",
     "[class*='cookie-consent']", "[id*='cookie-consent']",
@@ -115,6 +119,11 @@ async def try_scrape(browser_config, crawler_strategy, markdown_generator, url: 
         if len(content) < MIN_CONTENT_THRESHOLD and result.markdown.raw_markdown:
             content = result.markdown.raw_markdown
         garbage_type = is_garbage_content(content)
+        if garbage_type == "cookie_wall":
+            stripped = strip_consent_prefix(content)
+            if stripped != content and is_garbage_content(stripped) is None:
+                logger.info("Consent prefix stripped: %s (%d chars removed)", url, len(content) - len(stripped))
+                return stripped, None, status_code
         if garbage_type:
             logger.warning("Garbage detected [%s]: %s", garbage_type, url)
             return "", garbage_type, status_code
@@ -184,6 +193,21 @@ def is_garbage_content(content: str) -> str | None:
         return "cloudflare"
 
     return None
+
+
+# Strip leading consent block: detect by keyword density, cut before first heading after offset
+def strip_consent_prefix(content: str) -> str:
+    if not content:
+        return content
+    sample = content[:3000].lower()
+    density = sum(sample.count(w) for w in CONSENT_WORDS)
+    if density <= CONSENT_DENSITY_THRESHOLD:
+        return content
+    match = re.search(r'\n(#{1,2} )', content[CONSENT_SKIP_OFFSET:])
+    if match:
+        pos = CONSENT_SKIP_OFFSET + match.start() + 1
+        return content[pos:]
+    return content
 
 
 # Truncate content at paragraph boundary if too long

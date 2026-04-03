@@ -21,7 +21,7 @@ On empty result, returns error message with plugin hint if URL matches a known d
 
 ### try_scrape()
 
-Attempts a single scrape with given browser config, optional crawler strategy, and wait strategy. Returns `(content, garbage_type, status_code)` tuple. Checks `result.status_code` first — if >= 400, returns `("", "http_error", status_code)` immediately without content analysis (catches padded 404 pages). Content selection: `fit_markdown` if >= 200 chars (MIN_CONTENT_THRESHOLD), otherwise falls back to `raw_markdown`. This prevents PruningContentFilter from destroying table-heavy content (e.g. Wikipedia). Checks content via `is_garbage_content()` — if content is an error page, cookie wall, or Crawl4AI error message, returns empty string to trigger fallback chain.
+Attempts a single scrape with given browser config, optional crawler strategy, and wait strategy. Returns `(content, garbage_type, status_code)` tuple. Checks `result.status_code` first — if >= 400, returns `("", "http_error", status_code)` immediately without content analysis (catches padded 404 pages). Content selection: `fit_markdown` if >= 200 chars (MIN_CONTENT_THRESHOLD), otherwise falls back to `raw_markdown`. This prevents PruningContentFilter from destroying table-heavy content (e.g. Wikipedia). Checks content via `is_garbage_content()` — if `cookie_wall` is detected, attempts `strip_consent_prefix()` first: if stripping yields different content that passes garbage detection, returns stripped content as success. All other garbage types (and cookie_wall when stripping fails) return empty string to trigger fallback chain.
 
 ### is_garbage_content()
 
@@ -36,6 +36,10 @@ Returns `str | None` — garbage type identifier or None if content is valid. De
 `_GARBAGE_MESSAGES` dict maps each type to a human-readable error message for the caller. `try_scrape()` logs garbage type on every detection.
 
 Called by both `try_scrape()` and `try_scrape_raw()` after content extraction.
+
+### strip_consent_prefix()
+
+Attempts to recover content from a cookie-wall page by stripping the leading consent block. Counts keyword density (CONSENT_WORDS: cookie, consent, einwilligung, tracking, akzeptieren, datenschutz, zweck) in the first 3000 chars. If density > CONSENT_DENSITY_THRESHOLD (5), searches for the first `#` or `##` heading after CONSENT_SKIP_OFFSET (300 chars) and returns content from that heading onward. Returns original content unchanged if density is low (baseline pages) or no heading is found after the offset.
 
 ### truncate_content()
 
@@ -54,6 +58,9 @@ Returns plugin hint only for domains with dedicated MCP plugins (uses `PLUGIN_RO
 - `COOKIE_CONSENT_SELECTOR` — CSS selector string matching common cookie consent frameworks: CookieYes (cky-consent, cky-banner, cky-modal), OneTrust, Cookiebot, cc-banner, GDPR, cookie-banner, cookie-consent, cookie-notice, cookie-law. Note: `cky-modal` is critical — CookieYes stores the full Consent Preferences dialog (12K+ chars of cookie descriptions) in this container. Without it, only the small banner (236 chars) is removed.
 - `DEFAULT_MAX_CONTENT_LENGTH` — 15000 chars
 - `MIN_CONTENT_THRESHOLD` — 200 chars. fit_markdown below this triggers raw_markdown fallback.
+- `CONSENT_WORDS` — keyword list for consent density scoring: cookie, consent, einwilligung, tracking, akzeptieren, datenschutz, zweck
+- `CONSENT_DENSITY_THRESHOLD` — 5. Sum of CONSENT_WORDS occurrences in first 3000 chars must exceed this to trigger stripping.
+- `CONSENT_SKIP_OFFSET` — 300 chars. Heading search starts at this offset to skip banner fragments before the actual content starts.
 
 ## scrape_url_raw.py
 
