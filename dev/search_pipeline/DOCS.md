@@ -97,6 +97,33 @@ Fallback chain: scrape_url_workflow → SearXNG snippet → error marker. Each r
 - Winner (A/B/=) by avg score
 - New/lost URLs per query (detail section)
 
+## 10_engine_consensus.py
+
+**Purpose:** Evaluate engine weight calibration via consensus analysis. Measures how often each engine's results are corroborated by other engines.
+**Input:** Hardcoded test queries (13 queries, mix of technical, scientific, German-language).
+**Output:** Markdown report in 10_reports/ with per-engine consensus metrics.
+
+### CLI
+
+```bash
+./venv/bin/python dev/search_pipeline/10_engine_consensus.py
+```
+
+### Metrics per Engine
+
+- **Total URLs**: Unique URLs returned across all queries
+- **Consensus Rate**: % of engine's URLs also found by ≥1 other engine (higher = better signal quality)
+- **Unique URLs**: URLs found exclusively by this engine (discovery value)
+- **Avg Position**: Mean combined-ranking position across all results
+- **Top-20 Coverage**: URLs contributed to the top-20 consensus results per query
+
+### Usage
+
+1. Run script (takes ~30s for 13 queries with 2s delay)
+2. Read report in 10_reports/
+3. Paste results into `decisions/search04_weights.md` Evidenz section
+4. Calibrate weights based on consensus rate vs. unique value trade-off
+
 ## Workflow
 
 1. Edit queries.txt with test queries and `@profile:` assignments
