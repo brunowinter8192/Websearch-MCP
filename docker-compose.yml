@@ -20,6 +20,7 @@ services:
     volumes:
       - ./src/searxng:/etc/searxng:rw
       - ./src/searxng/patches/mojeek.py:/usr/local/searxng/searx/engines/mojeek.py:ro
+      - ./src/searxng/patches/semantic_scholar.py:/usr/local/searxng/searx/engines/semantic_scholar.py:ro
     environment:
       - SEARXNG_BASE_URL=http://localhost:8080/
     restart: unless-stopped

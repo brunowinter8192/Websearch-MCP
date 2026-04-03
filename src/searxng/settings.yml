@@ -87,6 +87,8 @@ engines:
     engine: semantic_scholar
     categories: general
     disabled: false
+    using_tor_proxy: false
+    proxies: {}
     weight: 2
   - name: crossref
     engine: crossref
