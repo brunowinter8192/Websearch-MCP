@@ -27,9 +27,41 @@ ENGINES = [
 ]
 
 TEST_QUERIES = [
+    # Tech/Code (EN)
     "python asyncio best practices",
-    "machine learning evaluation metrics",
+    "rust ownership borrow checker explained",
+    "fastapi websocket reconnect handler",
+    "docker compose health check restart policy",
+    "git rebase vs merge workflow",
+    "PostgreSQL query optimization composite index",
+    "react server components vs client components",
+    "nginx reverse proxy websocket configuration",
+    # Science (EN)
+    "transformer attention mechanism explained",
+    "RLHF reinforcement learning human feedback",
+    "vector database approximate nearest neighbor",
+    "RAG retrieval augmented generation benchmark",
+    "climate change carbon capture technology 2025",
+    "epidemiology cohort study design methodology",
+    # German (Alltag + Tech)
     "Bewerbung Lebenslauf Format Deutschland",
+    "Mietvertrag Kündigungsfrist gesetzliche Regelung",
+    "GmbH Gründung Kosten Schritte",
+    "Krankenversicherung Vergleich gesetzlich privat",
+    "Python Programmierung Anfänger Tutorial deutsch",
+    "Datenschutz DSGVO Website Impressum",
+    # Niche/Specific
+    "crawl4ai stealth browser detection bypass",
+    "SearXNG engine weight configuration",
+    "tmux session management scripting",
+    "trafilatura vs readability content extraction",
+    "SPLADE sparse retrieval model implementation",
+    # Broad/General
+    "best programming language 2025",
+    "how does DNS work",
+    "quantum computing error correction",
+    "kubernetes vs docker swarm comparison",
+    "open source alternative to notion",
 ]
 
 
@@ -55,8 +87,7 @@ def run_isolation_eval():
 
     summary = compute_per_engine_summary(engine_results)
     jaccard = compute_jaccard_matrix(engine_results)
-    report = build_report(engine_results, summary, jaccard)
-    save_report(report)
+    save_reports(engine_results, summary, jaccard)
 
 
 # FUNCTIONS
@@ -129,8 +160,8 @@ def compute_jaccard_matrix(engine_results: dict) -> dict:
     return jaccard
 
 
-# Build markdown report from collected data
-def build_report(engine_results: dict, summary: dict, jaccard: dict) -> str:
+# Build overlap_matrix.md: per-engine summary + unique ranking + Jaccard matrix
+def build_overlap_report(summary: dict, jaccard: dict) -> str:
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
     query_count = len(TEST_QUERIES)
 
@@ -142,7 +173,7 @@ def build_report(engine_results: dict, summary: dict, jaccard: dict) -> str:
     )
 
     lines = [
-        "# Engine Isolation Report",
+        "# Engine Isolation — Overlap Matrix",
         f"Date: {timestamp}",
         f"Queries evaluated: {query_count}",
         f"Engines tested: {len(ENGINES)}",
@@ -200,66 +231,59 @@ def build_report(engine_results: dict, summary: dict, jaccard: dict) -> str:
 
     lines += [
         "",
-        "## Per-Query Detail",
+        "## Metric Definitions",
         "",
-    ]
-
-    for qi, query in enumerate(TEST_QUERIES):
-        lines.append(f"### Query {qi + 1}: {query}")
-        lines.append("")
-        lines.append("| Engine | URLs returned | Overlap |")
-        lines.append("|--------|--------------|---------|")
-
-        all_query_urls: dict[str, set] = {
-            e: set(engine_results[e].get(qi, [])) for e in ENGINES
-        }
-
-        for engine in ENGINES:
-            urls = engine_results[engine].get(qi, [])
-            url_set = set(urls)
-            other_urls: set = set()
-            for other in ENGINES:
-                if other != engine:
-                    other_urls |= all_query_urls[other]
-            overlap = len(url_set & other_urls)
-            unique = len(url_set - other_urls)
-            count = len(urls)
-            lines.append(f"| {engine} | {count} | {overlap} shared, {unique} unique |")
-
-        lines.append("")
-        for engine in ENGINES:
-            urls = engine_results[engine].get(qi, [])
-            if not urls:
-                continue
-            other_urls: set = set()
-            for other in ENGINES:
-                if other != engine:
-                    other_urls |= all_query_urls[other]
-            lines.append(f"**{engine}:**")
-            for pos, url in enumerate(urls, 1):
-                marker = "=" if url in other_urls else "*"
-                lines.append(f"  {pos}. [{marker}] {url}")
-            lines.append("")
-
-    lines += [
-        "## Legend",
-        "",
-        "- **[=]** URL also found by ≥1 other engine (overlap)",
-        "- **[*]** URL found exclusively by this engine (unique)",
+        "- **Avg URLs/Query**: Mean number of URLs returned by this engine per query",
+        "- **Total Unique URLs**: URLs found only by this engine (no other engine returned them for the same query)",
         "- **Consensus Rate**: % of engine's URLs also returned by ≥1 other engine for the same query",
-        "- **Total Unique URLs**: URLs found only by this engine across all queries (not found by any other engine for the same query)",
+        "- **Avg Position**: Mean position in the engine's result list across all queries",
     ]
 
     return "\n".join(lines)
 
 
-# Save report to 11_reports directory
-def save_report(report: str) -> None:
+# Build engine_<name>.md: all queries with top-N URLs and positions for one engine
+def build_engine_report(engine: str, engine_results: dict) -> str:
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    lines = [
+        f"# Engine: {engine}",
+        f"Date: {timestamp}",
+        f"Queries: {len(TEST_QUERIES)} | Max URLs per query: {TOP_N}",
+        "",
+    ]
+
+    for qi, query in enumerate(TEST_QUERIES):
+        urls = engine_results[engine].get(qi, [])
+        lines.append(f"## Query {qi + 1}: {query}")
+        lines.append("")
+        if not urls:
+            lines.append("_No results returned._")
+        else:
+            lines.append("| Pos | URL |")
+            lines.append("|-----|-----|")
+            for pos, url in enumerate(urls, 1):
+                lines.append(f"| {pos} | {url} |")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+# Save overlap_matrix.md and one engine_<name>.md per engine
+def save_reports(engine_results: dict, summary: dict, jaccard: dict) -> None:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    report_path = REPORTS_DIR / f"isolation_report_{timestamp}.md"
-    report_path.write_text(report)
-    print(f"Report saved: {report_path}")
+
+    overlap_report = build_overlap_report(summary, jaccard)
+    overlap_path = REPORTS_DIR / "overlap_matrix.md"
+    overlap_path.write_text(overlap_report)
+    print(f"Report saved: {overlap_path}")
+
+    for engine in ENGINES:
+        engine_report = build_engine_report(engine, engine_results)
+        filename = "engine_" + engine.replace(" ", "_") + ".md"
+        engine_path = REPORTS_DIR / filename
+        engine_path.write_text(engine_report)
+        print(f"Report saved: {engine_path}")
 
 
 if __name__ == "__main__":
