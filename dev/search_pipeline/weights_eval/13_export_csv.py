@@ -25,6 +25,7 @@ def run_csv_export():
     write_engine_summary(engine_data)
     write_overlap_pairwise(engine_data)
     write_query_coverage(engine_data)
+    write_query_unique_urls(engine_data)
 
 
 # FUNCTIONS
@@ -160,6 +161,21 @@ def write_query_coverage(engine_data: dict) -> None:
                 num_consensus = sum(1 for url in url_set if url in other_urls)
                 num_unique = len(url_set) - num_consensus
                 writer.writerow([engine, query, len(url_set), num_consensus, num_unique])
+    print(f"Saved: {path}")
+
+
+# Write query_unique_urls.csv: distinct URL count across all engines per query
+def write_query_unique_urls(engine_data: dict) -> None:
+    queries = get_all_queries(engine_data)
+    path = EVAL_DIR / "query_unique_urls.csv"
+    with path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["query", "total_unique_urls"])
+        for query in queries:
+            all_urls: set = set()
+            for queries_dict in engine_data.values():
+                all_urls |= {url for _, url in queries_dict.get(query, [])}
+            writer.writerow([query, len(all_urls)])
     print(f"Saved: {path}")
 
 
