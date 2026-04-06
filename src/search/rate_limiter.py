@@ -68,8 +68,8 @@ class RateLimiter:
         self._backoff_attempt = 0
 
 
-# Return per-engine singleton rate limiter
-def get_limiter(engine_name: str) -> RateLimiter:
+# Return per-engine singleton rate limiter with optional custom config
+def get_limiter(engine_name: str, max_requests: int = MAX_REQUESTS, window_seconds: float = WINDOW_SECONDS) -> RateLimiter:
     if engine_name not in _limiters:
-        _limiters[engine_name] = RateLimiter()
+        _limiters[engine_name] = RateLimiter(max_requests, window_seconds)
     return _limiters[engine_name]

@@ -3,3 +3,7 @@ crawl4ai
 requests
 nest-asyncio
 mcp
+pydoll-python
+beautifulsoup4
+lxml
+httpx

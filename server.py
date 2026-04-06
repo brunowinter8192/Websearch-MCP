@@ -1,18 +1,21 @@
 # INFRASTRUCTURE
 import asyncio
+import atexit
 import nest_asyncio
 from typing import Literal
 from fastmcp import FastMCP
 from mcp.types import TextContent
 
 from src.routing import check_plugin_routed
-from src.searxng.search_web import search_web_workflow
+from src.search.search_web import search_web_workflow
+from src.search.browser import close_browser
 from src.scraper.scrape_url import scrape_url_workflow
 from src.scraper.scrape_url_raw import scrape_url_raw_workflow
 from src.scraper.explore_site import explore_site_workflow
 from src.scraper.download_pdf import download_pdf_workflow
 
 nest_asyncio.apply()
+atexit.register(lambda: asyncio.run(close_browser()))
 
 mcp = FastMCP("SearXNG")
 
@@ -29,7 +32,7 @@ def search_web(
     pages: int = 3
 ) -> list[TextContent]:
     """Search the web. Fetches `pages` result pages and returns combined deduplicated results."""
-    return search_web_workflow(query, category, language, time_range, engines, pages)
+    return asyncio.run(search_web_workflow(query, category, language, time_range, engines, pages))
 
 
 @mcp.tool
