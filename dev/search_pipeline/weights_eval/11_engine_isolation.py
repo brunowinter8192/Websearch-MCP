@@ -74,7 +74,11 @@ def run_isolation_eval():
         for ei, engine in enumerate(ENGINES):
             print(f"  [{ei + 1}/{len(ENGINES)}] {engine}", file=sys.stderr)
             try:
-                results = fetch_search_results(query, "general", "en", None, engine, 1)
+                results = fetch_search_results(query, "", "en", None, engine, 1)
+                for r in results:
+                    reported_engines = r.get("engines", [])
+                    if reported_engines and engine not in reported_engines:
+                        print(f"    WARNING: Result from {reported_engines}, expected {engine}", file=sys.stderr)
                 urls = [r.get("url", "") for r in results if r.get("url")][:TOP_N]
             except Exception as e:
                 print(f"    SKIP: {e}", file=sys.stderr)
