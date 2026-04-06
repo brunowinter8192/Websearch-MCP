@@ -13,6 +13,11 @@ EVAL_DIR = REPORTS_DIR / "eval"
 QUERY_HEADER_RE = re.compile(r'^## Query \d+: (.+)$')
 TABLE_ROW_RE = re.compile(r'^\|\s*(\d+)\s*\|\s*(https?://[^\s|]+)')
 
+ENGINES = [
+    "google", "bing", "mojeek", "brave", "startpage",
+    "duckduckgo", "google scholar", "semantic scholar", "crossref",
+]
+
 
 # ORCHESTRATOR
 def run_csv_export():
@@ -164,18 +169,28 @@ def write_query_coverage(engine_data: dict) -> None:
     print(f"Saved: {path}")
 
 
-# Write query_unique_urls.csv: distinct URL count across all engines per query
+# Write query_unique_urls.csv: distinct URL count + per-engine exclusive URLs per query
 def write_query_unique_urls(engine_data: dict) -> None:
     queries = get_all_queries(engine_data)
+    engine_col_headers = [e.replace(" ", "_") for e in ENGINES]
     path = EVAL_DIR / "query_unique_urls.csv"
     with path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["query", "total_unique_urls"])
+        writer.writerow(["query", "total_unique_urls"] + engine_col_headers)
         for query in queries:
-            all_urls: set = set()
-            for queries_dict in engine_data.values():
-                all_urls |= {url for _, url in queries_dict.get(query, [])}
-            writer.writerow([query, len(all_urls)])
+            engine_url_sets = {
+                engine: {url for _, url in engine_data.get(engine, {}).get(query, [])}
+                for engine in ENGINES
+            }
+            all_urls: set = set().union(*engine_url_sets.values())
+            exclusive_counts = []
+            for engine in ENGINES:
+                other_urls: set = set()
+                for other in ENGINES:
+                    if other != engine:
+                        other_urls |= engine_url_sets[other]
+                exclusive_counts.append(len(engine_url_sets[engine] - other_urls))
+            writer.writerow([query, len(all_urls)] + exclusive_counts)
     print(f"Saved: {path}")
 
 
