@@ -17,7 +17,7 @@ from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from src.scraper.scrape_url import is_garbage_content, COOKIE_CONSENT_SELECTOR
 
 REPORTS_DIR = Path(__file__).parent / "12_reports"
-ENGINE_REPORTS_DIR = Path(__file__).parent / "11_reports"
+ENGINE_REPORTS_DIR = Path(__file__).parent / "../../search_pipeline/weights_eval/11_reports"
 DELAY_BETWEEN_URLS = 2
 MIN_CONTENT_THRESHOLD = 200
 
