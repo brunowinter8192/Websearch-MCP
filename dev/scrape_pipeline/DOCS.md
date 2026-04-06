@@ -152,6 +152,29 @@ Configs tested:
 ./venv/bin/python dev/scrape_pipeline/garbage_eval/09_garbage_fix_prototype.py
 ```
 
+### 10_live_garbage_test.py
+
+**Purpose:** Live integration test for garbage detection. Two modes: `--search QUERY` fires a live SearXNG search, scrapes the top 10 results, and runs garbage detection on each. `--edge-cases` scrapes known problem URLs (consent-prefix, padded 404, paywall). Results logged to `failures.jsonl` and saved as report.
+**Input:** Live SearXNG search or hardcoded edge-case URLs
+**Output:** `10_reports/live_garbage_test_<timestamp>.md`
+
+```bash
+./venv/bin/python dev/scrape_pipeline/garbage_eval/10_live_garbage_test.py --search "cookie policy GDPR compliance"
+./venv/bin/python dev/scrape_pipeline/garbage_eval/10_live_garbage_test.py --edge-cases
+```
+
+### 12_scrape_methods.py
+
+**Purpose:** Bulk scrape comparison across 3 browser methods. Reads URLs from engine isolation reports (`dev/search_pipeline/weights_eval/11_reports/engine_*.md`), deduplicates, and scrapes each URL 3 times with different configs: (1) networkidle, (2) domcontentloaded, (3) stealth+networkidle. Measures timing, content length, and garbage type per scrape.
+**Input:** `engine_*.md` files from `dev/search_pipeline/weights_eval/11_reports/`
+**Output:** `12_reports/url_pool.txt` (deduplicated URL list) + `12_reports/method_1_networkidle/`, `method_2_domcontentloaded/`, `method_3_stealth/` (one .md per URL with metadata header) + `12_reports/summary.md`
+
+```bash
+./venv/bin/python dev/scrape_pipeline/browser_eval/12_scrape_methods.py
+```
+
+Full run: ~5-6 hours for 660 URLs × 3 methods. Each .md includes metadata header (url, method, status_code, chars, time_seconds, garbage_type).
+
 ## Workflows
 
 ### Regression (browser_eval 01 → 02)

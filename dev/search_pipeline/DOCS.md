@@ -155,55 +155,70 @@ query three
 - Winner (A/B/=) by avg score
 - New/lost URLs per query (detail section)
 
-## content_eval/ → decisions/search01_engines (content quality aspect)
-
-### 04_content_eval.py
-
-**Purpose:** Scrape top URLs from a search report and evaluate content quality. Uses the same scraping pipeline as the MCP scrape_url tool.
-**Input:** Latest search report from `engines_eval/01_reports/` (or path via CLI argument).
-**Output:** Summary report in `04_reports/` plus individual .md files per URL in `04_content_<report_stem>/`.
-
-Imports `scrape_url_workflow` from `src/scraper/scrape_url` to ensure identical scraping behavior as the MCP tool. Scrapes top 5 URLs per query (TOP_N_PER_QUERY) with 2s delay. Content truncated to 50000 chars at paragraph boundary (EXCERPT_LENGTH) — effectively no truncation.
-
-Fallback chain: scrape_url_workflow → SearXNG snippet → error marker. Each result tagged with source (scraped, snippet, failed). Garbage detection for cookie banners, cloudflare, login walls.
-
 ## weights_eval/ → decisions/search04_weights
 
 ### 10_engine_consensus.py
 
-**Purpose:** Evaluate engine weight calibration via consensus analysis. Measures how often each engine's results are corroborated by other engines.
+**Purpose:** Evaluate engine weight calibration via consensus analysis. Queries SearXNG as a whole (aggregated) and measures how often each engine's results are corroborated by other engines.
 **Input:** Hardcoded test queries (13 queries, mix of technical, scientific, German-language).
 **Output:** Markdown report in `10_reports/` with per-engine consensus metrics.
-
-#### CLI
 
 ```bash
 ./venv/bin/python dev/search_pipeline/weights_eval/10_engine_consensus.py
 ```
 
-#### Metrics per Engine
+### 11_engine_isolation.py
 
-- **Total URLs**: Unique URLs returned across all queries
-- **Consensus Rate**: % of engine's URLs also found by ≥1 other engine (higher = better signal quality)
-- **Unique URLs**: URLs found exclusively by this engine (discovery value)
-- **Avg Position**: Mean combined-ranking position across all results
-- **Top-20 Coverage**: URLs contributed to the top-20 consensus results per query
+**Purpose:** Query each engine INDIVIDUALLY for the same set of queries. Produces per-engine URL lists and an overlap analysis across all engines. Unlike 10_engine_consensus.py, this isolates engines to see what each one contributes independently.
+**Input:** 30 hardcoded test queries (Tech/Code EN, Science EN, German, Niche, Broad). 9 engines tested.
+**Output:** `11_reports/overlap_matrix.md` (summary + Jaccard matrix) + one `engine_<name>.md` per engine (top 10 URLs per query).
 
-#### Usage
+```bash
+./venv/bin/python dev/search_pipeline/weights_eval/11_engine_isolation.py
+```
 
-1. Run script (takes ~30s for 13 queries with 2s delay)
-2. Read report in `10_reports/`
-3. Paste results into `decisions/search04_weights.md` Evidenz section
-4. Calibrate weights based on consensus rate vs. unique value trade-off
+Rate limiting: 5s between engine calls, 10s between queries. Full run: ~35 minutes.
+
+### 13_export_csv.py
+
+**Purpose:** Parse `11_reports/engine_*.md` files and export structured CSVs for analysis.
+**Input:** `11_reports/engine_*.md` files.
+**Output:** 5 CSVs in `11_reports/eval/`:
+
+| CSV | Content |
+|-----|---------|
+| `engine_urls.csv` | One row per engine × query × URL (raw data) |
+| `engine_summary.csv` | Per-engine aggregated metrics (total, unique, consensus rate) |
+| `overlap_pairwise.csv` | Jaccard similarity for every engine pair |
+| `query_coverage.csv` | Per engine × query breakdown (num_urls, consensus, unique) |
+| `query_unique_urls.csv` | Per query: total unique URLs + per-engine exclusive counts |
+
+```bash
+./venv/bin/python dev/search_pipeline/weights_eval/13_export_csv.py
+```
+
+### 14_tiered_ranking.py
+
+**Purpose:** Prototype for tiered ranking by engine count. Instead of SearXNG's score-based ranking, URLs are deduplicated and ranked by how many engines found them. Results split into 3 tiers: Top 20 (≥2 engines), Extended Consensus, Unique (1 engine only).
+**Input:** Query as CLI argument. Queries all 9 engines individually.
+**Output:** Markdown report in `14_reports/<sanitized_query>.md` with tiered URL tables.
+
+```bash
+./venv/bin/python dev/search_pipeline/weights_eval/14_tiered_ranking.py "python asyncio best practices"
+```
 
 ## Workflow
 
-1. Edit queries.txt with test queries and `@profile:` assignments
-2. Optionally edit profiles.yml to add/modify parameter sets
-3. Run: `./venv/bin/python dev/search_pipeline/engines_eval/01_engines.py`
-4. Read report in `engines_eval/01_reports/`
-5. Optionally compare: `./venv/bin/python dev/search_pipeline/engines_eval/01_engines.py --compare`
-6. For content quality: `./venv/bin/python dev/search_pipeline/content_eval/04_content_eval.py`
-7. Read content report in `content_eval/04_reports/` and individual files in `04_content_*/`
-8. To tune SearXNG config: edit src/searxng/settings.yml, restart Docker, run again
-9. Compare reports: `./venv/bin/python dev/search_pipeline/ranking_eval/03_ranking.py`
+### Engine Evaluation
+1. Run engine isolation: `./venv/bin/python dev/search_pipeline/weights_eval/11_engine_isolation.py` (~35 min)
+2. Export CSVs: `./venv/bin/python dev/search_pipeline/weights_eval/13_export_csv.py`
+3. Analyze overlap in `11_reports/eval/` CSVs
+4. Test tiered ranking: `./venv/bin/python dev/search_pipeline/weights_eval/14_tiered_ranking.py "your query"`
+
+### Ranking Comparison (A/B)
+1. Run search with config A: `./venv/bin/python dev/search_pipeline/engines_eval/01_engines.py`
+2. Change config in settings.yml, restart Docker
+3. Run again, compare: `./venv/bin/python dev/search_pipeline/ranking_eval/03_ranking.py`
+
+### Engine Health Check (post-update)
+1. After `docker compose pull`: `./venv/bin/python dev/search_pipeline/engines_eval/24_engine_health_check.py`
