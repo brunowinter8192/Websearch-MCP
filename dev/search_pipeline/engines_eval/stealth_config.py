@@ -14,7 +14,7 @@ class StealthConfig:
     )
     window_size: str = "1920,1080"
     headless: bool = True           # False for debugging
-    headless_new: bool = False      # --headless=new (modern, harder to detect)
+    headless_new: bool = True       # --headless=new (modern, harder to detect)
     lang: str = "en-US"
     accept_lang: str = "en-US,en;q=0.9"
     disable_blink_features: str = "AutomationControlled"
@@ -23,8 +23,8 @@ class StealthConfig:
     ])
     webrtc_leak_protection: bool = True
     use_gl: str | None = None       # "swiftshader" for software WebGL, None for real GPU
-    no_first_run: bool = True
-    no_default_browser_check: bool = True
+    no_first_run: bool = False      # pydoll adds --no-first-run by default; avoid duplicate
+    no_default_browser_check: bool = False  # pydoll adds --no-default-browser-check by default
     disable_reading_from_canvas: bool = False  # canvas fingerprint mitigation
     proxy_server: str | None = None            # --proxy-server=...
     disable_gpu: bool = False                  # --disable-gpu (headless stability)
