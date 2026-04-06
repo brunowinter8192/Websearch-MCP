@@ -12,45 +12,28 @@ from src.search.search_web import fetch_search_results
 logger = logging.getLogger(__name__)
 
 REPORTS_DIR = Path(__file__).parent / "25_reports"
+QUERIES_FILE = Path(__file__).parent.parent / "queries.txt"
 DELAY_BETWEEN_QUERIES = 3
 
-TEST_QUERIES = [
-    # Tech/Code (EN)
-    "python asyncio best practices",
-    "rust ownership borrow checker explained",
-    "fastapi websocket reconnect handler",
-    "docker compose health check restart policy",
-    "git rebase vs merge workflow",
-    "PostgreSQL query optimization composite index",
-    "react server components vs client components",
-    "nginx reverse proxy websocket configuration",
-    # Science (EN)
-    "transformer attention mechanism explained",
-    "RLHF reinforcement learning human feedback",
-    "vector database approximate nearest neighbor",
-    "RAG retrieval augmented generation benchmark",
-    "climate change carbon capture technology 2025",
-    "epidemiology cohort study design methodology",
-    # German
-    "Bewerbung Lebenslauf Format Deutschland",
-    "Mietvertrag Kündigungsfrist gesetzliche Regelung",
-    "GmbH Gründung Kosten Schritte",
-    "Krankenversicherung Vergleich gesetzlich privat",
-    "Python Programmierung Anfänger Tutorial deutsch",
-    "Datenschutz DSGVO Website Impressum",
-    # Niche/Specific
-    "crawl4ai stealth browser detection bypass",
-    "pydoll chromium CDP automation",
-    "tmux session management scripting",
-    "trafilatura vs readability content extraction",
-    "SPLADE sparse retrieval model implementation",
-    # Broad/General
-    "best programming language 2025",
-    "how does DNS work",
-    "quantum computing error correction",
-    "kubernetes vs docker swarm comparison",
-    "open source alternative to notion",
-]
+
+# Load general-profile queries from queries.txt
+def load_queries() -> list[str]:
+    queries = []
+    current_profile = "general"
+    with open(QUERIES_FILE, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            if line.startswith('@profile:'):
+                current_profile = line.split(':', 1)[1].strip()
+                continue
+            if current_profile == "general":
+                queries.append(line)
+    return queries
+
+
+TEST_QUERIES = load_queries()
 
 
 # ORCHESTRATOR

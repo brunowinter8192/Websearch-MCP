@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 # INFRASTRUCTURE
+import argparse
 import logging
 import sys
 import time
@@ -13,6 +14,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
 
 REPORTS_DIR = Path(__file__).parent / "26_reports"
+QUERIES_FILE = Path(__file__).parent.parent / "queries.txt"
 DELAY_BETWEEN_ENGINES = 3
 DELAY_BETWEEN_QUERIES = 5
 
@@ -28,64 +30,46 @@ ENGINES = [
     "crossref",
 ]
 
-TEST_QUERIES = [
-    # Tech/Code (EN)
-    "python asyncio best practices",
-    "rust ownership borrow checker explained",
-    "fastapi websocket reconnect handler",
-    "docker compose health check restart policy",
-    "git rebase vs merge workflow",
-    "PostgreSQL query optimization composite index",
-    "react server components vs client components",
-    "nginx reverse proxy websocket configuration",
-    # Science (EN)
-    "transformer attention mechanism explained",
-    "RLHF reinforcement learning human feedback",
-    "vector database approximate nearest neighbor",
-    "RAG retrieval augmented generation benchmark",
-    "climate change carbon capture technology 2025",
-    "epidemiology cohort study design methodology",
-    # German
-    "Bewerbung Lebenslauf Format Deutschland",
-    "Mietvertrag Kündigungsfrist gesetzliche Regelung",
-    "GmbH Gründung Kosten Schritte",
-    "Krankenversicherung Vergleich gesetzlich privat",
-    "Python Programmierung Anfänger Tutorial deutsch",
-    "Datenschutz DSGVO Website Impressum",
-    # Niche/Specific
-    "crawl4ai stealth browser detection bypass",
-    "pydoll chromium CDP automation",
-    "tmux session management scripting",
-    "trafilatura vs readability content extraction",
-    "SPLADE sparse retrieval model implementation",
-    # Broad/General
-    "best programming language 2025",
-    "how does DNS work",
-    "quantum computing error correction",
-    "kubernetes vs docker swarm comparison",
-    "open source alternative to notion",
-]
+
+# Load general-profile queries from queries.txt
+def load_queries() -> list[str]:
+    queries = []
+    current_profile = "general"
+    with open(QUERIES_FILE, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            if line.startswith('@profile:'):
+                current_profile = line.split(':', 1)[1].strip()
+                continue
+            if current_profile == "general":
+                queries.append(line)
+    return queries
 
 
 # ORCHESTRATOR
 
 # Run all queries against all engines, build and save report
-def run_smoke_test() -> None:
-    print(f"Smoke test: {len(TEST_QUERIES)} queries x {len(ENGINES)} engines", file=sys.stderr)
-    results = collect_all_results()
-    report = build_report(results)
+def run_smoke_test(limit: int = 0) -> None:
+    queries = load_queries()
+    if limit > 0:
+        queries = queries[:limit]
+    print(f"Smoke test: {len(queries)} queries x {len(ENGINES)} engines", file=sys.stderr)
+    results = collect_all_results(queries)
+    report = build_report(results, queries)
     save_report(report)
 
 
 # FUNCTIONS
 
 # Collect results for every (query, engine) combination
-def collect_all_results() -> dict:
+def collect_all_results(queries: list[str]) -> dict:
     results = {}
-    total = len(TEST_QUERIES) * len(ENGINES)
+    total = len(queries) * len(ENGINES)
     done = 0
 
-    for qi, query in enumerate(TEST_QUERIES, 1):
+    for qi, query in enumerate(queries, 1):
         results[query] = {}
         for ei, engine in enumerate(ENGINES):
             done += 1
@@ -97,7 +81,7 @@ def collect_all_results() -> dict:
             if ei < len(ENGINES) - 1:
                 time.sleep(DELAY_BETWEEN_ENGINES)
 
-        if qi < len(TEST_QUERIES):
+        if qi < len(queries):
             time.sleep(DELAY_BETWEEN_QUERIES)
 
     return results
@@ -128,13 +112,13 @@ def query_engine(engine: str, query: str) -> dict:
 
 
 # Build summary stats per engine across all queries
-def build_engine_summary(results: dict) -> list[dict]:
+def build_engine_summary(results: dict, queries: list[str]) -> list[dict]:
     summary = []
     for engine in ENGINES:
         queries_ok = 0
         queries_zero = 0
         total_urls = 0
-        for query in TEST_QUERIES:
+        for query in queries:
             row = results[query][engine]
             if row["result_count"] > 0:
                 queries_ok += 1
@@ -153,14 +137,14 @@ def build_engine_summary(results: dict) -> list[dict]:
 
 
 # Build full markdown report
-def build_report(results: dict) -> str:
+def build_report(results: dict, queries: list[str]) -> str:
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-    summary = build_engine_summary(results)
+    summary = build_engine_summary(results, queries)
 
     lines = [
         "# All-Engines Smoke Test",
         f"Date: {timestamp}",
-        f"Queries: {len(TEST_QUERIES)} | Engines: {len(ENGINES)}",
+        f"Queries: {len(queries)} | Engines: {len(ENGINES)}",
         "",
         "## Summary Table",
         "",
@@ -175,7 +159,7 @@ def build_report(results: dict) -> str:
 
     lines += ["", "## Per-Query Detail", ""]
 
-    for qi, query in enumerate(TEST_QUERIES, 1):
+    for qi, query in enumerate(queries, 1):
         lines.append(f'### Query {qi}: "{query}"')
         lines.append("")
         lines.append("| Engine | Results | Time(s) | Sample URL |")
@@ -202,4 +186,8 @@ def save_report(report: str) -> None:
 
 
 if __name__ == "__main__":
-    run_smoke_test()
+    parser = argparse.ArgumentParser(description="Run all-engines smoke test")
+    parser.add_argument("--limit", type=int, default=0,
+                        help="Limit to first N queries (0 = all)")
+    args = parser.parse_args()
+    run_smoke_test(limit=args.limit)
