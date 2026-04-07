@@ -247,6 +247,13 @@ async def _run_one_tab(browser, query: str, engine: str, config: StealthConfig) 
             elapsed = time.monotonic() - start
             return QueryResult(query, engine, 0, elapsed, "consent_redirect", "")
 
+        if cfg.get("captcha_detect_js"):
+            raw = await tab.execute_script(cfg["captcha_detect_js"])
+            detected = _extract_nested(raw)
+            if detected:
+                elapsed = time.monotonic() - start
+                return QueryResult(query, engine, 0, elapsed, "slider_captcha", "")
+
         await asyncio.sleep(DOM_SETTLE_SECONDS)
         items = await _parse_results(tab, cfg)
         elapsed = time.monotonic() - start

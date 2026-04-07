@@ -138,6 +138,12 @@ JSON.stringify((function() {
         "url_fn": _brave_url,
         "wait": "poll",
         "wait_js": "return document.querySelectorAll('div.snippet').length",
+        "captcha_detect_js": """
+(function() {
+    var dlg = document.querySelector('dialog .captcha-card, div.captcha-card');
+    return dlg ? true : false;
+})()
+""",
         "parse_js": """
 JSON.stringify((function() {
     var snippets = document.querySelectorAll('div.snippet');
