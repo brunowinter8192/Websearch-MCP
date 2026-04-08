@@ -6,8 +6,7 @@
     "name": "Bruno Winter"
   },
   "keywords": ["searxng", "search", "scraper", "mcp", "web"],
-  "skills": ["./skills/agent-web-research/"],
-  "agents": ["./agents/web-research.md"],
+  "skills": ["./skills/web-research/"],
   "commands": ["./commands/crawl-site.md"],
   "mcpServers": {
     "searxng": {
