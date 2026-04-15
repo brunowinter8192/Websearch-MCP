@@ -8,15 +8,16 @@ See [sources/sources.md](sources/sources.md).
 
 ## Pipeline Components
 
-### Search Pipeline (SearXNG API)
+### Search Pipeline (`src/search/`, pydoll-based)
 
 | Component | Implementation | Config |
 |-----------|---------------|--------|
-| **Engines (general)** | Google, Bing, Brave, Startpage, Mojeek, Scholar, Semantic Scholar, CrossRef | weights 1-2, DDG disabled, suspended_times=0 (disabled) |
+| **Engines (active)** | Google, Bing, Google Scholar, CrossRef | 4-engine set after engine-cut 2026-04-15 |
 | **Engines (plugin)** | ArXiv, GitHub, Reddit | discovery-only, content via MCP plugins |
-| **Routing** | Tor SOCKS5 proxy (Brave, Startpage) / Direct (Google, DDG, Bing, Mojeek, Scholar, Semantic Scholar) | Split architecture |
-| **Patches** | Mojeek (arc=none fix), Semantic Scholar (session cookie management) | Docker volume-mounted at /usr/local/searxng/searx/engines/ |
-| **Ranking** | Hostname priority/depriority/remove plugin | MAX_RESULTS=80, SNIPPET_LENGTH=5000 |
+| **Browser** | pydoll Chrome (stealth fingerprint patches, per-engine JS selectors) | `src/search/browser.py`, `src/search/engines/`, see `dev/search_pipeline/engines_eval/stealth_config.py` |
+| **Rate Limiting** | Token-bucket per engine with jitter + backoff | `src/search/rate_limiter.py` |
+| **Orchestration** | `asyncio.gather` parallel fetch, deduplicated, formatted as TextContent | `src/search/search_web.py`, SNIPPET_LENGTH=5000 |
+| **Parked** | Brave (PoW CAPTCHA incompatible with parallel architecture) | See `decisions/stealth01_detection_layers.md`, dev configs parked with `# PARKED` marker |
 
 ### Scrape Pipeline (Crawl4AI)
 
@@ -50,8 +51,10 @@ See [sources/sources.md](sources/sources.md).
 
 | File | Component |
 |------|-----------|
-| `src/searxng/search_web.py` | Search API wrapper |
-| `src/searxng/settings.yml` | SearXNG instance config (engines, proxy, hostnames) |
+| `src/search/search_web.py` | Search orchestrator (parallel engine fetch + dedup) |
+| `src/search/browser.py` | pydoll Chrome lifecycle (shared singleton) |
+| `src/search/rate_limiter.py` | Per-engine token bucket |
+| `src/search/engines/` | Per-engine parsers: `google.py`, `bing.py`, `scholar.py`, `crossref.py` |
 | `src/scraper/scrape_url.py` | URL scraping (filtered) |
 | `src/scraper/scrape_url_raw.py` | Raw URL scraping (for RAG indexing) |
 | `src/scraper/download_pdf.py` | PDF file download |
@@ -87,10 +90,10 @@ searxng/
 │   └── agent03_coverage.md
 ├── src/                            → [DOCS.md](src/DOCS.md)
 │   ├── routing.py                  → Plugin domain routing
+│   ├── search/                     → [DOCS.md](src/search/DOCS.md) — pydoll stealth search (4 engines)
+│   │   └── engines/                → Per-engine parsers (google, bing, scholar, crossref)
 │   ├── scraper/                    → [DOCS.md](src/scraper/DOCS.md)
-│   ├── searxng/                    → [DOCS.md](src/searxng/DOCS.md)
-│   │   └── patches/                → SearXNG engine patches (Docker volume-mounted)
-│   ├── crawler/                    → [DOCS.md](src/crawler/DOCS.md)
+│   ├── crawler/                    → [DOCS.md](src/crawler/DOCS.md) — CLI-only (`/crawl-site` pipeline)
 │   └── spawn/                      → Worker spawn utilities (in src/DOCS.md)
 ├── dev/                            → [DOCS.md](dev/DOCS.md)
 │   ├── search_pipeline/            → [DOCS.md](dev/search_pipeline/DOCS.md)

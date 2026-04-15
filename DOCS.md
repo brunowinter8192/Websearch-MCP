@@ -4,7 +4,7 @@ MCP server entry point, batch crawl tools, and startup script.
 
 ## server.py
 
-**Purpose:** FastMCP server exposing web search and scraping capabilities as MCP tools. Registers four tools: `search_web`, `scrape_url`, `scrape_url_raw`, `explore_site`.
+**Purpose:** FastMCP server exposing web search and scraping capabilities as MCP tools. Registers five tools: `search_web`, `scrape_url`, `scrape_url_raw`, `explore_site`, `download_pdf`.
 **Input:** None (server process started by mcp-start.sh or Claude Code).
 **Output:** MCP tool responses via FastMCP protocol.
 
@@ -89,5 +89,5 @@ Filters sitemap URLs to match the seed URL's path prefix. Fixes: `playwright.dev
 
 ## Documentation Tree
 
-- [src/DOCS.md](src/DOCS.md) — Source modules (scraper, searxng, crawler, spawn)
+- [src/DOCS.md](src/DOCS.md) — Source modules (search, scraper, crawler, spawn)
 - [dev/DOCS.md](dev/DOCS.md) — Development pipelines and cleanup scripts

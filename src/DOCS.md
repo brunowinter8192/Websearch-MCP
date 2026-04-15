@@ -32,6 +32,6 @@ pane=$(spawn_claude_worker_from_file "workers" "my-task" "/path/to/project" "opu
 
 ## Documentation Tree
 
+- [search/DOCS.md](search/DOCS.md) — pydoll stealth search pipeline (4 engines, parallel fetch)
 - [scraper/DOCS.md](scraper/DOCS.md) — URL scraping and site exploration tools
-- [searxng/DOCS.md](searxng/DOCS.md) — SearXNG API wrapper and configuration
-- [crawler/DOCS.md](crawler/DOCS.md) — Full-site crawl and URL discovery CLI tools
+- [crawler/DOCS.md](crawler/DOCS.md) — Full-site crawl and URL discovery CLI tools (`/crawl-site` pipeline)

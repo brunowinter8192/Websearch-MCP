@@ -109,6 +109,23 @@ CLI flags: `engine` (positional), `query` (positional), `--headed` (visible brow
 
 CLI flags: `--engine <name>` (filter to one engine), `--limit N` (only first N queries), `--headed`
 
+## Internal Helpers
+
+Extracted during the Phase-2 refactor (2026-04-15) to keep each script under 200 LOC. `_`-prefix signals "internal to this directory, imported by sibling scripts, not meant for direct execution".
+
+| Helper | Purpose | Imported by |
+|---|---|---|
+| `_stealth_builders.py` | `build_chrome_args`, `build_js_patches`, `build_cdp_config` from `StealthConfig` dataclass | `27_stealth_test.py`, `28_stress_test.py` |
+| `_engines_report.py` | MD report builder for `01_engines.py` (quality report, top domains, per-query tables) | `01_engines.py` |
+| `_stealth_browser.py` | pydoll browser lifecycle + per-engine navigation/parsing for `27_stealth_test.py` | `27_stealth_test.py` |
+| `_stealth_report.py` | MD report builder for `27_stealth_test.py` (single-engine test output) | `27_stealth_test.py` |
+| `_stress_browser.py` | pydoll tab lifecycle + consent injection + per-tab query runner | `28_stress_test.py` |
+| `_stress_engines.py` | Per-engine query runner (pydoll + httpx branches) + CrossRef REST call | `28_stress_test.py` |
+| `_stress_report.py` | MD report builder for `28_stress_test.py` (X/30 grid + timing) | `28_stress_test.py` |
+| `_stress_types.py` | `QueryResult` dataclass shared across stress-test modules | `28_stress_test.py`, `_stress_engines.py`, `_stress_report.py` |
+
+In `weights_eval/`: `_isolation_report.py` holds the overlap / Jaccard report builders for `11_engine_isolation.py`.
+
 ## Parked: Brave & Dropped Engines
 
 ### Drop Decision
