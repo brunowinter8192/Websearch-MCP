@@ -8,7 +8,7 @@ science:
   category: general
   language: en
   time_range: year
-  engines: "google scholar,semantic scholar,crossref"
+  engines: "google scholar,crossref"
 
 it:
   category: general

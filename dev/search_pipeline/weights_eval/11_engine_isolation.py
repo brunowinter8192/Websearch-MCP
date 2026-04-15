@@ -3,13 +3,12 @@
 # INFRASTRUCTURE
 import sys
 import time
-from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 from src.search.search_web import fetch_search_results
+from _isolation_report import save_reports
 
-REPORTS_DIR = Path(__file__).parent / "11_reports"
 DELAY_BETWEEN_ENGINES = 5
 DELAY_BETWEEN_QUERIES = 10
 TOP_N = 10
@@ -17,12 +16,7 @@ TOP_N = 10
 ENGINES = [
     "google",
     "bing",
-    "mojeek",
-    "brave",
-    "startpage",
-    "duckduckgo",
     "google scholar",
-    "semantic scholar",
     "crossref",
 ]
 
@@ -91,7 +85,7 @@ def run_isolation_eval():
 
     summary = compute_per_engine_summary(engine_results)
     jaccard = compute_jaccard_matrix(engine_results)
-    save_reports(engine_results, summary, jaccard)
+    save_reports(engine_results, summary, jaccard, ENGINES, TEST_QUERIES, TOP_N)
 
 
 # FUNCTIONS
@@ -156,138 +150,9 @@ def compute_jaccard_matrix(engine_results: dict) -> dict:
             set_a = global_sets[a]
             set_b = global_sets[b]
             union = set_a | set_b
-            if not union:
-                jaccard[a][b] = 0.0
-            else:
-                jaccard[a][b] = len(set_a & set_b) / len(union)
+            jaccard[a][b] = 0.0 if not union else len(set_a & set_b) / len(union)
 
     return jaccard
-
-
-# Build overlap_matrix.md: per-engine summary + unique ranking + Jaccard matrix
-def build_overlap_report(summary: dict, jaccard: dict) -> str:
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-    query_count = len(TEST_QUERIES)
-
-    sorted_by_unique = sorted(
-        ENGINES, key=lambda e: summary[e]["unique_urls"], reverse=True
-    )
-    sorted_by_consensus = sorted(
-        ENGINES, key=lambda e: summary[e]["consensus_rate"], reverse=True
-    )
-
-    lines = [
-        "# Engine Isolation — Overlap Matrix",
-        f"Date: {timestamp}",
-        f"Queries evaluated: {query_count}",
-        f"Engines tested: {len(ENGINES)}",
-        f"Max URLs per engine per query: {TOP_N}",
-        "",
-        "## Per-Engine Summary",
-        "",
-        "| Engine | Avg URLs/Query | Total Unique URLs | Consensus Rate | Avg Position |",
-        "|--------|---------------|-------------------|----------------|--------------|",
-    ]
-
-    for engine in sorted_by_consensus:
-        s = summary[engine]
-        avg_u = f"{s['avg_urls_per_query']:.1f}"
-        unique = s["unique_urls"]
-        cr = f"{s['consensus_rate'] * 100:.0f}%"
-        avg_p = f"{s['avg_position']:.1f}" if s["avg_position"] > 0 else "—"
-        lines.append(f"| {engine} | {avg_u} | {unique} | {cr} | {avg_p} |")
-
-    lines += [
-        "",
-        "## Top Unique-Value Engines",
-        "",
-        "Engines ranked by URLs found exclusively by them (no other engine returned the same URL for the same query).",
-        "",
-        "| Rank | Engine | Unique URLs |",
-        "|------|--------|-------------|",
-    ]
-
-    for rank, engine in enumerate(sorted_by_unique, 1):
-        lines.append(f"| {rank} | {engine} | {summary[engine]['unique_urls']} |")
-
-    lines += [
-        "",
-        "## Pairwise Jaccard Similarity Matrix",
-        "",
-        "Jaccard = |A ∩ B| / |A ∪ B| using global URL sets across all queries. Higher = more overlap.",
-        "",
-    ]
-
-    short_names = {e: e[:10] for e in ENGINES}
-    header_cells = ["Engine"] + [short_names[e] for e in ENGINES]
-    lines.append("| " + " | ".join(header_cells) + " |")
-    lines.append("|" + "---------|" * len(header_cells))
-
-    for a in ENGINES:
-        row = [short_names[a]]
-        for b in ENGINES:
-            val = jaccard[a][b]
-            if a == b:
-                row.append("—")
-            else:
-                row.append(f"{val:.2f}")
-        lines.append("| " + " | ".join(row) + " |")
-
-    lines += [
-        "",
-        "## Metric Definitions",
-        "",
-        "- **Avg URLs/Query**: Mean number of URLs returned by this engine per query",
-        "- **Total Unique URLs**: URLs found only by this engine (no other engine returned them for the same query)",
-        "- **Consensus Rate**: % of engine's URLs also returned by ≥1 other engine for the same query",
-        "- **Avg Position**: Mean position in the engine's result list across all queries",
-    ]
-
-    return "\n".join(lines)
-
-
-# Build engine_<name>.md: all queries with top-N URLs and positions for one engine
-def build_engine_report(engine: str, engine_results: dict) -> str:
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-    lines = [
-        f"# Engine: {engine}",
-        f"Date: {timestamp}",
-        f"Queries: {len(TEST_QUERIES)} | Max URLs per query: {TOP_N}",
-        "",
-    ]
-
-    for qi, query in enumerate(TEST_QUERIES):
-        urls = engine_results[engine].get(qi, [])
-        lines.append(f"## Query {qi + 1}: {query}")
-        lines.append("")
-        if not urls:
-            lines.append("_No results returned._")
-        else:
-            lines.append("| Pos | URL |")
-            lines.append("|-----|-----|")
-            for pos, url in enumerate(urls, 1):
-                lines.append(f"| {pos} | {url} |")
-        lines.append("")
-
-    return "\n".join(lines)
-
-
-# Save overlap_matrix.md and one engine_<name>.md per engine
-def save_reports(engine_results: dict, summary: dict, jaccard: dict) -> None:
-    REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-
-    overlap_report = build_overlap_report(summary, jaccard)
-    overlap_path = REPORTS_DIR / "overlap_matrix.md"
-    overlap_path.write_text(overlap_report)
-    print(f"Report saved: {overlap_path}")
-
-    for engine in ENGINES:
-        engine_report = build_engine_report(engine, engine_results)
-        filename = "engine_" + engine.replace(" ", "_") + ".md"
-        engine_path = REPORTS_DIR / filename
-        engine_path.write_text(engine_report)
-        print(f"Report saved: {engine_path}")
 
 
 if __name__ == "__main__":
