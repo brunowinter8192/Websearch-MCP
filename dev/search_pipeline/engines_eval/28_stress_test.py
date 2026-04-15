@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
-from duckduckgo_search import DDGS
 from pydoll.browser import Chrome
 from pydoll.browser.options import ChromiumOptions
 from pydoll.commands import PageCommands
@@ -26,7 +25,15 @@ from engine_selectors import ENGINE_SELECTORS, HTTPX_ENGINES
 QUERIES_FILE = Path(__file__).parent.parent / "queries.txt"
 REPORTS_DIR = Path(__file__).parent / "28_reports"
 SESSION_BASE = str(Path.home() / ".searxng-mcp" / "stress-test")
-PYDOLL_ENGINES = ["google", "bing", "brave", "startpage", "mojeek", "google scholar"]
+# PARKED: brave commented out — PoW CAPTCHA incompatible with asyncio.gather architecture
+# See DOCS.md "Parked: Brave & Dropped Engines" and decisions/stealth01_detection_layers.md
+# To resume: un-comment brave here and un-comment brave entry in engine_selectors.py
+PYDOLL_ENGINES = [
+    "google",
+    "bing",
+    # "brave",  # PARKED
+    "google scholar",
+]
 HTTPX_ENGINE_LIST = sorted(HTTPX_ENGINES)
 CROSSREF_MAILTO = "stress-test@searxng-mcp.local"
 
@@ -279,47 +286,9 @@ async def _run_one_tab(browser, query: str, engine: str, config: StealthConfig) 
 
 # Dispatch httpx query to the right engine implementation
 async def _run_one_httpx(client: httpx.AsyncClient, engine: str, query: str) -> QueryResult:
-    if engine == "duckduckgo":
-        return await _query_duckduckgo(query)
-    if engine == "semantic scholar":
-        return await _query_semantic_scholar(client, query)
     if engine == "crossref":
         return await _query_crossref(client, query)
     return QueryResult(query, engine, 0, 0.0, f"unknown httpx engine: {engine}", "")
-
-
-# Query DuckDuckGo via duckduckgo_search library (sync, wrapped in executor)
-async def _query_duckduckgo(query: str) -> QueryResult:
-    start = time.monotonic()
-    try:
-        loop = asyncio.get_event_loop()
-        items = await loop.run_in_executor(
-            None, lambda: list(DDGS().text(query, max_results=10))
-        )
-        elapsed = time.monotonic() - start
-        first_title = items[0].get("title", "")[:60] if items else ""
-        return QueryResult(query, "duckduckgo", len(items), elapsed, None, first_title)
-    except Exception as e:
-        elapsed = time.monotonic() - start
-        return QueryResult(query, "duckduckgo", 0, elapsed, str(e)[:120], "")
-
-
-# Query Semantic Scholar REST API
-async def _query_semantic_scholar(client: httpx.AsyncClient, query: str) -> QueryResult:
-    start = time.monotonic()
-    try:
-        resp = await client.get(
-            "https://api.semanticscholar.org/graph/v1/paper/search",
-            params={"query": query, "limit": 10},
-        )
-        resp.raise_for_status()
-        items = resp.json().get("data", [])
-        elapsed = time.monotonic() - start
-        first_title = items[0].get("title", "")[:60] if items else ""
-        return QueryResult(query, "semantic scholar", len(items), elapsed, None, first_title)
-    except Exception as e:
-        elapsed = time.monotonic() - start
-        return QueryResult(query, "semantic scholar", 0, elapsed, str(e)[:120], "")
 
 
 # Query CrossRef REST API (polite pool via mailto header)
@@ -484,7 +453,7 @@ def _save_report(report: str) -> str:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Stress test — all queries × 9 engines (parallel)")
+    parser = argparse.ArgumentParser(description="Stress test — all queries × active engines (google, bing, google scholar, crossref) in parallel")
     parser.add_argument("--headed", action="store_true", help="Run with visible browser")
     parser.add_argument("--limit", type=int, default=None, help="Only first N queries")
     parser.add_argument("--engine", type=str, default=None, help="Only test this engine")

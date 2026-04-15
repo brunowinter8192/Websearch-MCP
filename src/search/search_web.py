@@ -5,12 +5,7 @@ from mcp.types import TextContent
 
 from src.search.engines.google import GoogleEngine
 from src.search.engines.bing import BingEngine
-from src.search.engines.brave import BraveEngine
-from src.search.engines.startpage import StartpageEngine
-from src.search.engines.mojeek import MojeekEngine
-from src.search.engines.duckduckgo import DuckDuckGoEngine
 from src.search.engines.scholar import ScholarEngine
-from src.search.engines.semantic_scholar import SemanticScholarEngine
 from src.search.engines.crossref import CrossRefEngine
 
 logger = logging.getLogger(__name__)
@@ -20,12 +15,7 @@ SNIPPET_LENGTH = 5000
 ENGINES = {
     "google": GoogleEngine(),
     "bing": BingEngine(),
-    "brave": BraveEngine(),
-    "startpage": StartpageEngine(),
-    "mojeek": MojeekEngine(),
-    "duckduckgo": DuckDuckGoEngine(),
     "google scholar": ScholarEngine(),
-    "semantic scholar": SemanticScholarEngine(),
     "crossref": CrossRefEngine(),
 }
 

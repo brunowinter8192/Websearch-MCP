@@ -273,7 +273,7 @@ def _save_report(engine: str, report: str) -> str:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Stealth config test — one engine, one query")
-    parser.add_argument("engine", help="Engine name: google, bing, brave, startpage, mojeek, 'google scholar'")
+    parser.add_argument("engine", help="Engine name: google, bing, 'google scholar' (active); brave requires un-commenting in engine_selectors.py")
     parser.add_argument("query", help="Search query")
     parser.add_argument("--headed", action="store_true", help="Run with visible browser")
     parser.add_argument("--screenshot", action="store_true", help="Save screenshot to 27_reports/screenshots/")

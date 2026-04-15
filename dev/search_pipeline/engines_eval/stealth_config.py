@@ -88,11 +88,8 @@ class StealthConfig:
         "google": {"max_requests": 5, "window_seconds": 60},
         "google scholar": {"max_requests": 3, "window_seconds": 60},
         "bing": {"max_requests": 10, "window_seconds": 60},
+        # PARKED — brave config retained for future dev testing via 27_stealth_test.py
         "brave": {"max_requests": 8, "window_seconds": 60},
-        "startpage": {"max_requests": 10, "window_seconds": 60},
-        "mojeek": {"max_requests": 10, "window_seconds": 60},
-        "duckduckgo": {"max_requests": 10, "window_seconds": 60},
-        "semantic scholar": {"max_requests": 6, "window_seconds": 60},
         "crossref": {"max_requests": 10, "window_seconds": 60},
     })
 

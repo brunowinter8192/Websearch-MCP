@@ -18,7 +18,7 @@ from crawl4ai import BrowserConfig
 from crawl4ai.content_filter_strategy import PruningContentFilter
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
-from src.searxng.search_web import fetch_search_results
+from src.search.search_web import fetch_search_results
 from src.scraper.scrape_url import is_garbage_content, log_scrape_failure, try_scrape
 
 REPORTS_DIR = Path(__file__).parent / "10_reports"

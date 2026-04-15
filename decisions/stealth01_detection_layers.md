@@ -151,6 +151,51 @@ Pending — nur 5-Query-Tests durchgeführt, keine belastbaren 30/30 Runs.
 - Residential Proxies als Alternative zu Tor: Nicht verfügbar, aber wäre optimale IP-Rotation
 - Camoufox: Könnte mit zusätzlichen Firefox-spezifischen Stealth-Settings besser werden — nicht weiter exploriert
 
+## Verdict: Brave & Dropped Engines — Final Decision (2026-04-xx)
+
+### Dropped Engines
+
+| Engine | Score | Grund |
+|--------|-------|-------|
+| Brave | 1–10/30 | PoW CAPTCHA, keine Kombination erreicht 30/30 |
+| Startpage | 0/30 | Zero Results, Root Cause unklar |
+| DuckDuckGo | 6/30 | Redirect zu Bing via ddgs-Bug |
+| Mojeek | 15/30 | IP-basiertes Rate-Limit (15 req/60s, nicht umgehbar) |
+| Semantic Scholar | 3/30 | 429 Rate-Limit (API) |
+
+**Survivor-Set:** Google, Bing, Google Scholar, CrossRef — alle 30/30 im Stresstest 2026-04-07.
+
+### Brave — Entscheidung & Rationale
+
+**Entscheidung: Brave wird gedroppt.**
+
+Kern-Grund: Alle CAPTCHA-Lösungen (Warten, Klick-Lösung, API) sind inkompatibel mit der `asyncio.gather` Parallel-Engine-Architektur in `src/search/search_web.py`. In `_query_engines_concurrent()` laufen alle Engines parallel — die langsamste Engine blockiert die gesamte Search-Response bis alle fertig sind. Google liefert in ~0.2s. Ein Brave-CAPTCHA erzeugt 10–15s Minimum-Latenz pro Query. Das macht die gesamte Search-Response unbrauchbar.
+
+**Getestetes + verworfen:**
+- Stealth-Patch-Matrix (8 Kombinationen, beste: WebGL +7 → 10/30) — Tabelle in "Evidenz" Section
+- Patchright mit Chromium Binary → Slider CAPTCHA statt PoW, 0/30
+- Camoufox (Firefox, headless) → 7/30
+- PoW Reverse-Engineering (Argon2 + Privacy Pass VOPRF) — technisch lösbar, aber Latenz-Problem bleibt
+- Brave Search API (2K/Monat gratis) — hätte kein CAPTCHA, aber Latenz-Architektur-Problem bleibt bei Fallbacks
+
+**Parked state:** Brave-Config und Selektoren bleiben in `engine_selectors.py` und `stealth_config.py` (als `# PARKED` kommentiert). Brave-Entry in `28_stress_test.py` ist auskommentiert.
+
+### Wie Brave-Arbeit fortgesetzt werden kann
+
+**Dev-Scripts für Brave-Testing:**
+- `dev/search_pipeline/engines_eval/27_stealth_test.py brave "<query>" --screenshot` — Single-Query, zeigt CAPTCHA sofort
+- `dev/search_pipeline/engines_eval/28_stress_test.py --engine brave --limit 30` — 30-Query Stresstest
+
+**Park-State:**
+- `engine_selectors.py`: Brave-Entry auskommentiert (`# PARKED`)
+- `stealth_config.py` `rate_limits`: Brave-Entry bleibt (aktiv für dev-Tests via 27_stealth_test.py)
+- `28_stress_test.py` `PYDOLL_ENGINES`: Brave auskommentiert
+
+**Voraussetzung für Resume:**
+1. Architektur-Problem lösen: Brave muss aus `asyncio.gather` raus (eigener Timeout, Fallback auf restliche 3 Engines wenn CAPTCHA)
+2. Dann: Patchright mit echtem Chrome Binary testen (`patchright install chrome` + `channel="chrome"` + headless=True) — wurde nie korrekt getestet
+3. Alternativ: Brave Search API evaluieren (kein CAPTCHA, aber dann Fallback-Architektur nötig)
+
 ## Quellen
 
 - `dev/search_pipeline/engines_eval/stealth_config.py` — Patch-Implementierung
