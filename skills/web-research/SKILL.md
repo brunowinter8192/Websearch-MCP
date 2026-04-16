@@ -219,7 +219,6 @@ These URLs require dedicated MCP plugins for proper access:
 
 ## Known Limitations
 
-- **SearXNG instance required** — must be running on localhost:8080
 - **Up to ~150 results per query** — server fetches 3 pages by default and deduplicates
 - **Scraper optimized for content sites** — articles, docs, wikis work best
 - **scrape_url uses PruningContentFilter** — may damage code blocks. Use scrape_url_raw for full fidelity

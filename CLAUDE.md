@@ -71,7 +71,7 @@ See [sources/sources.md](sources/sources.md).
 ```
 searxng/
 ├── server.py
-├── mcp-start.sh                    → Sources .env, starts Docker + MCP server
+├── mcp-start.sh                    → Sources .env, bootstraps venv + starts MCP server
 ├── .env.example                    → Template for SEARXNG_PROJECT_ROOT
 ├── requirements.txt
 ├── README.md                       → [Setup & External Docs](README.md)

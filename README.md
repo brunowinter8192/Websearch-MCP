@@ -1,10 +1,10 @@
 # SearXNG
 
-Web search, URL scraping, and site crawling for Claude Code — powered by a local SearXNG instance with Tor-routed privacy.
+Web search, URL scraping, and site crawling for Claude Code — powered by a pydoll-based stealth browser engine.
 
 ## Features
 
-- **Multi-Engine Web Search** — 8 search engines (Google, Brave, Bing, Startpage, Mojeek, Google Scholar, Semantic Scholar, CrossRef) with automatic deduplication and ranking
+- **Multi-Engine Web Search** — 4 search engines (Google, Bing, Google Scholar, CrossRef) with automatic deduplication and ranking
 - **JavaScript-Aware Scraping** — full page rendering via Crawl4AI with stealth fallback, cookie consent removal, and garbage detection
 - **Site Exploration** — sitemap and BFS-based URL discovery for crawl planning
 - **Autonomous Research Agent** — Haiku-powered agent that searches broadly, scrapes aggressively, and routes domain-specific results to specialized plugins (arXiv→RAG, GitHub→GitHub, Reddit→Reddit)
@@ -14,18 +14,15 @@ Web search, URL scraping, and site crawling for Claude Code — powered by a loc
 ```
 /plugin marketplace add brunowinter8192/claude-plugins
 /plugin install searxng
-# Restart session — Docker containers auto-start via mcp-start.sh
-
-# Search the web:
-# Just ask Claude to search — the web-research agent handles it automatically
+# Restart session — mcp-start.sh bootstraps the Python venv automatically
 ```
 
 ## Prerequisites
 
-- Docker and Docker Compose
 - Python 3.10+
+- Playwright Chromium (auto-installed by `mcp-start.sh`)
 
-`mcp-start.sh` auto-starts SearXNG and Tor containers, installs the Python venv, and sets up Playwright Chromium on each session. Manual setup is only needed for first-time installation.
+`mcp-start.sh` bootstraps the Python venv and sets up Playwright Chromium on first run. No Docker required.
 
 ## Setup
 
@@ -36,23 +33,8 @@ git clone https://github.com/brunowinter8192/SearXNG.git
 cd SearXNG
 python -m venv venv
 ./venv/bin/pip install -r requirements.txt
+./venv/bin/playwright install chromium
 ```
-
-**2. Start containers**
-
-```bash
-docker compose up -d
-```
-
-This starts both SearXNG (port 8080) and a Tor SOCKS5 proxy for IP rotation on supported engines.
-
-**3. Verify SearXNG is running**
-
-```bash
-curl "http://localhost:8080/search?q=test&format=json"
-```
-
-SearXNG configuration lives in `searxng/settings.yml`.
 
 ## Usage
 
@@ -77,7 +59,7 @@ SearXNG configuration lives in `searxng/settings.yml`.
 
 **Search → Scrape**
 
-1. `search_web` with broad query → ranked results from 8 engines
+1. `search_web` with broad query → ranked results from 4 engines
 2. Pick relevant URLs → `scrape_url` for full page content as markdown
 3. Plugin-domain URLs (arXiv, GitHub, Reddit) get routed to specialized plugins instead
 
@@ -89,19 +71,6 @@ SearXNG configuration lives in `searxng/settings.yml`.
 4. Optional: LLM cleanup (web-md-cleanup agent) → chunk + index into RAG
 
 ## Troubleshooting
-
-<details>
-<summary>SearXNG not responding (port 8080)</summary>
-
-The Docker container is not running.
-
-```bash
-docker compose up -d
-```
-
-Verify: `docker ps --filter name=searxng`
-
-</details>
 
 <details>
 <summary>Scraping returns empty content</summary>
@@ -117,17 +86,6 @@ Some sites block headless browsers. The scraper tries normal mode first, then st
 
 ```bash
 ./venv/bin/playwright install chromium
-```
-
-</details>
-
-<details>
-<summary>Tor proxy connection issues</summary>
-
-The Tor container provides IP rotation for Brave and Startpage engines. If Tor is down, these engines will fail but others (Google, Bing, Mojeek) work directly.
-
-```bash
-docker compose restart tor
 ```
 
 </details>

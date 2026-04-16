@@ -11,11 +11,6 @@ if [ -f "$SCRIPT_DIR/.env" ]; then
     set +a
 fi
 
-# Start SearXNG container if not running
-if ! docker ps --format '{{.Names}}' | grep -q '^searxng$'; then
-    docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d
-fi
-
 # Bootstrap venv if missing
 if [ ! -d "$VENV_DIR" ]; then
     python3 -m venv "$VENV_DIR"
