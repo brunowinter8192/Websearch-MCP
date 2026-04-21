@@ -39,6 +39,7 @@ Each iteration after a stress-break adds a NEW numbered script (02_\<name\>.py, 
 |------|--------|--------|-----------|-------------------|-------|-------------|----------------|-------------------|-------------------|--------|
 | 2026-04-21 | baseline-run-1 | `config.yml` @ `a2cff3d` | Baseline established (SOCS + new selectors + parse_js fix) | — | — | 30/30 | — | — / — | — / — | `01_reports/smoke_20260421_022343.md` |
 | 2026-04-21 | baseline-run-2 | `config.yml` @ `e0077dd` | Re-verify same config after refactor | — (same config) | — | 28/30 | 2× CAPTCHA | — / — | — / — | `01_reports/smoke_20260421_182917.md` |
+| 2026-04-21 | baseline-run-3 | `config.yml` @ `80cff93` | First run with timing measurement — same baseline config | — (timing instrumentation only) | — | 28/30 | 2× CAPTCHA (Q24+Q25) | 551 / 816 | 1 / 4 | `01_reports/smoke_20260421_193051.md` |
 
 Convention for new entries:
 - **Run-ID:** `<hypothesis-slug>-run-N` (e.g. `webgl-run-1`)

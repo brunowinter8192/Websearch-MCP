@@ -32,8 +32,8 @@ google:
   consent_domain: consent.google.com
   captcha_path: /sorry/
   wait_for_results:
-    max_cycles: 15
-    interval_seconds: 1.0
+    max_cycles: 3
+    interval_seconds: 0.2
   selectors:
     wait_js: "return document.querySelectorAll('#rso h3').length"
     parse_js: |
@@ -65,7 +65,7 @@ google:
 run:
   queries_file: ./queries.txt
   delay_between_queries: 0
-  page_load_timeout: 20
+  page_load_timeout: 3
   consent_settle: 2.0
 
 detection:
