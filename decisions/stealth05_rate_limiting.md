@@ -43,7 +43,28 @@ Was Layer 5 prüft:
 
 - 30/30 mit 0 Delay in ~2.5min — kein Rate-Limit
 - Google scheint bei 12 Req/min (mit realem DOM-Wait-Jitter) kein Blocking zu aktivieren
-- Stress-Test über mehrere Back-to-Back Runs noch nicht durchgeführt
+- Stress-Test Back-to-Back Batch 1 durchgeführt 2026-04-22 → siehe Subsection unten
+
+### Google Back-to-Back Stress Batch 1 (2026-04-22)
+
+| Run# | OK | Non-OK | First-Fail-Idx | Nav ms mean/max |
+|------|-----|--------|----------------|-----------------|
+| 1 | 30/30 | — | — | 520 / 887 |
+| 2 | 27/30 | 3× CAPTCHA | Q26 | 422 / 701 |
+| 3 | 28/30 | 2× CAPTCHA | Q11 | 345 / 664 |
+| 4 | 0/30 | 30× CAPTCHA | Q1 | 537 / 661 |
+
+**Threshold:** Hard IP-Block nach ~90 Queries / ~10 Minuten über 4 konsekutive Runs ohne Cooldown.
+
+**Layer-Attribution: IP-Level (Layer 5), NICHT Fingerprint (Layer 1–3).**
+
+Evidenz für IP-Block (nicht Fingerprint-Detection):
+- Run 4 Nav-Mean 537ms (stabil, identisch zu Runs 1–3) — Google serviert /sorry/ sofort, kein Fingerprint-Scan
+- DOM-Wait 0ms in Run 4 — keine DOM-Verarbeitung, sofortiger Redirect
+- /sorry/ startet ab Q1 in Run 4 — kein Query-spezifischer Trigger, vollständiger IP-Block
+- Runs 1–3 zeigen normale Nav-Zeiten (345–520ms mean) — Fingerprint-Patches unangetastet
+
+**Referenz:** `dev/search_pipeline/01_reports/stress_20260422_012755.md`
 
 ## Recommendation (SOLL)
 
@@ -53,5 +74,5 @@ Pending — 0 Delay ist die korrekte Baseline. Delay nur einführen wenn Stress-
 
 ## Offene Fragen
 
-- Google: Wo ist die tatsächliche Rate-Limit-Schwelle? (noch nicht stress-getestet über mehrere Runs)
+- Google: Wo ist die tatsächliche Rate-Limit-Schwelle? → answered 2026-04-22: ~90 queries / 10min back-to-back (Batch 1 Break)
 - Jitter durch DOM-Wait: Reicht die natürliche Varianz (1–15s pro Query) um Regularity-Detection zu umgehen?

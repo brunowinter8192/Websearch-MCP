@@ -40,7 +40,7 @@ Per-layer detail: [stealth01_fingerprint.md](stealth01_fingerprint.md) · [steal
 | `humanize_scroll` | 2 | NICHT IMPLEMENTIERT | Scroll mit Easing/Jitter |
 | SOCS consent cookie | 3 | ON ✅ | CDP NetworkCommands.set_cookie pro Tab — bypassed Google Cookie-Wall |
 | `use_context` | 3 | OFF ❌ | Frischer Browser-Context pro Query (Cookie-Isolation) |
-| `delay_between_queries` | 5 | 0 ❌ | Pause zwischen Queries — 0 = kein Delay (bewusst) |
+| `delay_between_queries` | 5 | 0 ❌ | Pause zwischen Queries — 0 = kein Delay (bewusst) — Break bei ~90 queries/10min back-to-back → stealth05 Batch 1 |
 | `page_load_timeout` | 5 | 20s | Max Navigation-Wartezeit |
 
 ### Per-Engine (in config.yml google-Section)
