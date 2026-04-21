@@ -68,9 +68,3 @@ Pending — wird durch Stress-Test-Iterationen bestimmt. Google CAPTCHA tritt er
 - Brave: CAPTCHA-Klick mit 10–15s Wartezeit — reicht die Zeit für PoW-Berechnung + API-Call? Oder rejected Server wegen Fingerprint?
 - Brave: Ist das CAPTCHA per Session oder per IP lösbar? (Klick-Lösung persistent für die Session?)
 - Google: Ab welchem Traffic-Level schaltet `/sorry/` ein? (Stress-Test-Erkenntnis pending)
-
-## Quellen
-
-- debug-it/brave-captcha-solver (GitHub) — YOLO v11n PoW CAPTCHA Solver
-- nullpt-rs/blog (GitHub, reversing-botid.mdx) — Brave CAPTCHA Reverse-Engineering
-- FriendlyCaptcha/friendly-challenge (GitHub) — PoW CAPTCHA Referenz-Implementation
