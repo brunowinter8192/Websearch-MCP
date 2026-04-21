@@ -32,5 +32,6 @@
 | nullpt-rs/blog (reversing-botid.mdx) | Web | stealth01 | Referenced |
 | FriendlyCaptcha/friendly-challenge | Repo | stealth01 | Referenced |
 | BotBrowser CHANGELOG | Repo | stealth01 | Referenced |
+| autoscrape-labs/pydoll | Repo | stealth00, stealth01, stealth03 | Referenced |
 
 Consult via RAG search before making assumptions. Pipeline step references match `decisions/` files.
