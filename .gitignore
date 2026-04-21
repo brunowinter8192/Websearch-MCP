@@ -10,10 +10,6 @@ dev/scraping_suite/03_filter_comparison/
 dev/scraping_suite/04_filter_reports/
 dev/scraping_suite/05_content_source/
 dev/scraping_suite/06_js_rendering/
-dev/search_pipeline/engines_eval/*_reports/
-dev/search_pipeline/ranking_eval/*_reports/
-dev/search_pipeline/content_eval/*_reports/
-dev/search_pipeline/weights_eval/*_reports/
 dev/scrape_pipeline/browser_eval/*_reports/
 dev/scrape_pipeline/filter_eval/*_reports/
 dev/scrape_pipeline/garbage_eval/*_reports/

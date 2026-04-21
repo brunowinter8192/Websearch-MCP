@@ -137,7 +137,7 @@ Update von 2026.3.10 → 2026.4.3 behebt Blocking für Google, Brave, Google Sch
 
 ### TLS Fingerprint Investigation
 
-Skripte `20_tls_fingerprint.py` + `21_cipher_shuffle_verify.py` entwickelt (→ `dev/search_pipeline/engines_eval/`).
+Skripte `20_tls_fingerprint.py` + `21_cipher_shuffle_verify.py` entwickelt (legacy — aus dem SearXNG-Proxy-Stack, inzwischen gelöscht).
 
 **Ergebnisse:**
 - JA3 Hash: `cdb8399d0ce47cc19f2ef0756148891e` (gemessen via tls.browserleaks.com)

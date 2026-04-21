@@ -14,10 +14,10 @@ See [sources/sources.md](sources/sources.md).
 |-----------|---------------|--------|
 | **Engines (active)** | Google, Bing, Google Scholar, CrossRef | 4-engine set after engine-cut 2026-04-15 |
 | **Engines (plugin)** | ArXiv, GitHub, Reddit | discovery-only, content via MCP plugins |
-| **Browser** | pydoll Chrome (stealth fingerprint patches, per-engine JS selectors) | `src/search/browser.py`, `src/search/engines/`, see `dev/search_pipeline/engines_eval/stealth_config.py` |
+| **Browser** | pydoll Chrome (stealth fingerprint patches, per-engine JS selectors) | `src/search/browser.py`, `src/search/engines/`, `dev/search_pipeline/01_google_smoke.py` + `config.yml` |
 | **Rate Limiting** | Token-bucket per engine with jitter + backoff | `src/search/rate_limiter.py` |
 | **Orchestration** | `asyncio.gather` parallel fetch, deduplicated, formatted as TextContent | `src/search/search_web.py`, SNIPPET_LENGTH=5000 |
-| **Parked** | Brave (PoW CAPTCHA incompatible with parallel architecture) | See `decisions/stealth01_detection_layers.md`, dev configs parked with `# PARKED` marker |
+| **Parked** | Brave (PoW CAPTCHA incompatible with parallel architecture) | See `decisions/stealth00_engine_status.md` |
 
 ### Scrape Pipeline (Crawl4AI)
 
@@ -96,11 +96,7 @@ searxng/
 │   ├── crawler/                    → [DOCS.md](src/crawler/DOCS.md) — CLI-only (`/crawl-site` pipeline)
 │   └── spawn/                      → Worker spawn utilities (in src/DOCS.md)
 ├── dev/                            → [DOCS.md](dev/DOCS.md)
-│   ├── search_pipeline/            → [DOCS.md](dev/search_pipeline/DOCS.md)
-│   │   ├── engines_eval/           → search01_engines
-│   │   ├── ranking_eval/           → search03_ranking
-│   │   ├── content_eval/           → search01_engines (content quality)
-│   │   └── weights_eval/           → search04_weights
+│   ├── search_pipeline/            → [DOCS.md](dev/search_pipeline/DOCS.md) — Google pydoll smoke stack (01_google_smoke.py, config.yml, 01_reports/)
 │   ├── scrape_pipeline/            → [DOCS.md](dev/scrape_pipeline/DOCS.md)
 │   │   ├── browser_eval/           → scrape01_browser
 │   │   ├── filter_eval/            → scrape02_filtering
