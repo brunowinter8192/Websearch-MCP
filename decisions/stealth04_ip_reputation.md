@@ -50,7 +50,3 @@ Residential Proxies wären die Ideal-Lösung für IP-Rotation, stehen aber nicht
 - Residential Proxies: Nicht verfügbar — wäre optimale IP-Rotation (nicht detektierbar als Datacenter/VPN)
 - Google: Ab welcher Query-Rate / welchem Zeitfenster beginnt IP-basiertes Blocking? (noch nicht stress-getestet)
 - Mehrere Back-to-Back Runs: Akkumulieren sich IP-Signale über Runs, oder resettet Google nach gewissem Idle-Intervall?
-
-## Quellen
-
-- Stresstest 2026-04-07 (Tor Brave 0/30) — legacy Stresstest-Daten, inzwischen gelöscht

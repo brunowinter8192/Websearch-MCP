@@ -49,8 +49,3 @@ Pending — wird durch Stress-Test-Iterationen bestimmt. Aktuelle Baseline zeigt
 - Brave: Trackt Brave per IP oder per Session? `use_context=True` würde Session-Tracking brechen, nicht IP-Tracking — relevant wenn Brave wieder aufgenommen wird
 - SOCS-Wert: Läuft der Cookie ab? (Format `gws_20260407-0` — datum-basiert?) Muss er periodisch erneuert werden?
 - Google Scholar: Braucht eigenen Consent-Cookie (anderer Domain)? (Scholar-Engine in src/ — nicht in smoke-Stack)
-
-## Quellen
-
-- `dev/search_pipeline/01_google_smoke.py` — `_inject_consent_cookie()`, `_has_inline_consent()`, `_handle_consent()`
-- `dev/search_pipeline/config.yml` — `consent_cookie` + `consent_buttons` Konfiguration

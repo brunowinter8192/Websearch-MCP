@@ -44,7 +44,3 @@ Pending — wird durch Stress-Test-Iterationen bestimmt. Erst wenn Stress-Break 
 
 - Google: Beginnt Behavioral-Detection erst bei hohem Traffic (>100 Queries pro Session) oder schon früher?
 - Ist der 0-Delay-Effekt Layer 2 (Timing) oder Layer 5 (Rate-Limit) — vermutlich Layer 5 für IP-Blocking, Layer 2 für Session-Score-Erhöhung
-
-## Quellen
-
-- Kein spezifisches Research für Layer 2 durchgeführt

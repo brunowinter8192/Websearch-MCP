@@ -108,8 +108,9 @@ Voraussetzungen für Resume:
 2. Patchright mit echtem Chrome Binary testen (`patchright install chrome` + `channel="chrome"` + `headless=True`) — wurde nie korrekt getestet
 3. Alternativ: Brave Search API evaluieren
 
-## Quellen
+## Referenced Files
 
-- `dev/search_pipeline/01_google_smoke.py` — Baseline-Implementation (aktiv)
-- `dev/search_pipeline/config.yml` — Baseline-Config (aktiv)
+- `dev/search_pipeline/01_google_smoke.py` — Baseline-Implementation
+- `dev/search_pipeline/config.yml` — Baseline-Config
 - `dev/search_pipeline/01_reports/smoke_20260421_022343.md` — 30/30 Baseline-Run
+- `dev/search_pipeline/01_reports/smoke_20260421_182917.md` — 28/30 Re-verify Run

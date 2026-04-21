@@ -55,8 +55,3 @@ Pending — 0 Delay ist die korrekte Baseline. Delay nur einführen wenn Stress-
 
 - Google: Wo ist die tatsächliche Rate-Limit-Schwelle? (noch nicht stress-getestet über mehrere Runs)
 - Jitter durch DOM-Wait: Reicht die natürliche Varianz (1–15s pro Query) um Regularity-Detection zu umgehen?
-
-## Quellen
-
-- Mojeek Rate-Limit-Analyse 2026-04-09 (aus Legacy-Stresstest — jetzt gelöscht)
-- `dev/search_pipeline/config.yml` — `delay_between_queries`, `wait_for_results`, `consent_settle`

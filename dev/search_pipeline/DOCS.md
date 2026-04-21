@@ -35,16 +35,20 @@ rm -rf ~/.searxng-mcp/browser-session-smoke/Singleton* 2>/dev/null
 
 Each iteration after a stress-break adds a NEW numbered script (02_\<name\>.py, 03_\<name\>.py, ...) and a row in this table. Keep the baseline script untouched — it's the control. Experiment scripts may copy from the baseline and modify ONE variable (one detection layer's control setting) to isolate the effect.
 
-| Date | Script | Hypothesis | Delta vs Baseline | Layer | Result X/30 | First Fail Idx | Report File |
-|------|--------|-----------|-------------------|-------|-------------|----------------|-------------|
-| 2026-04-21 | 01_google_smoke.py | Baseline established — SOCS cookie + new selectors + parse_js fix | — (baseline) | — | 30/30 | — | 01_reports/smoke_20260421_022343.md |
+| Date | Run-ID | Config | Hypothesis | Delta vs Baseline | Layer | Result X/30 | First Fail Idx | Nav ms (mean/max) | DOM ms (mean/max) | Report |
+|------|--------|--------|-----------|-------------------|-------|-------------|----------------|-------------------|-------------------|--------|
+| 2026-04-21 | baseline-run-1 | `config.yml` @ `a2cff3d` | Baseline established (SOCS + new selectors + parse_js fix) | — | — | 30/30 | — | — / — | — / — | `01_reports/smoke_20260421_022343.md` |
+| 2026-04-21 | baseline-run-2 | `config.yml` @ `e0077dd` | Re-verify same config after refactor | — (same config) | — | 28/30 | 2× CAPTCHA | — / — | — / — | `01_reports/smoke_20260421_182917.md` |
 
 Convention for new entries:
+- **Run-ID:** `<hypothesis-slug>-run-N` (e.g. `webgl-run-1`)
+- **Config:** git hash of config.yml at time of run
 - **Hypothesis:** 1-line statement (e.g. "WebGL vendor override improves fingerprint score")
-- **Delta:** concrete config/code diff vs baseline (e.g. "js_patches.webgl_vendor: Apple M1 Pro")
+- **Delta:** concrete config/code diff vs baseline (e.g. `js_patches.webgl_vendor: Apple M1 Pro`)
 - **Layer:** which stealth layer is being tested (1–7, see stealth00_engine_status.md)
 - **Result X/30 + First Fail Idx:** from the report file
-- **Report File:** path to the run report
+- **Nav/DOM ms:** from Timing Summary section of report
+- **Report:** path to the run report
 
 ## Stress Test Methodology
 

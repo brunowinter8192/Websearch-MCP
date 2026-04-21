@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote_plus, urlparse
@@ -52,6 +53,10 @@ async def run_smoke_test() -> None:
     non_ok = [r for r in records if r["status"] != "OK"]
     print(f"\nReport: {report_path}", file=sys.stderr)
     print(f"Result: {ok_count}/30 OK, {len(non_ok)}/30 non-OK ({_summarize_statuses(non_ok)})", file=sys.stderr)
+    nav_times = [r["navigation_time_ms"] for r in records if r["navigation_time_ms"] > 0]
+    dom_times = [r["dom_wait_time_ms"] for r in records if r["dom_wait_time_ms"] > 0]
+    if nav_times:
+        print(f"Timing: nav mean/max {int(sum(nav_times)/len(nav_times))}ms/{max(nav_times)}ms, dom mean/max {int(sum(dom_times)/len(dom_times))}ms/{max(dom_times)}ms", file=sys.stderr)
 
 
 # FUNCTIONS
@@ -221,6 +226,8 @@ async def run_query(browser: Chrome, query: str, cfg: dict) -> dict:
         "status": "EMPTY",
         "sample_urls": [],
         "sample_titles": [],
+        "navigation_time_ms": 0,
+        "dom_wait_time_ms": 0,
     }
 
     try:
@@ -230,7 +237,9 @@ async def run_query(browser: Chrome, query: str, cfg: dict) -> dict:
             num=gc["num"],
         )
 
+        _t_nav = time.monotonic()
         await tab.go_to(search_url, timeout=rc["page_load_timeout"])
+        record["navigation_time_ms"] = int((time.monotonic() - _t_nav) * 1000)
         current_url = await tab.current_url
 
         # Handle consent page — two variants:
@@ -257,7 +266,9 @@ async def run_query(browser: Chrome, query: str, cfg: dict) -> dict:
             return record
 
         # Wait for results
+        _t_dom = time.monotonic()
         found = await _wait_for_results(tab, gc)
+        record["dom_wait_time_ms"] = int((time.monotonic() - _t_dom) * 1000)
         record["page_title"] = await _get_title(tab)
 
         if not found:
@@ -429,8 +440,8 @@ def write_report(records: list[dict], report_dir: Path) -> Path:
         "",
         "## Overview",
         "",
-        "| # | Query | Status | Count | Domains | Google-Internal | Page-Title | Sample-URL |",
-        "|---|-------|--------|-------|---------|-----------------|------------|------------|",
+        "| # | Query | Status | Count | Domains | Google-Internal | Nav ms | DOM ms | Page-Title | Sample-URL |",
+        "|---|-------|--------|-------|---------|-----------------|--------|--------|------------|------------|",
     ]
 
     for i, r in enumerate(records, 1):
@@ -439,9 +450,27 @@ def write_report(records: list[dict], report_dir: Path) -> Path:
         count = r["count"]
         domains = r["domains"]
         gint = r["google_internal"]
+        nav_ms = r["navigation_time_ms"]
+        dom_ms = r["dom_wait_time_ms"]
         title = r["page_title"][:50].replace("|", "\\|")
         sample = r["sample_urls"][0] if r["sample_urls"] else ""
-        lines.append(f"| {i} | {query} | {status} | {count} | {domains} | {gint} | {title} | {sample} |")
+        lines.append(f"| {i} | {query} | {status} | {count} | {domains} | {gint} | {nav_ms} | {dom_ms} | {title} | {sample} |")
+
+    _nav = sorted(r["navigation_time_ms"] for r in records if r["navigation_time_ms"] > 0)
+    _dom = sorted(r["dom_wait_time_ms"] for r in records if r["dom_wait_time_ms"] > 0)
+    def _ms(lst, fn):
+        return fn(lst) if lst else 0
+    lines += [
+        "",
+        "## Timing Summary",
+        "",
+        "| Metric | Navigation (ms) | DOM-Wait (ms) |",
+        "|--------|-----------------|---------------|",
+        f"| Mean   | {_ms(_nav, lambda v: int(sum(v)/len(v)))} | {_ms(_dom, lambda v: int(sum(v)/len(v)))} |",
+        f"| Median | {_ms(_nav, lambda v: v[len(v)//2])} | {_ms(_dom, lambda v: v[len(v)//2])} |",
+        f"| Max    | {_ms(_nav, max)} | {_ms(_dom, max)} |",
+        f"| p95    | {_ms(_nav, lambda v: v[min(int(len(v)*0.95), len(v)-1)])} | {_ms(_dom, lambda v: v[min(int(len(v)*0.95), len(v)-1)])} |",
+    ]
 
     non_ok = [r for r in records if r["status"] != "OK"]
     if non_ok:

@@ -35,7 +35,3 @@ N/A — keine Handlung erforderlich. Chrome-basierte Stacks sind bei Layer 6 inh
 ## Offene Fragen
 
 - Keine — Layer 6 ist für Chrome-basierte Requests gelöst.
-
-## Quellen
-
-- Keine spezifischen Quellen — Layer 6 ist inhärente Chrome-Eigenschaft
