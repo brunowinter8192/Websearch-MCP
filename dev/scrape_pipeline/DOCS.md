@@ -163,18 +163,6 @@ Configs tested:
 ./venv/bin/python dev/scrape_pipeline/garbage_eval/10_live_garbage_test.py --edge-cases
 ```
 
-### 12_scrape_methods.py
-
-**Purpose:** Bulk scrape comparison across 3 browser methods. Reads URLs from a URL pool (originally sourced from legacy engine isolation reports — that source is no longer available; provide URLs manually or adapt the script), deduplicates, and scrapes each URL 3 times with different configs: (1) networkidle, (2) domcontentloaded, (3) stealth+networkidle. Measures timing, content length, and garbage type per scrape.
-**Input:** URL list via `ENGINE_REPORTS_DIR` (hardcoded legacy path — `12_reports/url_pool.txt` must be populated manually or `ENGINE_REPORTS_DIR` updated)
-**Output:** `12_reports/url_pool.txt` (deduplicated URL list) + `12_reports/method_1_networkidle/`, `method_2_domcontentloaded/`, `method_3_stealth/` (one .md per URL with metadata header) + `12_reports/summary.md`
-
-```bash
-./venv/bin/python dev/scrape_pipeline/browser_eval/12_scrape_methods.py
-```
-
-Full run: ~5-6 hours for 660 URLs × 3 methods. Each .md includes metadata header (url, method, status_code, chars, time_seconds, garbage_type).
-
 ## Workflows
 
 ### Regression (browser_eval 01 → 02)
