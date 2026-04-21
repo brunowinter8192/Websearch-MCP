@@ -2,7 +2,7 @@
 
 pydoll-based parallel search pipeline. Replaces the former `src/searxng/` SearXNG-Docker wrapper (deleted 2026-04-15 in engine-cut). Exposes one `search_web_workflow()` coroutine consumed by `server.py` + one `fetch_search_results()` sync wrapper consumed by dev scripts.
 
-**Active engines (4):** google, bing, google scholar, crossref. See `decisions/stealth01_detection_layers.md` for the drop decision on brave / startpage / duckduckgo / mojeek / semantic scholar.
+**Active engines (4):** google, bing, google scholar, crossref. See `decisions/stealth00_engine_status.md` for the drop decision on brave / startpage / duckduckgo / mojeek / semantic scholar.
 
 ## search_web.py
 
@@ -52,6 +52,6 @@ Per-engine parser modules. Each exports an `Engine` class with `search(query, la
 
 **Purpose:** CrossRef REST API via httpx (no browser needed). Uses polite pool `mailto` header for higher rate limits. Returns bibliographic metadata as `SearchResult` entries.
 
-## STEALTH_CONFIG.md
+## Stealth Decisions
 
-Historical reference — documents the pydoll stealth capabilities research from the initial 9-engine exploration. Superseded by `dev/search_pipeline/engines_eval/stealth_config.py` + `_stealth_builders.py` for active configuration. Kept for context.
+Active stealth configuration: `dev/search_pipeline/01_google_smoke.py` (JS patches, SOCS cookie injection, browser options) + `dev/search_pipeline/config.yml` (all parameters). Historical research from the 9-engine exploration is documented in `decisions/stealth00_engine_status.md` (overview + dropped-engine verdicts) and `decisions/stealth01_fingerprint.md` through `stealth07_captcha.md` (per-layer detail).

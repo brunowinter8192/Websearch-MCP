@@ -52,7 +52,7 @@ Was Layer 7 ist:
 
 ### captcha_detect_js Bug (Legacy)
 
-Im alten `engines_eval/`-Stack war ein `captcha_detect_js` JavaScript konfiguriert mit Selektor `dialog .captcha-card`. Dieser Selektor matchte nicht das tatsächliche Brave CAPTCHA-DOM. Korrekt wäre `[class*="pow-captcha"]` oder Title-Check auf "Captcha". Im neuen Smoke-Stack nicht relevant (kein JS-Selektor für CAPTCHA — nur URL-Check).
+Im alten Legacy-Stresstest-Stack war ein `captcha_detect_js` JavaScript konfiguriert mit Selektor `dialog .captcha-card`. Dieser Selektor matchte nicht das tatsächliche Brave CAPTCHA-DOM. Korrekt wäre `[class*="pow-captcha"]` oder Title-Check auf "Captcha". Im neuen Smoke-Stack nicht relevant (kein JS-Selektor für CAPTCHA — nur URL-Check).
 
 ## Recommendation (SOLL)
 

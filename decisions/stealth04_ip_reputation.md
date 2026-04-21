@@ -53,4 +53,4 @@ Residential Proxies wären die Ideal-Lösung für IP-Rotation, stehen aber nicht
 
 ## Quellen
 
-- Stresstest 2026-04-07 (Tor Brave 0/30) — jetzt gelöscht (war in `dev/search_pipeline/engines_eval/28_reports/`)
+- Stresstest 2026-04-07 (Tor Brave 0/30) — legacy Stresstest-Daten, inzwischen gelöscht

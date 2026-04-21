@@ -165,8 +165,8 @@ Configs tested:
 
 ### 12_scrape_methods.py
 
-**Purpose:** Bulk scrape comparison across 3 browser methods. Reads URLs from engine isolation reports (`dev/search_pipeline/weights_eval/11_reports/engine_*.md`), deduplicates, and scrapes each URL 3 times with different configs: (1) networkidle, (2) domcontentloaded, (3) stealth+networkidle. Measures timing, content length, and garbage type per scrape.
-**Input:** `engine_*.md` files from `dev/search_pipeline/weights_eval/11_reports/`
+**Purpose:** Bulk scrape comparison across 3 browser methods. Reads URLs from a URL pool (originally sourced from legacy engine isolation reports — that source is no longer available; provide URLs manually or adapt the script), deduplicates, and scrapes each URL 3 times with different configs: (1) networkidle, (2) domcontentloaded, (3) stealth+networkidle. Measures timing, content length, and garbage type per scrape.
+**Input:** URL list via `ENGINE_REPORTS_DIR` (hardcoded legacy path — `12_reports/url_pool.txt` must be populated manually or `ENGINE_REPORTS_DIR` updated)
 **Output:** `12_reports/url_pool.txt` (deduplicated URL list) + `12_reports/method_1_networkidle/`, `method_2_domcontentloaded/`, `method_3_stealth/` (one .md per URL with metadata header) + `12_reports/summary.md`
 
 ```bash
