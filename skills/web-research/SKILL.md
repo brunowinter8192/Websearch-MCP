@@ -1,40 +1,54 @@
 ---
 name: web-research
-description: SearXNG web research — tool reference, workflows, and report formats
+description: SearXNG web research — CLI tool reference (search_web, scrape_url, scrape_url_raw, explore_site, download_pdf)
 ---
 
 # SearXNG Web Research — Skill
+
+Web research CLI plugin with 4 active search engines (Google, Bing, Google Scholar, CrossRef), Crawl4AI-based scraping, and site exploration. Each invocation is a fresh CLI process — fire calls in parallel for maximum throughput.
+
+## CLI Invocation
+
+All tools are invoked via the `searxng-cli` wrapper (installed at `~/.local/bin/searxng-cli`, in PATH):
+
+```
+searxng-cli <cmd> [args]
+```
+
+### Quick Reference — All 5 Tools
+
+```bash
+# Search
+searxng-cli search_web "machine learning retrieval" --category general --pages 3
+searxng-cli search_web "SPLADE sparse retrieval" --engines "google scholar,crossref" --pages 3
+searxng-cli search_web "RAG pipeline python" --language de --time-range month
+
+# Scrape
+searxng-cli scrape_url "https://example.com/article"
+searxng-cli scrape_url "https://docs.example.com/api" --max-content-length 30000
+
+# Scrape to file (RAG indexing)
+searxng-cli scrape_url_raw "https://example.com/article" /tmp/rag_output/
+
+# Explore site structure
+searxng-cli explore_site "https://docs.example.com" --max-pages 50
+searxng-cli explore_site "https://example.com" --url-pattern ".*\/blog\/.*"
+
+# Download PDF
+searxng-cli download_pdf "https://arxiv.org/pdf/2310.01526" --output-dir /tmp/papers/
+```
+
+On error (import failure, missing dependency, engine timeout): the CLI prints to stderr and exits non-zero.
 
 ## Tools
 
 | Tool | Purpose |
 |------|---------|
-| search_web | Search the web via SearXNG. Returns up to 50 results with title, URL, full snippet |
+| search_web | Search across 4 engines in parallel. Returns deduplicated results with title, URL, full snippet |
 | scrape_url | Fetch page content as filtered markdown (PruningContentFilter). For in-conversation reading |
 | scrape_url_raw | Fetch page content as raw markdown and save as .md file. For RAG indexing |
-| download_pdf | Download PDF file from URL. Saves to /tmp/ by default or custom directory |
-
-## Search Strategy
-
-Four fundamentally different workflows:
-
-- **Quick search** (user wants links, overviews, or pointers):
-  Use `search_web` alone. Returns up to 50 results with title, URL, and full snippet.
-  Good for: finding URLs, getting a topic overview, discovering sources.
-
-- **Deep research** (user wants actual content, analysis, or synthesis):
-  Use `search_web` first, then `scrape_url` on the most relevant results.
-  Good for: reading documentation, extracting tutorials, comparing approaches, analyzing articles.
-
-- **Direct scraping** (user provides a URL):
-  Skip search entirely. Use `scrape_url` directly on the given URL.
-  Good for: reading a specific page, extracting content from a known source.
-
-- **Scrape for RAG indexing** (user wants to index a URL into knowledge base):
-  Use `scrape_url_raw(url, output_dir)` to save full-fidelity raw markdown as .md file.
-  Then run `/rag:web-md-index` on the output directory to cleanup + chunk + index.
-
-**Detection:** "Find me articles about X" → quick search. "What does article X say about Y?" → deep research. "Read this URL" → direct scraping. "Index this URL" / "Save this for later" → scrape_url_raw.
+| explore_site | Discover URLs via sitemap + BFS prefetch. Returns structured URL list |
+| download_pdf | Download PDF file from URL to local disk |
 
 ## Parameter Reference
 
@@ -42,25 +56,27 @@ Four fundamentally different workflows:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| query | str | required | Search query (e.g., "machine learning python tutorial") |
-| category | Literal | "general" | Content category: general, news, it, science |
-| language | str | "en" | ISO language code |
-| time_range | str/None | None | day, month, year |
-| engines | str/None | None | Comma-separated engine list (e.g., "google,brave,google scholar") |
-| pages | int | 3 | Number of pages to fetch and combine (default 3 = ~150 results) |
+| query | str | required | Search query (2–5 keywords) |
+| --category | general/news/it/science | general | Content category |
+| --language | str | en | ISO language code (e.g. "de") |
+| --time-range | day/month/year | None | Restrict results by recency |
+| --engines | str | None | Comma-separated engine list (e.g. "google,bing" or "google scholar,crossref") |
+| --pages | int | 3 | Result pages to fetch and combine (~50 results/page, deduped) |
 
-**Output:** Plain text numbered list with title, URL, and full snippet per result. Up to 50 results per page.
+**Output:** Plain text numbered list — title, URL, full snippet per result. Up to 50 results per page × pages.
 
-**Pagination:** The server fetches multiple pages automatically. Use `pages=3` (default) to get up to ~150 deduplicated results per query. Do NOT use `pageno` — pass `pages` instead.
+**Engine set:** Google, Bing, Google Scholar, CrossRef are always active. Use `--engines` to override and target specific engines.
 
 ### scrape_url
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| url | str | required | Single URL to fetch and convert to markdown |
-| max_content_length | int | 15000 | Character limit for returned content |
+| url | str | required | URL to fetch and convert to markdown |
+| --max-content-length | int | 15000 | Character limit for returned content |
 
 **Output:** Filtered markdown with `# Content from: <url>` header.
+
+**Plugin routing:** arxiv.org, github.com, reddit.com URLs are automatically rejected with a routing message — use the dedicated plugins instead.
 
 ### scrape_url_raw
 
@@ -71,79 +87,85 @@ Four fundamentally different workflows:
 
 **Output:** Confirmation with file path and char count. File saved with `<!-- source: URL -->` header.
 
+**Plugin routing:** Same blocking as scrape_url — routed domains return a message, no file is saved.
+
+### explore_site
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| url | str | required | Root URL to explore |
+| --max-pages | int | 200 | Max pages to discover |
+| --url-pattern | str | None | Regex filter for discovered URLs |
+
+**Output:** Structured URL list discovered via sitemap → BFS cascade. MAX_DEPTH=10, TIMEOUT=120s.
+
 ### download_pdf
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| url | str | required | URL of the PDF file to download |
-| output_dir | str | "/tmp" | Directory to save the downloaded PDF |
+| url | str | required | URL of the PDF to download |
+| --output-dir | str | /tmp | Directory to save the downloaded PDF |
 
 **Output:** Confirmation with file path and file size.
 
-## Workflow (MANDATORY)
+## Search Strategy
 
-Maximize data intake. Search broadly, scrape aggressively, return everything useful. Don't curate — collect.
+### Parallel 4-queries pattern
 
-### Step 1: Search Broadly
+Fire 4 `searxng-cli search_web` calls in parallel, each with a query variation. Each call queries all 4 engines (Google, Bing, Scholar, CrossRef) simultaneously → 16 concurrent browser tabs total. Results are deduplicated across calls at report time.
 
-Fire 5+ search queries with variations:
-- Rephrase the topic 3+ ways
-- Use category="general" for all queries (includes both web and science engines)
-**MANDATORY for academic queries:** When ANY of these words appear in the research topic or query:
-  "benchmark", "evaluation", "paper", "study", "performance", "NDCG", "recall", "precision", "F1", "accuracy", "dataset", "methodology", "experiment", "ablation", "state-of-the-art", "SOTA"
-  → Fire an additional query with engines="google scholar,semantic scholar,crossref" for EACH such query.
-  This is NOT optional.
-- For EACH query: `pages=3` is the default — no extra calls needed. The server fetches 3 pages automatically per query.
-- Combine engines when useful: engines="google,brave,bing" for web-focused, engines="google scholar,semantic scholar" for academic-focused
+```bash
+# Example: 4 parallel calls for a deep research task
+searxng-cli search_web "SPLADE sparse retrieval" --pages 3
+searxng-cli search_web "sparse vector retrieval benchmark" --pages 3
+searxng-cli search_web "SPLADE vs BM25 performance" --pages 3
+searxng-cli search_web "learned sparse retrieval neural" --pages 3
+```
 
 **Query tips:**
-- Keep queries short and keyword-focused (2-5 words)
+- Keep queries short and keyword-focused (2–5 words)
 - Try different angles: "X tutorial", "X implementation", "X benchmark", "X vs Y"
 - "X best practices 2025" for recent content
 
-**Language:** When the research topic is in German or the dispatcher specifies German context:
-- Use `language="de"` for ALL queries
-- This filters results to German-language content and reduces noise from non-target languages
+### Academic / paper topics
 
-**Self-Check (MANDATORY before proceeding to Step 2):**
-- Did every query use pages=3 (the default)? If you explicitly set pages=1 or pages=2 for any query, re-fire with pages=3.
-- Did you fire at least 5 query variations?
+For queries containing: benchmark, evaluation, paper, study, performance, NDCG, recall, precision, F1, accuracy, dataset, methodology, experiment, ablation, SOTA — add a dedicated academic query with `--engines "google scholar,crossref"`:
 
-### Step 2: Filter Results
+```bash
+searxng-cli search_web "SPLADE retrieval NDCG" --engines "google scholar,crossref" --pages 3
+```
 
-From all search results, categorize:
+### Language
 
-**Plugin-routed** (do NOT scrape):
-- arxiv.org → tag as "USE RAG PLUGIN"
-- github.com → tag as "USE GITHUB PLUGIN"
-- reddit.com → tag as "USE REDDIT PLUGIN"
-- youtube.com → SKIP (no useful content from scraping)
+For German-language research, add `--language de` to all queries. This filters results to German-language content.
 
-**Scrape targets** (everything else that looks relevant)
+### Workflow
 
-### Step 3: Scrape Aggressively
+1. **Search broadly:** Fire 4+ parallel queries with variations
+2. **Filter results:** Categorize as scrape targets vs. plugin-routed (see Plugin Routing below)
+3. **Scrape aggressively:** Call `searxng-cli scrape_url` on all relevant non-plugin URLs
+4. **Report everything:** Return all findings using the Report Format below
 
-For ALL non-plugin URLs that look relevant:
-- Call `scrape_url` to read the actual page content
-- If a page is thin or garbage, note it and move on
-- **Cookie wall detection:** If scrape output contains only consent/GDPR text (no actual content), mark as `[cookie wall]` in report — do NOT rate as HIGH quality. Use the search snippet as fallback and label it explicitly: "Source: search snippet (scrape blocked by cookie wall)"
-- **PDF URLs:** If a search result URL ends in `.pdf`, call `download_pdf(url)` to save it locally. Report in output as `[PDF downloaded: /tmp/filename.pdf]`. Do NOT attempt to scrape PDF URLs.
-- Look for: concrete content, code, benchmarks, how-tos, data
+For multi-topic tasks: before moving to the next topic, verify ≥5 unique URLs scraped for the current topic and ≥2 HIGH quality sources. Fire 2–3 additional topic-specific queries if below minimum.
 
-**For multi-topic tasks:**
-Before moving to the next topic, verify:
-- [ ] ≥5 unique URLs scraped for THIS topic
-- [ ] At least 2 HIGH quality sources for THIS topic
-- If either is missing: fire 2-3 additional topic-specific queries before moving on
+For single-topic tasks: target 10+ scraped URLs. Fire additional queries if below 10 after initial batch.
 
-**For single-topic tasks:**
-Target: 10+ scraped URLs. Fire additional queries if below 10 after initial batch.
+**Cookie wall detection:** If scrape output contains only consent/GDPR text, mark as `[cookie wall]` — do NOT rate as HIGH quality. Use the search snippet as fallback, labeled "Source: search snippet (scrape blocked by cookie wall)".
 
-Don't stop at 5 — scrape 10, 15, 20 if they exist (secondary target once per-topic minimums are met).
+**PDF URLs:** If a result URL ends in `.pdf`, call `download_pdf` instead of `scrape_url`. Report as `[PDF downloaded: /tmp/filename.pdf]`.
 
-### Step 4: Report Everything
+## Plugin Routing (CRITICAL)
 
-Return ALL findings organized clearly using the Report Format below.
+**Do NOT scrape these domains — report them for plugin-based access:**
+
+| Domain | Action |
+|--------|--------|
+| arxiv.org | Report: "Use RAG plugin (mcp__rag__search_hybrid) or /rag:pdf-convert" |
+| github.com | Report: "Use GitHub Research plugin (github__get_file_content)" |
+| reddit.com | Report: "Use Reddit plugin (reddit__search_posts)" |
+| youtube.com | Skip entirely. Video content cannot be scraped. |
+
+`scrape_url` and `scrape_url_raw` enforce this routing at the CLI level — they will return a routing message and exit without scraping. No need to pre-filter manually; scrape calls on routed domains are safe (they fail gracefully).
 
 ## Report Format
 
@@ -164,10 +186,9 @@ Return ALL findings organized clearly using the Report Format below.
 
 ## Plugin-Routed URLs
 
-These URLs require dedicated MCP plugins for proper access:
+These URLs require dedicated plugins for proper access:
 
 ### arxiv.org (Use RAG plugin)
-- <url> — <title>
 - <url> — <title>
 
 ### github.com (Use GitHub Research plugin)
@@ -190,44 +211,27 @@ These URLs require dedicated MCP plugins for proper access:
 **MEDIUM quality:** Blog posts with some substance, overviews with useful links, discussion with concrete answers
 **LOW quality:** Thin wrapper around other content, mostly links, surface-level overview without depth
 
-## Guidelines
-
-- **Scrape before summarizing**: Never summarize from search snippets alone
-- **Be specific**: "Covers 5 chunking strategies with Python code and RAGAS benchmark scores" > "Discusses chunking"
-- **Quantity over perfection**: 20 scraped URLs with quick assessments > 5 carefully curated summaries
-- **Don't self-censor**: If a page has content, include it. Let the caller decide what's useful.
-- **Note dates**: Flag content dates when visible. Recent > old for rapidly evolving topics.
-
-## Plugin Routing (CRITICAL)
-
-**Do NOT scrape these domains — report them for plugin-based access:**
-
-| Domain | Action |
-|--------|--------|
-| arxiv.org | Report: "Use RAG plugin (mcp__rag__search_hybrid) or /rag:pdf-convert" |
-| github.com | Report: "Use GitHub Research plugin (github__get_file_content)" |
-| reddit.com | Report: "Use Reddit plugin (reddit__search_posts)" |
-| youtube.com | Skip entirely. Video content cannot be scraped. |
-
 ## Scraping Tips
 
-- **Default max_content_length is 15000** — sufficient for most articles/docs. Increase for long documentation pages.
+- **Default `--max-content-length` is 15000** — sufficient for most articles/docs. Increase for long documentation pages.
 - **JavaScript-rendered content** is supported — Playwright renders the page before extraction.
 - **Content-focused sites** (articles, docs, wikis) produce the best results. The scraper is optimized for semantic HTML.
 - **Truncation** preserves paragraph boundaries — content is cut at the nearest double newline.
 - **Images** are included as markdown references (small/avatar images are filtered out).
+- **Scrape before summarizing:** Never summarize from search snippets alone. If a page has content, scrape it.
+- **Quantity over perfection:** 20 scraped URLs with quick assessments > 5 carefully curated summaries.
 
 ## Known Limitations
 
-- **Up to ~150 results per query** — server fetches 3 pages by default and deduplicates
+- **Up to ~150 results per query** — CLI fetches 3 pages by default and deduplicates across engines
 - **Scraper optimized for content sites** — articles, docs, wikis work best
-- **scrape_url uses PruningContentFilter** — may damage code blocks. Use scrape_url_raw for full fidelity
+- **scrape_url uses PruningContentFilter** — may damage code blocks. Use `scrape_url_raw` for full fidelity
 - **Login-protected pages** will return login forms, not content
-- **PDF URLs (.pdf)** — use `download_pdf(url)` to save the file locally. Do NOT use scrape_url on PDFs.
+- **PDF URLs (.pdf)** — use `download_pdf` to save the file locally. Do NOT use `scrape_url` on PDFs.
 
 ## When to Stop
 
 Stop when ALL of:
-- Exhausted 5+ query variations with pagination
+- Exhausted 4+ query variations (per parallel batch)
 - Scraped all non-plugin URLs from top results
 - Additional queries return mostly duplicates
