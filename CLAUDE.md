@@ -1,6 +1,6 @@
-# SearXNG MCP Server
+# SearXNG Plugin
 
-Web search (pydoll-based custom engine, 4 engines) and scraping (Crawl4AI) MCP server. Note: the plugin keeps the 'searxng' name for historical reasons — the SearXNG Docker wrapper was replaced by a custom pydoll implementation in the engine-cut refactor 2026-04-15.
+Web search and scraping CLI plugin. Note: the plugin keeps the 'searxng' name for historical reasons — the SearXNG Docker wrapper was replaced by a custom pydoll implementation in the engine-cut refactor 2026-04-15.
 
 ## Sources
 
@@ -15,7 +15,7 @@ See [sources/sources.md](sources/sources.md).
 | **Engines (active)** | Google, Bing, Google Scholar, CrossRef | 4-engine set after engine-cut 2026-04-15 |
 | **Engines (plugin)** | ArXiv, GitHub, Reddit | discovery-only, content via MCP plugins |
 | **Browser** | pydoll Chrome (stealth fingerprint patches, per-engine JS selectors) | `src/search/browser.py`, `src/search/engines/`, `dev/search_pipeline/01_google_smoke.py` + `config.yml` |
-| **Rate Limiting** | Token-bucket per engine with jitter + backoff | `src/search/rate_limiter.py` |
+| **Rate Limiting** | Token-bucket per engine with backoff | `src/search/rate_limiter.py` |
 | **Orchestration** | `asyncio.gather` parallel fetch, deduplicated, formatted as TextContent | `src/search/search_web.py`, SNIPPET_LENGTH=5000 |
 | **Parked** | Brave (PoW CAPTCHA incompatible with parallel architecture) | See `decisions/stealth00_engine_status.md` |
 
@@ -33,19 +33,11 @@ See [sources/sources.md](sources/sources.md).
 |-----------|---------------|--------|
 | **Discovery** | Sitemap → BFS Prefetch cascade | MAX_DEPTH=10, MAX_PAGES=50, TIMEOUT=120s |
 
-### Agent Pipeline (web-research)
-
-| Component | Implementation | Config |
-|-----------|---------------|--------|
-| **Search** | 5+ queries, pagination pageno 1-3, general+science | Haiku model |
-| **Routing** | Plugin routing (arxiv→RAG, github→GH, reddit→Reddit) | youtube→skip |
-| **Coverage** | Per-topic URL tracking, 10+ URLs/topic target | Aggressive scraping |
-
 ### Delivery
 
 | Component | Implementation | Config |
 |-----------|---------------|--------|
-| **MCP Server** | `server.py` via FastMCP | 5 tools (search_web, scrape_url, scrape_url_raw, explore_site, download_pdf) |
+| **CLI** | `cli.py` via argparse + `~/.local/bin/searxng-cli` wrapper | 5 tools (search_web, scrape_url, scrape_url_raw, explore_site, download_pdf) |
 
 ### Key Files
 
@@ -62,16 +54,13 @@ See [sources/sources.md](sources/sources.md).
 | `src/routing.py` | Plugin domain routing |
 | `src/crawler/crawl_site.py` | Full website crawl with markdown export |
 | `src/crawler/explore_site.py` | URL discovery CLI for /crawl-site pipeline |
-| `server.py` | MCP tool registration |
-| `agents/web-research.md` | Agent definition |
-| `skills/agent-web-research/SKILL.md` | Subagent tool reference + usage strategies |
+| `cli.py` | CLI dispatch |
 
 ## Project Structure
 
 ```
 searxng/
-├── server.py
-├── mcp-start.sh                    → Sources .env, bootstraps venv + starts MCP server
+├── cli.py                          → CLI dispatch (5 commands)
 ├── .env.example                    → Template for SEARXNG_PROJECT_ROOT
 ├── requirements.txt
 ├── README.md                       → [Setup & External Docs](README.md)

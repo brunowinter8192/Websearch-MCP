@@ -5,13 +5,7 @@
   "author": {
     "name": "Bruno Winter"
   },
-  "keywords": ["searxng", "search", "scraper", "mcp", "web"],
+  "keywords": ["searxng", "search", "scraper", "cli", "web"],
   "skills": ["./skills/web-research/"],
-  "commands": ["./commands/crawl-site.md"],
-  "mcpServers": {
-    "searxng": {
-      "command": "${CLAUDE_PLUGIN_ROOT}/mcp-start.sh",
-      "args": []
-    }
-  }
+  "commands": ["./commands/crawl-site.md"]
 }
