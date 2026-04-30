@@ -139,17 +139,19 @@ def parse_stdout(block: str) -> tuple[int, list[str]]:
 def derive_status(count: int, domains: int, stderr: str, returncode: int) -> str:
     if returncode != 0:
         return "ERROR"
+    # Positive results: trust the count, ignore batch-shared stderr noise
+    if count > 0:
+        if count >= 8 and domains >= 5:
+            return "OK"
+        return "SUSPECT"
+    # No results: check stderr for the actual reason
     if "CAPTCHA detected" in stderr:
         return "CAPTCHA"
     if "Rate limited" in stderr:
         return "RATE_LIMIT"
     if "Google search failed" in stderr:
         return "ERROR"
-    if count == 0:
-        return "EMPTY"
-    if count >= 8 and domains >= 5:
-        return "OK"
-    return "SUSPECT"
+    return "EMPTY"
 
 
 # Extract domain from URL string
