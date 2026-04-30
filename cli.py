@@ -11,13 +11,13 @@ import atexit
 
 from src.routing import check_plugin_routed
 from src.search.search_web import search_web_workflow
-from src.search.browser import close_browser
+from src.search.browser import close_browser, kill_stale_chrome
 from src.scraper.scrape_url import scrape_url_workflow
 from src.scraper.scrape_url_raw import scrape_url_raw_workflow
 from src.scraper.explore_site import explore_site_workflow
 from src.scraper.download_pdf import download_pdf_workflow
 
-atexit.register(lambda: asyncio.run(close_browser()))
+atexit.register(kill_stale_chrome)
 
 
 def main():
