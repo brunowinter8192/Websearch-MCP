@@ -36,5 +36,13 @@
 | opsdisk/yagooglesearch | Repo | stealth05 | Referenced |
 | karust/openserp | Repo | stealth05, stealth07 | Referenced |
 | 2captcha/2captcha-go | Repo | stealth07 | Referenced |
+| github.com/StractOrg/stract | Repo | search05 | Referenced |
+| github.com/MarginaliaSearch/MarginaliaSearch | Repo | search05 | Referenced |
+| github.com/MarginaliaSearch/docs.marginalia.nu | Repo | search05 | Referenced |
+| github.com/cyanheads/hn-mcp-server | Repo | search05 | Referenced |
+| github.com/voska/hn-cli | Repo | search05 | Referenced |
+| github.com/lucjon/Py-StackExchange | Repo | search05 | Referenced |
+| github.com/searxng/searxng | Repo | search05 | Referenced |
+| github.com/hffmnnj/kagi-skill | Repo | search05 | Referenced |
 
 Consult via RAG search before making assumptions. Pipeline step references match `decisions/` files.
