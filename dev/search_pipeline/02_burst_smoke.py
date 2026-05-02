@@ -20,6 +20,7 @@ PROJECT_ROOT = SCRIPT_DIR.parent.parent
 CONFIG_PATH = SCRIPT_DIR / "config.yml"
 CLI_PY = PROJECT_ROOT / "cli.py"
 QUERY_TIMEOUT_S = 120
+SNIPPET_PREVIEW = 200
 
 
 # ORCHESTRATOR
@@ -104,11 +105,13 @@ async def run_batch(batch_queries: list[str], batch_idx: int) -> list[dict]:
             blocks.append("")
         records = []
         for q, block in zip(batch_queries, blocks):
-            count, urls = parse_stdout(block)
-            domains = {_domain(u) for u in urls if u}
+            count, results = parse_stdout(block)
+            domains = {_domain(r["url"]) for r in results if r["url"]}
+            sample = [{"url": r["url"], "snippet": r["snippet"][:SNIPPET_PREVIEW] if r["snippet"] else None}
+                      for r in results[:3]]
             records.append(_record(q, batch_idx,
                                    derive_status(count, len(domains), stderr, proc.returncode),
-                                   count, len(domains), per_query_ms, urls[:3]))
+                                   count, len(domains), per_query_ms, sample))
         return records
     except Exception as e:
         elapsed_ms = int((time.monotonic() - t0) * 1000)
@@ -117,22 +120,33 @@ async def run_batch(batch_queries: list[str], batch_idx: int) -> list[dict]:
 
 
 # Build per-query record dict
-def _record(query, batch_idx, status, count, domains, search_ms, sample_urls, note=""):
+def _record(query, batch_idx, status, count, domains, search_ms, sample_results, note=""):
     return {"query": query, "batch": batch_idx, "status": status,
             "count": count, "domains": domains, "search_ms": search_ms,
-            "sample_urls": sample_urls, "note": note}
+            "sample_results": sample_results, "note": note}
 
 
-# Parse one result block from search_batch stdout: return (result_count, url_list)
-def parse_stdout(block: str) -> tuple[int, list[str]]:
+# Parse one result block from search_batch stdout: return (result_count, list of {url, snippet})
+def parse_stdout(block: str) -> tuple[int, list[dict]]:
     if "No results found for" in block:
         return 0, []
     m = re.search(r'Found (\d+) results for', block)
     if not m:
         return 0, []
     count = int(m.group(1))
-    urls = [u.strip() for u in re.findall(r'^\s+URL: (.+)$', block, re.MULTILINE)]
-    return count, urls
+    results = []
+    lines = block.splitlines()
+    for i, line in enumerate(lines):
+        um = re.match(r'^\s+URL: (.+)$', line)
+        if um:
+            url = um.group(1).strip()
+            snippet = None
+            if i + 1 < len(lines):
+                sm = re.match(r'^\s+Snippet: (.+)$', lines[i + 1])
+                if sm:
+                    snippet = sm.group(1).strip()
+            results.append({"url": url, "snippet": snippet})
+    return count, results
 
 
 # Derive status from count, domains, stderr content and exit code
@@ -221,13 +235,16 @@ def write_report(records, batch_times, total_s, report_dir, ts, n_batches,
     for bi, bt in enumerate(batch_times, 1):
         lines.append(f"- Batch {bi}: {bt:.1f}s")
 
-    lines += ["", "## Sample URLs (first 3 per query)", ""]
+    lines += ["", "## Sample Results (first 3 per query)", ""]
     for i, r in enumerate(records, 1):
         lines.append(f"### Q{i}: {r['query']}")
-        for url in r["sample_urls"]:
-            lines.append(f"- {url}")
-        if not r["sample_urls"]:
+        if not r["sample_results"]:
             lines.append("- (no results)")
+        else:
+            for res in r["sample_results"]:
+                lines.append(f"- {res['url']}")
+                if res["snippet"]:
+                    lines.append(f"  Snippet: {res['snippet']}")
         lines.append("")
 
     path.write_text("\n".join(lines), encoding="utf-8")
