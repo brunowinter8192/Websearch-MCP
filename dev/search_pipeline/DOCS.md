@@ -16,6 +16,7 @@ Baseline-first stealth/search experimentation. Active engines: Google (pydoll, 3
 | `04_ddg_smoke.py` | DuckDuckGo smoke runner — standalone pydoll, reads config.yml `duckduckgo:` block, runs 30 baseline queries against `html.duckduckgo.com/html/` GET endpoint, writes `ddg_smoke_<ts>.md` to `01_reports/`. No consent handling, DOM-based CAPTCHA detection, URL cleaning from DDG redirect wrapper. Status taxonomy: OK / EMPTY / BLOCKED / CAPTCHA / SUSPECT / ERROR. |
 | `05_search_smoke.py` | Multi-engine comparison smoke — imports `GoogleEngine` + `DuckDuckGoEngine` from `src/`, fans out per-engine in parallel via `asyncio.gather`, merges by URL preserving per-engine snippets, fetches previews via `src/search/preview.py`, writes `search_smoke_<ts>.md` to `01_reports/`. CLI flags: `--engines google duckduckgo` (default), `--max-queries N`. |
 | `06_mojeek_smoke.py` | Mojeek standalone smoke runner — reads config.yml `mojeek:` block, runs 30 baseline queries against `mojeek.com/search`, writes `mojeek_smoke_<ts>.md` to `01_reports/`. No consent, no CAPTCHA check, no URL cleaning. Status taxonomy: OK / EMPTY / BLOCKED / SUSPECT / ERROR. |
+| `07_lobsters_smoke.py` | Lobsters standalone smoke runner — reads config.yml `lobsters:` block, runs 30 baseline queries against `lobste.rs/search`, writes `lobsters_smoke_<ts>.md` to `01_reports/`. No consent, no CAPTCHA check, no URL cleaning. Snippet = domain-as-displayed (link-aggregator pattern). Status taxonomy: OK / EMPTY / BLOCKED / SUSPECT / ERROR. |
 | `00_single_query.py` | Single-query diagnostic harness — same config as 01, runs one query with verbose output (use for fast iteration during layer experiments) |
 | `_capture_sorry.py` | Standalone helper to navigate Google, detect `/sorry/` redirect, save PNG + HTML + metadata to `01_reports/sorry_<ts>.*` (artifacts gitignored, contain public IP) |
 | `01_reports/` | Per-run markdown reports — `smoke_*.md` from 01, `burst_*.md` from 02, `ddg_smoke_*.md` from 04, sorry captures gitignored |
@@ -53,6 +54,9 @@ rm -rf ~/.searxng-mcp/browser-session-smoke/Singleton* 2>/dev/null
 # Mojeek standalone smoke (30 queries, dev pydoll, ~40s)
 ./venv/bin/python3 dev/search_pipeline/06_mojeek_smoke.py
 
+# Lobsters standalone smoke (30 queries, dev pydoll, link-aggregator index)
+./venv/bin/python3 dev/search_pipeline/07_lobsters_smoke.py
+
 # Multi-engine comparison smoke (30 queries × google + duckduckgo, ~8 min)
 ./venv/bin/python3 dev/search_pipeline/05_search_smoke.py --engines google duckduckgo
 
@@ -70,6 +74,14 @@ rm -rf ~/.searxng-mcp/browser-session-smoke/Singleton* 2>/dev/null
 - **Selectors:** `ul.results-standard > li > a.ob` (container), `li h2 a` (title), `li p.s` (snippet) — verified live 2026-05-03
 - **Rate-limit break:** 403 at query 10 (~9 queries in 7.5s = ~1.2 req/s burst). Production 4 req/min (1 per 15s) stays well within threshold.
 - **Nav timing:** mean 286ms / max 1033ms (queries 1-9 before 403 block)
+
+### Lobsters
+
+- **Result:** 16/30 OK (stress baseline, 0-delay) — first run 2026-05-03, `01_reports/lobsters_smoke_20260503_224702.md`
+- **Stack:** headless Chrome via pydoll, fingerprint patches (screen/DPR/outer/css), no consent cookie, GET `lobste.rs/search?q={}&what=stories&order=relevance`, 0 delay
+- **Selectors:** `li.story` (container), `a.u-url` (title + href), `a.domain` (snippet as domain-as-displayed) — verified live 2026-05-03
+- **Nav timing:** mean 488ms / max 1639ms; DOM-wait mean 477ms / max 613ms
+- **Notes:** Link-aggregator — smaller index; German + off-topic queries EMPTY (expected). No rate-limit block observed. Snippet = domain only by design.
 
 ### 05 — Multi-engine comparison
 

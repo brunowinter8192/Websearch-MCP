@@ -2,7 +2,7 @@
 
 pydoll-based parallel search pipeline. Replaces the former `src/searxng/` SearXNG-Docker wrapper (deleted 2026-04-15 in engine-cut). Exposes `search_web_workflow()` (single-query, fan-out across engines via asyncio.gather) and `search_batch_workflow()` (N queries sequentially in one warm-Chrome session, used by the CLI `search_batch` subcommand) — both consumed by `cli.py`. Plus `fetch_search_results()` sync wrapper consumed by dev scripts.
 
-**Active engines (7):** google, bing, google scholar, duckduckgo, mojeek (pydoll); crossref, hn (HTTP). See `decisions/stealth00_engine_status.md` for the drop decision on brave / startpage / semantic scholar. See `decisions/search05_engine_expansion.md` for HN-Algolia + DDG + Mojeek integration rationale + roadmap (Stack-Exchange next, Marginalia deferred).
+**Active engines (8):** google, bing, google scholar, duckduckgo, mojeek, lobsters (pydoll); crossref, hn (HTTP). See `decisions/stealth00_engine_status.md` for the drop decision on brave / startpage / semantic scholar. See `decisions/search05_engine_expansion.md` for HN-Algolia + DDG + Mojeek + Lobsters integration rationale + roadmap (Stack-Exchange next, Marginalia deferred).
 
 ## search_web.py
 
@@ -76,6 +76,10 @@ Per-engine parser modules. Each exports an `Engine` class with `search(query, la
 ### engines/mojeek.py
 
 **Purpose:** Mojeek web search via pydoll (mojeek.com/search GET endpoint). Own crawler index — not Bing-derivative, third independent index after Google + DDG. No consent handling, no CAPTCHA detection (none observed in DOM probe 2026-05-03), no URL cleaning (direct hrefs, no redirect wrapper). Rate-limit pre-registered at `max_requests=4, window_seconds=60`. Selectors: `ul.results-standard > li > a.ob` (container anchor with direct `href`), `li h2 a` (title text), `li p.s` (snippet) — verified live 2026-05-03.
+
+### engines/lobsters.py
+
+**Purpose:** Lobste.rs web search via pydoll (lobste.rs/search GET endpoint). Link-aggregator for tech/programming content — smaller index than general engines, bias toward quality technical posts. No consent handling, no CAPTCHA detection (none observed in DOM probe 2026-05-03), no URL cleaning (direct hrefs, no redirect wrapper). Rate-limit pre-registered at `max_requests=4, window_seconds=60`. Selectors: `li.story` (result containers), `a.u-url` (href + title text), `a.domain` (snippet — domain-as-displayed, may include path prefix for GitHub repos). Snippet = domain only by design; `og:description` from preview-fetch fills the description field downstream — verified live 2026-05-03.
 
 ## Stealth Decisions
 

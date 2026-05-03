@@ -12,7 +12,7 @@ See [sources/sources.md](sources/sources.md).
 
 | Component | Implementation | Config |
 |-----------|---------------|--------|
-| **Engines (active)** | Google, Bing, Google Scholar, DuckDuckGo, Mojeek (pydoll); CrossRef, HN-Algolia (HTTP) | 7-engine set, HN added 2026-05-01, DDG + Mojeek added 2026-05-03 |
+| **Engines (active)** | Google, Bing, Google Scholar, DuckDuckGo, Mojeek, Lobsters (pydoll); CrossRef, HN-Algolia (HTTP) | 8-engine set, HN added 2026-05-01, DDG + Mojeek + Lobsters added 2026-05-03 |
 | **Engines (plugin)** | ArXiv, GitHub, Reddit | discovery-only, content via MCP plugins |
 | **Browser** | pydoll Chrome (stealth fingerprint patches, per-engine JS selectors) | `src/search/browser.py`, `src/search/engines/`, `dev/search_pipeline/01_google_smoke.py` + `config.yml` |
 | **Rate Limiting** | Token-bucket per engine with backoff | `src/search/rate_limiter.py` |
@@ -48,7 +48,7 @@ See [sources/sources.md](sources/sources.md).
 | `src/search/preview.py` | URL preview fetcher (og/meta via httpx + lxml, top-20) |
 | `src/search/browser.py` | pydoll Chrome lifecycle (shared singleton) |
 | `src/search/rate_limiter.py` | Per-engine token bucket |
-| `src/search/engines/` | Per-engine parsers: `google.py`, `bing.py`, `scholar.py`, `crossref.py`, `hn.py`, `duckduckgo.py`, `mojeek.py` |
+| `src/search/engines/` | Per-engine parsers: `google.py`, `bing.py`, `scholar.py`, `crossref.py`, `hn.py`, `duckduckgo.py`, `mojeek.py`, `lobsters.py` |
 | `src/scraper/scrape_url.py` | URL scraping (filtered) |
 | `src/scraper/scrape_url_raw.py` | Raw URL scraping (for RAG indexing) |
 | `src/scraper/download_pdf.py` | PDF file download |

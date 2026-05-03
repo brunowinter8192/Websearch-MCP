@@ -102,6 +102,24 @@ mojeek:
       }
       return JSON.stringify(_out);
 
+lobsters:
+  url_template: "https://lobste.rs/search?q={query}&what=stories&order=relevance"
+  wait_for_results:
+    max_cycles: 3
+    interval_seconds: 0.2
+  selectors:
+    wait_js: "return document.querySelectorAll('li.story').length"
+    parse_js: |
+      var _cs = document.querySelectorAll('li.story');
+      var _out = [];
+      for (var _i = 0; _i < _cs.length; _i++) {
+          var _li = _cs[_i]; var _a = _li.querySelector('a.u-url');
+          var _dom = _li.querySelector('a.domain');
+          if (!_a || !_a.href) continue;
+          _out.push({url: _a.href, title: _a.textContent.trim(), snippet: _dom ? _dom.textContent.trim() : ''});
+      }
+      return JSON.stringify(_out);
+
 run:
   queries_file: ./queries.txt
   delay_between_queries: 0

@@ -12,6 +12,7 @@ from src.search.engines.crossref import CrossRefEngine
 from src.search.engines.hn import HNEngine
 from src.search.engines.duckduckgo import DuckDuckGoEngine
 from src.search.engines.mojeek import MojeekEngine
+from src.search.engines.lobsters import LobstersEngine
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ ENGINES = {
     "hn": HNEngine(),
     "duckduckgo": DuckDuckGoEngine(),
     "mojeek": MojeekEngine(),
+    "lobsters": LobstersEngine(),
 }
 
 
