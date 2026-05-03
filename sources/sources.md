@@ -43,6 +43,7 @@
 | github.com/voska/hn-cli | Repo | search05 | Referenced |
 | github.com/lucjon/Py-StackExchange | Repo | search05 | Referenced |
 | github.com/searxng/searxng | Repo | search05 | Referenced |
+| github.com/searxng/searxng (searx/engines/duckduckgo.py) | Repo | search05 | Referenced |
 | github.com/hffmnnj/kagi-skill | Repo | search05 | Referenced |
 
 Consult via RAG search before making assumptions. Pipeline step references match `decisions/` files.

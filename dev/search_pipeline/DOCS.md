@@ -2,33 +2,45 @@
 
 ## Role
 
-Baseline-first stealth/search experimentation. Single active engine (Google) with a reproducible 30/30 headless pydoll stack, iterated via single-variable experiments against the 7 detection layers documented in `decisions/stealth00_engine_status.md`.
+Baseline-first stealth/search experimentation. Active engines: Google (pydoll, 30/30 baseline) and DuckDuckGo (pydoll, html-endpoint). Iterated via single-variable experiments against the 7 detection layers documented in `decisions/stealth00_engine_status.md`.
 
 ## Layout
 
 | File | Purpose |
 |------|---------|
-| `config.yml` | Single source of truth for browser, stealth patches, Google selectors, consent cookie, run params, detection rules, report format |
+| `config.yml` | Single source of truth for browser, stealth patches, engine selectors + params (google + duckduckgo blocks), run params, detection rules, report format |
 | `queries.txt` | 30 baseline queries (Tech 8 + Science 6 + German 6 + Niche 5 + Broad 5) |
 | `01_google_smoke.py` | Baseline 30-query smoke runner (standalone pydoll, dev-side control reference) — reads config.yml, writes timestamped report `smoke_<ts>.md` to `01_reports/` |
 | `02_burst_smoke.py` | Burst smoke against the production CLI — invokes `searxng-cli search_batch` per batch (one subprocess per N queries, warm Chrome amortized) and writes `burst_<ts>.md` to `01_reports/`. Exists to validate the prod CLI path under the architectural rate pattern (4 queries per burst, optional cooldown). CLI flags: `--queries-per-burst N` (default 4), `--cooldown S` (default 60), `--max-queries N` (default all from queries.txt). |
 | `03_hn_smoke.py` | HN-Algolia smoke runner — direct `HNEngine().search()` call (pure HTTP, no browser), runs the 30 baseline queries, writes timestamped report `hn_smoke_<ts>.md` to `01_reports/`. Status taxonomy: OK / EMPTY / ERROR. Smoke result is content-bound — German queries always EMPTY (HN is English), niche-tech queries depend on `tags=story` filter (see search05). |
+| `04_ddg_smoke.py` | DuckDuckGo smoke runner — standalone pydoll, reads config.yml `duckduckgo:` block, runs 30 baseline queries against `html.duckduckgo.com/html/` GET endpoint, writes `ddg_smoke_<ts>.md` to `01_reports/`. No consent handling, DOM-based CAPTCHA detection, URL cleaning from DDG redirect wrapper. Status taxonomy: OK / EMPTY / BLOCKED / CAPTCHA / SUSPECT / ERROR. |
 | `00_single_query.py` | Single-query diagnostic harness — same config as 01, runs one query with verbose output (use for fast iteration during layer experiments) |
 | `_capture_sorry.py` | Standalone helper to navigate Google, detect `/sorry/` redirect, save PNG + HTML + metadata to `01_reports/sorry_<ts>.*` (artifacts gitignored, contain public IP) |
-| `01_reports/` | Per-run markdown reports — `smoke_*.md` from 01, `burst_*.md` from 02, sorry captures gitignored |
+| `01_reports/` | Per-run markdown reports — `smoke_*.md` from 01, `burst_*.md` from 02, `ddg_smoke_*.md` from 04, sorry captures gitignored |
 
 ## Baseline (current)
+
+### Google
 
 - **Result:** 30/30 OK — first verified 2026-04-21, run 1
 - **Stack:** headless Chrome via pydoll, SOCS cookie injection per-tab, fingerprint patches for screen/DPR/outer/css, selectors `#rso h3` + `.MjjYud`, 0 delay between queries, ~2.5min total
 - **Layer mapping:** see `decisions/stealth00_engine_status.md` for how the baseline addresses each detection layer
 
+### DuckDuckGo
+
+- **Result:** 30/30 OK — first verified 2026-05-03, run 1 — `01_reports/ddg_smoke_20260503_174043.md`
+- **Stack:** headless Chrome via pydoll, fingerprint patches (screen/DPR/outer/css), no consent cookie, GET `html.duckduckgo.com/html/?q={}&kl=wt-wt`, 0 delay, ~40s total
+- **Nav timing:** mean 1333ms / max 3070ms — DOM-wait 0ms (server-rendered HTML, results present without poll cycle)
+
 ## Running
 
 ```bash
-# Standalone control (30 queries, dev pydoll, ~2.5 min)
+# Google standalone control (30 queries, dev pydoll, ~2.5 min)
 rm -rf ~/.searxng-mcp/browser-session-smoke/Singleton* 2>/dev/null
 ./venv/bin/python3 dev/search_pipeline/01_google_smoke.py
+
+# DuckDuckGo standalone smoke (30 queries, dev pydoll, ~40s)
+./venv/bin/python3 dev/search_pipeline/04_ddg_smoke.py
 
 # Burst against prod CLI (30 queries in 4-per-burst, no cooldown, ~1.7 min)
 ./venv/bin/python3 dev/search_pipeline/02_burst_smoke.py --queries-per-burst 4 --cooldown 0

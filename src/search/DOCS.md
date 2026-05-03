@@ -2,7 +2,7 @@
 
 pydoll-based parallel search pipeline. Replaces the former `src/searxng/` SearXNG-Docker wrapper (deleted 2026-04-15 in engine-cut). Exposes `search_web_workflow()` (single-query, fan-out across engines via asyncio.gather) and `search_batch_workflow()` (N queries sequentially in one warm-Chrome session, used by the CLI `search_batch` subcommand) — both consumed by `cli.py`. Plus `fetch_search_results()` sync wrapper consumed by dev scripts.
 
-**Active engines (5):** google, bing, google scholar (pydoll); crossref, hn (HTTP). See `decisions/stealth00_engine_status.md` for the drop decision on brave / startpage / duckduckgo / mojeek / semantic scholar. See `decisions/search05_engine_expansion.md` for HN-Algolia integration rationale + roadmap (Stack-Exchange next, Marginalia deferred).
+**Active engines (6):** google, bing, google scholar, duckduckgo (pydoll); crossref, hn (HTTP). See `decisions/stealth00_engine_status.md` for the drop decision on brave / startpage / mojeek / semantic scholar. See `decisions/search05_engine_expansion.md` for HN-Algolia + DDG integration rationale + roadmap (Stack-Exchange next, Marginalia deferred).
 
 ## search_web.py
 
@@ -62,6 +62,10 @@ Per-engine parser modules. Each exports an `Engine` class with `search(query, la
 ### engines/hn.py
 
 **Purpose:** HN Algolia REST API via httpx (no browser, no auth). Default filter `tags=story` excludes comment hits. Snippet synthesized from points + num_comments + author metadata (HN doesn't expose body text for link-stories). Fallback URL `news.ycombinator.com/item?id={objectID}` for hits with empty external `url` (Ask-HN, Show-HN with story-text). Returns story metadata as `SearchResult` entries.
+
+### engines/duckduckgo.py
+
+**Purpose:** DuckDuckGo web search via pydoll (`html.duckduckgo.com/html/` GET endpoint). No consent handling needed — DDG html-endpoint does not show a consent banner. No cookie injection needed — `kl=wt-wt` (worldwide, no region filter) is included directly in the GET URL. DOM-based CAPTCHA detection (`form#challenge-form`). URL cleaning extracts the actual destination from DDG's redirect wrapper (`duckduckgo.com/l/?uddg=<encoded>`). Rate-limit pre-registered at `max_requests=4, window_seconds=60` (uniform 4 req/min policy). Selectors: `#links > div.web-result` (result containers), `h2 a` (title + href), `a.result__snippet` (snippet) — verified live 2026-05-03.
 
 ## Stealth Decisions
 

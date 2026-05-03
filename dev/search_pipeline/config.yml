@@ -62,6 +62,27 @@ google:
     - "form[action*='consent'] button[type='submit']"
     - "button[aria-label*='Accept']"
 
+duckduckgo:
+  url_template: "https://html.duckduckgo.com/html/?q={query}&kl=wt-wt"
+  captcha_selector: "form#challenge-form"
+  wait_for_results:
+    max_cycles: 3
+    interval_seconds: 0.2
+  selectors:
+    wait_js: "return document.querySelectorAll('#links > div.web-result').length"
+    parse_js: |
+      var _cs = document.querySelectorAll('#links > div.web-result');
+      var _out = [];
+      for (var _i = 0; _i < _cs.length; _i++) {
+          var _c = _cs[_i]; var _a = _c.querySelector('h2 a');
+          var _snip = _c.querySelector('a.result__snippet');
+          if (!_a) continue;
+          var _href = _a.href; var _m = _href.match(/[?&]uddg=([^&]+)/);
+          var _url = _m ? decodeURIComponent(_m[1]) : _href;
+          _out.push({url: _url, title: _a.textContent.trim(), snippet: _snip ? _snip.textContent.trim() : ''});
+      }
+      return JSON.stringify(_out);
+
 run:
   queries_file: ./queries.txt
   delay_between_queries: 0

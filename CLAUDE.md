@@ -12,7 +12,7 @@ See [sources/sources.md](sources/sources.md).
 
 | Component | Implementation | Config |
 |-----------|---------------|--------|
-| **Engines (active)** | Google, Bing, Google Scholar (pydoll); CrossRef, HN-Algolia (HTTP) | 5-engine set, HN added 2026-05-01 |
+| **Engines (active)** | Google, Bing, Google Scholar, DuckDuckGo (pydoll); CrossRef, HN-Algolia (HTTP) | 6-engine set, HN added 2026-05-01, DDG added 2026-05-03 |
 | **Engines (plugin)** | ArXiv, GitHub, Reddit | discovery-only, content via MCP plugins |
 | **Browser** | pydoll Chrome (stealth fingerprint patches, per-engine JS selectors) | `src/search/browser.py`, `src/search/engines/`, `dev/search_pipeline/01_google_smoke.py` + `config.yml` |
 | **Rate Limiting** | Token-bucket per engine with backoff | `src/search/rate_limiter.py` |
@@ -46,7 +46,7 @@ See [sources/sources.md](sources/sources.md).
 | `src/search/search_web.py` | Search orchestrator (parallel engine fetch + dedup) |
 | `src/search/browser.py` | pydoll Chrome lifecycle (shared singleton) |
 | `src/search/rate_limiter.py` | Per-engine token bucket |
-| `src/search/engines/` | Per-engine parsers: `google.py`, `bing.py`, `scholar.py`, `crossref.py`, `hn.py` |
+| `src/search/engines/` | Per-engine parsers: `google.py`, `bing.py`, `scholar.py`, `crossref.py`, `hn.py`, `duckduckgo.py` |
 | `src/scraper/scrape_url.py` | URL scraping (filtered) |
 | `src/scraper/scrape_url_raw.py` | Raw URL scraping (for RAG indexing) |
 | `src/scraper/download_pdf.py` | PDF file download |
@@ -79,13 +79,13 @@ searxng/
 │   └── agent03_coverage.md
 ├── src/                            → [DOCS.md](src/DOCS.md)
 │   ├── routing.py                  → Plugin domain routing
-│   ├── search/                     → [DOCS.md](src/search/DOCS.md) — search engines (5 active: 3 browser + 2 API)
-│   │   └── engines/                → Per-engine parsers (google, bing, scholar, crossref, hn)
+│   ├── search/                     → [DOCS.md](src/search/DOCS.md) — search engines (6 active: 4 browser + 2 API)
+│   │   └── engines/                → Per-engine parsers (google, bing, scholar, crossref, hn, duckduckgo)
 │   ├── scraper/                    → [DOCS.md](src/scraper/DOCS.md)
 │   ├── crawler/                    → [DOCS.md](src/crawler/DOCS.md) — CLI-only (`/crawl-site` pipeline)
 │   └── spawn/                      → Worker spawn utilities (in src/DOCS.md)
 ├── dev/                            → [DOCS.md](dev/DOCS.md)
-│   ├── search_pipeline/            → [DOCS.md](dev/search_pipeline/DOCS.md) — Per-engine smoke stack (01_google_smoke, 02_burst_smoke, 03_hn_smoke, config.yml, 01_reports/)
+│   ├── search_pipeline/            → [DOCS.md](dev/search_pipeline/DOCS.md) — Per-engine smoke stack (01_google_smoke, 02_burst_smoke, 03_hn_smoke, 04_ddg_smoke, config.yml, 01_reports/)
 │   ├── scrape_pipeline/            → [DOCS.md](dev/scrape_pipeline/DOCS.md)
 │   │   ├── browser_eval/           → scrape01_browser
 │   │   ├── filter_eval/            → scrape02_filtering

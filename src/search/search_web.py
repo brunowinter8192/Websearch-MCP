@@ -9,6 +9,7 @@ from src.search.engines.bing import BingEngine
 from src.search.engines.scholar import ScholarEngine
 from src.search.engines.crossref import CrossRefEngine
 from src.search.engines.hn import HNEngine
+from src.search.engines.duckduckgo import DuckDuckGoEngine
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,7 @@ ENGINES = {
     "google scholar": ScholarEngine(),
     "crossref": CrossRefEngine(),
     "hn": HNEngine(),
+    "duckduckgo": DuckDuckGoEngine(),
 }
 
 
