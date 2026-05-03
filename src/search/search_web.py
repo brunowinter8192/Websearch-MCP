@@ -11,6 +11,7 @@ from src.search.engines.scholar import ScholarEngine
 from src.search.engines.crossref import CrossRefEngine
 from src.search.engines.hn import HNEngine
 from src.search.engines.duckduckgo import DuckDuckGoEngine
+from src.search.engines.mojeek import MojeekEngine
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,7 @@ ENGINES = {
     "crossref": CrossRefEngine(),
     "hn": HNEngine(),
     "duckduckgo": DuckDuckGoEngine(),
+    "mojeek": MojeekEngine(),
 }
 
 

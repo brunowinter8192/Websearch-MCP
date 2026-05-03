@@ -83,6 +83,25 @@ duckduckgo:
       }
       return JSON.stringify(_out);
 
+mojeek:
+  url_template: "https://www.mojeek.com/search?q={query}&safe=1"
+  wait_for_results:
+    max_cycles: 3
+    interval_seconds: 0.2
+  selectors:
+    wait_js: "return document.querySelectorAll('ul.results-standard > li > a.ob').length"
+    parse_js: |
+      var _cs = document.querySelectorAll('ul.results-standard > li > a.ob');
+      var _out = [];
+      for (var _i = 0; _i < _cs.length; _i++) {
+          var _a = _cs[_i]; var _li = _a.closest('li');
+          var _h2a = _li ? _li.querySelector('h2 a') : null;
+          var _ps = _li ? _li.querySelector('p.s') : null;
+          if (!_a.href) continue;
+          _out.push({url: _a.href, title: _h2a ? _h2a.textContent.trim() : '', snippet: _ps ? _ps.textContent.trim() : ''});
+      }
+      return JSON.stringify(_out);
+
 run:
   queries_file: ./queries.txt
   delay_between_queries: 0

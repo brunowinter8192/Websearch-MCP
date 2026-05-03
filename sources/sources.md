@@ -44,6 +44,7 @@
 | github.com/lucjon/Py-StackExchange | Repo | search05 | Referenced |
 | github.com/searxng/searxng | Repo | search05 | Referenced |
 | github.com/searxng/searxng (searx/engines/duckduckgo.py) | Repo | search05 | Referenced |
+| github.com/searxng/searxng (searx/engines/mojeek.py) | Repo | search05 | Referenced |
 | github.com/hffmnnj/kagi-skill | Repo | search05 | Referenced |
 | github.com/encode/httpx | Repo | search06 | Referenced |
 | github.com/lxml/lxml | Repo | search06 | Referenced |
