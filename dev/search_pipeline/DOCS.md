@@ -14,6 +14,7 @@ Baseline-first stealth/search experimentation. Active engines: Google (pydoll, 3
 | `02_burst_smoke.py` | Burst smoke against the production CLI — invokes `searxng-cli search_batch` per batch (one subprocess per N queries, warm Chrome amortized) and writes `burst_<ts>.md` to `01_reports/`. Exists to validate the prod CLI path under the architectural rate pattern (4 queries per burst, optional cooldown). CLI flags: `--queries-per-burst N` (default 4), `--cooldown S` (default 60), `--max-queries N` (default all from queries.txt). |
 | `03_hn_smoke.py` | HN-Algolia smoke runner — direct `HNEngine().search()` call (pure HTTP, no browser), runs the 30 baseline queries, writes timestamped report `hn_smoke_<ts>.md` to `01_reports/`. Status taxonomy: OK / EMPTY / ERROR. Smoke result is content-bound — German queries always EMPTY (HN is English), niche-tech queries depend on `tags=story` filter (see search05). |
 | `04_ddg_smoke.py` | DuckDuckGo smoke runner — standalone pydoll, reads config.yml `duckduckgo:` block, runs 30 baseline queries against `html.duckduckgo.com/html/` GET endpoint, writes `ddg_smoke_<ts>.md` to `01_reports/`. No consent handling, DOM-based CAPTCHA detection, URL cleaning from DDG redirect wrapper. Status taxonomy: OK / EMPTY / BLOCKED / CAPTCHA / SUSPECT / ERROR. |
+| `05_search_smoke.py` | Multi-engine comparison smoke — imports `GoogleEngine` + `DuckDuckGoEngine` from `src/`, fans out per-engine in parallel via `asyncio.gather`, merges by URL preserving per-engine snippets, fetches previews via `src/search/preview.py`, writes `search_smoke_<ts>.md` to `01_reports/`. CLI flags: `--engines google duckduckgo` (default), `--max-queries N`. |
 | `00_single_query.py` | Single-query diagnostic harness — same config as 01, runs one query with verbose output (use for fast iteration during layer experiments) |
 | `_capture_sorry.py` | Standalone helper to navigate Google, detect `/sorry/` redirect, save PNG + HTML + metadata to `01_reports/sorry_<ts>.*` (artifacts gitignored, contain public IP) |
 | `01_reports/` | Per-run markdown reports — `smoke_*.md` from 01, `burst_*.md` from 02, `ddg_smoke_*.md` from 04, sorry captures gitignored |
@@ -48,9 +49,22 @@ rm -rf ~/.searxng-mcp/browser-session-smoke/Singleton* 2>/dev/null
 # Burst with steady-state rate cap (30 queries, 4-per-burst, 60s cooldown between, ~9 min)
 ./venv/bin/python3 dev/search_pipeline/02_burst_smoke.py --queries-per-burst 4 --cooldown 60
 
+# Multi-engine comparison smoke (30 queries × google + duckduckgo, ~8 min)
+./venv/bin/python3 dev/search_pipeline/05_search_smoke.py --engines google duckduckgo
+
+# Multi-engine smoke with query limit for quick validation
+./venv/bin/python3 dev/search_pipeline/05_search_smoke.py --engines google duckduckgo --max-queries 5
+
 # Single query diagnostic
 ./venv/bin/python3 dev/search_pipeline/00_single_query.py "your query here"
 ```
+
+### 05 — Multi-engine comparison
+
+- **Script:** `05_search_smoke.py` — imports from `src/` (not standalone), uses production engine instances
+- **Design:** per-engine fanout avoids `search_web_workflow` merge so per-engine snippets are preserved for comparison
+- **Preview:** calls `src/search/preview.py fetch_previews()` per query on the URL union — adds og/meta block per URL
+- **Report:** `01_reports/search_smoke_<ts>.md` — per-query section with engine-set badges, per-engine snippets, preview block
 
 ## Experiment Log
 
