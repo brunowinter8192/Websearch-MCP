@@ -29,9 +29,15 @@ pydoll-based parallel search pipeline. Replaces the former `src/searxng/` SearXN
 **Input:** Engine name.
 **Output:** Async context that blocks until a token is available.
 
+## preview.py
+
+**Purpose:** Async preview fetcher. `fetch_previews(results, top_n=20)` hits the top-N result URLs in parallel (concurrency=8, timeout=3s per URL), extracts `og:description` + `meta name="description"` via lxml xpath, attaches as `preview: dict | None` to each `SearchResult` via `dataclasses.replace`. Silent skip on any fetch failure. Called from `search_web_workflow` after dedup, before format. Also used by `05_search_smoke.py`.
+**Input:** `list[SearchResult]`, optional `top_n` int.
+**Output:** `list[SearchResult]` with `preview` field populated for top-N (None for rest or failed fetches).
+
 ## result.py
 
-**Purpose:** `SearchResult` dataclass (url, title, snippet, engine) used across all engine parsers.
+**Purpose:** `SearchResult` dataclass (url, title, snippet, engine, position, preview). `preview: dict | None = None` field carries `{"og": str|None, "meta": str|None}` from `preview.py`. All engine constructors leave it at default `None`.
 **Input:** —
 **Output:** —
 

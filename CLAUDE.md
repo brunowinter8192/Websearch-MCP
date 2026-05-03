@@ -17,6 +17,7 @@ See [sources/sources.md](sources/sources.md).
 | **Browser** | pydoll Chrome (stealth fingerprint patches, per-engine JS selectors) | `src/search/browser.py`, `src/search/engines/`, `dev/search_pipeline/01_google_smoke.py` + `config.yml` |
 | **Rate Limiting** | Token-bucket per engine with backoff | `src/search/rate_limiter.py` |
 | **Orchestration** | `asyncio.gather` parallel fetch across engines, deduplicated, formatted as TextContent. `search_web_workflow` for single query; `search_batch_workflow` for N queries sequentially in one warm-Chrome session | `src/search/search_web.py`, SNIPPET_LENGTH=5000 |
+| **Preview** | httpx + lxml fetch of og:description / meta:description for top-20 results, async parallel (concurrency=8, timeout=3s), silent skip on fail, default-on | `src/search/preview.py`, see `decisions/search06_preview.md` |
 | **Parked** | Brave (PoW CAPTCHA incompatible with parallel architecture) | See `decisions/stealth00_engine_status.md` |
 
 ### Scrape Pipeline (Crawl4AI)
@@ -43,7 +44,8 @@ See [sources/sources.md](sources/sources.md).
 
 | File | Component |
 |------|-----------|
-| `src/search/search_web.py` | Search orchestrator (parallel engine fetch + dedup) |
+| `src/search/search_web.py` | Search orchestrator (parallel engine fetch + dedup + preview) |
+| `src/search/preview.py` | URL preview fetcher (og/meta via httpx + lxml, top-20) |
 | `src/search/browser.py` | pydoll Chrome lifecycle (shared singleton) |
 | `src/search/rate_limiter.py` | Per-engine token bucket |
 | `src/search/engines/` | Per-engine parsers: `google.py`, `bing.py`, `scholar.py`, `crossref.py`, `hn.py`, `duckduckgo.py` |
@@ -76,7 +78,8 @@ searxng/
 │   ├── explore01_discovery.md
 │   ├── agent01_search.md
 │   ├── agent02_routing.md
-│   └── agent03_coverage.md
+│   ├── agent03_coverage.md
+│   └── search06_preview.md
 ├── src/                            → [DOCS.md](src/DOCS.md)
 │   ├── routing.py                  → Plugin domain routing
 │   ├── search/                     → [DOCS.md](src/search/DOCS.md) — search engines (6 active: 4 browser + 2 API)
@@ -85,7 +88,7 @@ searxng/
 │   ├── crawler/                    → [DOCS.md](src/crawler/DOCS.md) — CLI-only (`/crawl-site` pipeline)
 │   └── spawn/                      → Worker spawn utilities (in src/DOCS.md)
 ├── dev/                            → [DOCS.md](dev/DOCS.md)
-│   ├── search_pipeline/            → [DOCS.md](dev/search_pipeline/DOCS.md) — Per-engine smoke stack (01_google_smoke, 02_burst_smoke, 03_hn_smoke, 04_ddg_smoke, config.yml, 01_reports/)
+│   ├── search_pipeline/            → [DOCS.md](dev/search_pipeline/DOCS.md) — Per-engine smoke stack (01_google_smoke, 02_burst_smoke, 03_hn_smoke, 04_ddg_smoke, 05_search_smoke, config.yml, 01_reports/)
 │   ├── scrape_pipeline/            → [DOCS.md](dev/scrape_pipeline/DOCS.md)
 │   │   ├── browser_eval/           → scrape01_browser
 │   │   ├── filter_eval/            → scrape02_filtering

@@ -9,3 +9,4 @@ class SearchResult:
     snippet: str
     engine: str
     position: int
+    preview: dict | None = None

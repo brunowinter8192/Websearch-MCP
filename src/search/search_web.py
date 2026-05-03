@@ -5,6 +5,7 @@ from mcp.types import TextContent
 
 from src.search.browser import close_browser
 from src.search.engines.google import GoogleEngine
+from src.search.preview import fetch_previews
 from src.search.engines.bing import BingEngine
 from src.search.engines.scholar import ScholarEngine
 from src.search.engines.crossref import CrossRefEngine
@@ -41,6 +42,7 @@ async def search_web_workflow(
     selected = _select_engines(engines)
     raw_results = await _query_engines_concurrent(query, language, max_results, selected)
     deduped = _deduplicate(raw_results)
+    deduped = await fetch_previews(deduped)
     formatted_text = _format_results(query, deduped)
     return [TextContent(type="text", text=formatted_text)]
 
@@ -129,5 +131,12 @@ def _format_results(query: str, results: list) -> str:
         lines.append(f"   URL: {r.url}")
         if r.snippet:
             lines.append(f"   Snippet: {r.snippet[:SNIPPET_LENGTH]}")
+        if r.preview:
+            og = r.preview.get("og")
+            meta = r.preview.get("meta")
+            if og:
+                lines.append(f"   Preview (og): {og}")
+            if meta and meta != og:
+                lines.append(f"   Preview (meta): {meta}")
         lines.append("")
     return "\n".join(lines)
