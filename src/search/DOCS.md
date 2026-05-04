@@ -2,7 +2,7 @@
 
 pydoll-based parallel search pipeline. Replaces the former `src/searxng/` SearXNG-Docker wrapper (deleted 2026-04-15 in engine-cut). Exposes `search_web_workflow()` (single-query, fan-out across engines via asyncio.gather) and `search_batch_workflow()` (N queries sequentially in one warm-Chrome session, used by the CLI `search_batch` subcommand) — both consumed by `cli.py`. Plus `fetch_search_results()` sync wrapper consumed by dev scripts.
 
-**Active engines (9):** google, bing, google scholar, duckduckgo, mojeek, lobsters (pydoll); crossref, openalex, stack_exchange (HTTP). See `decisions/stealth00_engine_status.md` for the drop decision on brave / startpage / semantic scholar. See `decisions/search05_engine_expansion.md` for DDG + Mojeek + Lobsters + OpenAlex + SE integration rationale (HN dropped 2026-05-04, Marginalia deferred).
+**Active engines (8):** google, google scholar, duckduckgo, mojeek, lobsters (pydoll); crossref, openalex, stack_exchange (HTTP). See `decisions/stealth00_engine_status.md` for the drop decision on brave / startpage / semantic scholar / bing. See `decisions/search05_engine_expansion.md` for DDG + Mojeek + Lobsters + OpenAlex + SE integration rationale (HN + Bing dropped 2026-05-04, Marginalia deferred).
 
 ## search_web.py
 
@@ -52,10 +52,6 @@ Per-engine parser modules. Each exports an `Engine` class with `search(query, la
 ### engines/google.py
 
 **Purpose:** Google Search via pydoll. Three-layer consent handling: (1) SOCS cookie injection per-tab via `Network.setCookie` BEFORE navigation (primary bypass), (2) inline-consent body-text detection ("Before you continue" / "We use cookies and data") + button click on the search URL, (3) `consent.google.com` redirect handler as fallback. DOM parsing via `#rso h3` + `.MjjYud` selectors, parse_js without IIFE (pydoll's `execute_script` already wraps in function scope). Wait timeouts calibrated to dev p95: `MAX_WAIT_CYCLES=3`, `WAIT_INTERVAL=0.2s`. Rate-limit pre-registered at `max_requests=4, window_seconds=60` (uniform 4 req/min, normalized 2026-05-04). `limiter.backoff()` only on CAPTCHA (`/sorry/` URL) or exception — not on EMPTY (no-results ≠ rate-limit signal).
-
-### engines/bing.py
-
-**Purpose:** Bing Search via pydoll. DOM parsing via `#b_results .b_algo`.
 
 ### engines/scholar.py
 

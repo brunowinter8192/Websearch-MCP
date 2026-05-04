@@ -12,13 +12,13 @@ See [sources/sources.md](sources/sources.md).
 
 | Component | Implementation | Config |
 |-----------|---------------|--------|
-| **Engines (active)** | Google, Bing, Google Scholar, DuckDuckGo, Mojeek, Lobsters (pydoll); CrossRef, OpenAlex, Stack Exchange (HTTP) | 9-engine set, HN dropped 2026-05-04 (rate-limit-cascade-hostile), SE added 2026-05-04 |
+| **Engines (active)** | Google, Google Scholar, DuckDuckGo, Mojeek, Lobsters (pydoll); CrossRef, OpenAlex, Stack Exchange (HTTP) | 8-engine set; HN dropped 2026-05-04 (rate-limit-cascade-hostile); Bing dropped 2026-05-04 (DOM-drift, replaced by DDG which uses the Bing index); SE added 2026-05-04 |
 | **Engines (plugin)** | ArXiv, GitHub, Reddit | discovery-only, content via MCP plugins |
 | **Browser** | pydoll Chrome (stealth fingerprint patches, per-engine JS selectors) | `src/search/browser.py`, `src/search/engines/`, `dev/search_pipeline/` smokes |
 | **Rate Limiting** | Token-bucket per engine, uniform 4 req/min; backoff only on CAPTCHA/HTTP-429/exception (not on EMPTY) | `src/search/rate_limiter.py` |
 | **Orchestration** | `asyncio.gather` parallel fetch across engines, deduplicated, formatted as TextContent. `search_web_workflow` for single query; `search_batch_workflow` for N queries sequentially in one warm-Chrome session | `src/search/search_web.py`, SNIPPET_LENGTH=5000 |
 | **Preview** | httpx + lxml fetch of og:description / meta:description for top-20 results, async parallel (concurrency=8, timeout=3s), silent skip on fail, default-on | `src/search/preview.py`, see `decisions/search06_preview.md` |
-| **Parked** | Brave (PoW CAPTCHA incompatible with parallel architecture) | See `decisions/stealth00_engine_status.md` |
+| **Parked** | Brave (PoW CAPTCHA incompatible with parallel architecture); Bing (dropped — DDG uses Bing index, no added value) | See `decisions/stealth00_engine_status.md` |
 
 ### Scrape Pipeline (Crawl4AI)
 
@@ -48,7 +48,7 @@ See [sources/sources.md](sources/sources.md).
 | `src/search/preview.py` | URL preview fetcher (og/meta via httpx + lxml, top-20) |
 | `src/search/browser.py` | pydoll Chrome lifecycle (shared singleton) |
 | `src/search/rate_limiter.py` | Per-engine token bucket |
-| `src/search/engines/` | Per-engine parsers: `google.py`, `bing.py`, `scholar.py`, `crossref.py`, `duckduckgo.py`, `mojeek.py`, `lobsters.py`, `openalex.py`, `stack_exchange.py` |
+| `src/search/engines/` | Per-engine parsers: `google.py`, `scholar.py`, `crossref.py`, `duckduckgo.py`, `mojeek.py`, `lobsters.py`, `openalex.py`, `stack_exchange.py` |
 | `src/scraper/scrape_url.py` | URL scraping (filtered) |
 | `src/scraper/scrape_url_raw.py` | Raw URL scraping (for RAG indexing) |
 | `src/scraper/download_pdf.py` | PDF file download |
@@ -82,13 +82,13 @@ searxng/
 │   └── search06_preview.md
 ├── src/                            → [DOCS.md](src/DOCS.md)
 │   ├── routing.py                  → Plugin domain routing
-│   ├── search/                     → [DOCS.md](src/search/DOCS.md) — search engines (9 active: 6 browser + 3 API)
-│   │   └── engines/                → Per-engine parsers (google, bing, scholar, crossref, hn, duckduckgo)
+│   ├── search/                     → [DOCS.md](src/search/DOCS.md) — search engines (8 active: 5 browser + 3 API)
+│   │   └── engines/                → Per-engine parsers (google, scholar, duckduckgo, mojeek, lobsters, crossref, openalex, stack_exchange)
 │   ├── scraper/                    → [DOCS.md](src/scraper/DOCS.md)
 │   ├── crawler/                    → [DOCS.md](src/crawler/DOCS.md) — CLI-only (`/crawl-site` pipeline)
 │   └── spawn/                      → Worker spawn utilities (in src/DOCS.md)
 ├── dev/                            → [DOCS.md](dev/DOCS.md)
-│   ├── search_pipeline/            → [DOCS.md](dev/search_pipeline/DOCS.md) — Per-engine smoke stack (01_google_smoke, 02_burst_smoke, 03_hn_smoke, 04_ddg_smoke, 05_search_smoke, 06_mojeek_smoke, 07_lobsters_smoke, 08_scholar_smoke, 09_openalex_smoke, config.yml, 01_reports/)
+│   ├── search_pipeline/            → [DOCS.md](dev/search_pipeline/DOCS.md) — Per-engine smoke stack (01_google_smoke, 02_burst_smoke, 04_ddg_smoke, 05_search_smoke, 06_mojeek_smoke, 07_lobsters_smoke, 08_scholar_smoke, 09_openalex_smoke, 10_stack_exchange_smoke, config.yml, 01_reports/)
 │   ├── scrape_pipeline/            → [DOCS.md](dev/scrape_pipeline/DOCS.md)
 │   │   ├── browser_eval/           → scrape01_browser
 │   │   ├── filter_eval/            → scrape02_filtering

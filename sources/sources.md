@@ -19,6 +19,9 @@
 | api.search.brave.com | Web Domain | search01 | Not indexed |
 | huggingface.co | Web Domain | agent02 | Not indexed |
 | info.arxiv.org | Web Domain | agent02 | Not indexed |
+| lobste.rs | Web Domain | search05 | Not indexed |
+| api.openalex.org | Web Domain | search05 | Not indexed |
+| api.stackexchange.com | Web Domain | search05 | Not indexed |
 
 | GitHub Issue #5286 | github.com | Issue | search02_routing | Referenced |
 | GitHub Issue #5922 | github.com | Issue | search02_routing | Referenced |
@@ -45,6 +48,7 @@
 | github.com/searxng/searxng | Repo | search05 | Referenced |
 | github.com/searxng/searxng (searx/engines/duckduckgo.py) | Repo | search05 | Referenced |
 | github.com/searxng/searxng (searx/engines/mojeek.py) | Repo | search05 | Referenced |
+| github.com/searxng/searxng (searx/engines/lobsters.py) | Repo | search05 | Referenced |
 | github.com/hffmnnj/kagi-skill | Repo | search05 | Referenced |
 | github.com/encode/httpx | Repo | search06 | Referenced |
 | github.com/lxml/lxml | Repo | search06 | Referenced |

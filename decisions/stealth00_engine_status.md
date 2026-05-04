@@ -86,7 +86,9 @@ Dieser Run ist die aktuelle Referenz-Baseline. Details → `dev/search_pipeline/
 | Mojeek | 15/30 | IP-basiertes Rate-Limit (15 req/60s, nicht umgehbar) |
 | Semantic Scholar | 3/30 | 429 Rate-Limit (API) |
 
-**Survivor-Set (aktiv in `src/search/`):** Google, Bing, Google Scholar, CrossRef.
+**Survivor-Set (aktiv in `src/search/`):** ~~Google, Bing, Google Scholar, CrossRef~~ — **historisch, vor Engine-Expansion**.
+
+**Aktueller Stand (2026-05-04):** 8 aktive Engines im 4 req/min uniform Rate-Limit-Pool — Google, DuckDuckGo, Mojeek, Lobsters (Browser via pydoll); Google Scholar (Browser, JS-Fix 2026-05-04); CrossRef, OpenAlex, Stack Exchange (HTTP-API). Bing in `src/search/engines/bing.py` aber broken (DOM-drift, nicht aktiv im Smoke). HN dropped 2026-05-04 (rate-limit-cascade-hostile). Siehe [search05_engine_expansion.md](search05_engine_expansion.md) für Engine-Expansion-Historie.
 
 ### Brave — Drop-Entscheidung & Rationale
 

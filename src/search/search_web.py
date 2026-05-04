@@ -6,7 +6,6 @@ from mcp.types import TextContent
 from src.search.browser import close_browser
 from src.search.engines.google import GoogleEngine
 from src.search.preview import fetch_previews
-from src.search.engines.bing import BingEngine
 from src.search.engines.scholar import ScholarEngine
 from src.search.engines.crossref import CrossRefEngine
 from src.search.engines.duckduckgo import DuckDuckGoEngine
@@ -21,7 +20,6 @@ SNIPPET_LENGTH = 5000
 
 ENGINES = {
     "google": GoogleEngine(),
-    "bing": BingEngine(),
     "google scholar": ScholarEngine(),
     "crossref": CrossRefEngine(),
     "duckduckgo": DuckDuckGoEngine(),
