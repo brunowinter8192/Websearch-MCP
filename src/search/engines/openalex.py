@@ -62,6 +62,9 @@ def _parse_results(works: list[dict]) -> list[SearchResult]:
         if not url:
             continue
         snippet = _reconstruct_abstract(work.get("abstract_inverted_index"))
+        cited = work.get("cited_by_count", 0)
+        if cited > 50:
+            snippet = f"{snippet} (Cited {cited}×)"
         results.append(SearchResult(
             url=url,
             title=title,

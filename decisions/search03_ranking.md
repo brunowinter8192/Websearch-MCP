@@ -1,3 +1,7 @@
+## Status
+
+**SUPERSEDED by `decisions/search07_ranking_format.md` (2026-05-04)** — this file documents the pre-engine-cut SearXNG-Docker pipeline (`src/searxng/`, `MAX_RESULTS=80`, hostname-priority via SearXNG-Plugin). That implementation no longer exists in the codebase as of the engine-cut refactor (2026-04-15). Kept for historical reference only.
+
 # Search Pipeline Step 3: Ranking & Result Processing
 
 ## Status Quo

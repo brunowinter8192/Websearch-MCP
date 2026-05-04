@@ -12,10 +12,12 @@ import atexit
 from src.routing import check_plugin_routed
 from src.search.search_web import search_web_workflow, search_batch_workflow
 from src.search.browser import close_browser, kill_stale_chrome
+from src.search.cache import cache_key, cache_read, format_cached_slice
 from src.scraper.scrape_url import scrape_url_workflow
 from src.scraper.scrape_url_raw import scrape_url_raw_workflow
 from src.scraper.explore_site import explore_site_workflow
 from src.scraper.download_pdf import download_pdf_workflow
+from mcp.types import TextContent
 
 atexit.register(kill_stale_chrome)
 
@@ -28,26 +30,37 @@ def main():
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     # ── search_web ────────────────────────────────────────────────────────────
-    p = sub.add_parser("search_web", help="Search the web across 4 engines (Google, Bing, Scholar, CrossRef).")
+    p = sub.add_parser(
+        "search_web",
+        help="Search the web across 8 engines (Google, DDG, Mojeek, Lobsters, Scholar, CrossRef, OpenAlex, StackExchange)."
+    )
     p.add_argument("query", help="Search query (2-5 keywords)")
-    p.add_argument("--category", choices=["general", "news", "it", "science"], default="general")
     p.add_argument("--language", default="en", help="ISO language code (e.g. 'de')")
     p.add_argument("--time-range", dest="time_range", choices=["day", "month", "year"], default=None)
     p.add_argument("--engines", default=None,
-                   help="Comma-separated engine list (e.g. 'google,bing' or 'google scholar,crossref')")
-    p.add_argument("--pages", type=int, default=3,
-                   help="Result pages to fetch and combine (default 3 = ~150 results)")
+                   help="Comma-separated engine list (e.g. 'google,duckduckgo' or 'google scholar,crossref')")
 
     # ── search_batch ──────────────────────────────────────────────────────────
-    p = sub.add_parser("search_batch", help="Search multiple queries in one warm-Chrome session.")
+    p = sub.add_parser(
+        "search_batch",
+        help="Search multiple queries in one warm-Chrome session."
+    )
     p.add_argument("queries", nargs="+", help="One or more search queries")
-    p.add_argument("--category", choices=["general", "news", "it", "science"], default="general")
     p.add_argument("--language", default="en", help="ISO language code (e.g. 'de')")
     p.add_argument("--time-range", dest="time_range", choices=["day", "month", "year"], default=None)
     p.add_argument("--engines", default=None,
-                   help="Comma-separated engine list (e.g. 'google,bing')")
-    p.add_argument("--pages", type=int, default=3,
-                   help="Result pages to fetch per query (default 3 = ~150 results)")
+                   help="Comma-separated engine list (e.g. 'google,duckduckgo')")
+
+    # ── search_more ───────────────────────────────────────────────────────────
+    p = sub.add_parser(
+        "search_more",
+        help="Get next batch of URLs from cached search results (must follow a search_web call with the same query)."
+    )
+    p.add_argument("query", help="Search query (must match prior search_web call).")
+    p.add_argument("--count", type=int, default=10, help="How many additional URLs to return (default 10).")
+    p.add_argument("--language", default="en")
+    p.add_argument("--engines", default=None)
+    p.add_argument("--time-range", dest="time_range", choices=["day", "month", "year"], default=None)
 
     # ── scrape_url ────────────────────────────────────────────────────────────
     p = sub.add_parser("scrape_url", help="Scrape URL to filtered markdown (PruningContentFilter).")
@@ -77,17 +90,43 @@ def main():
 
     if args.cmd == "search_web":
         result = asyncio.run(search_web_workflow(
-            args.query, args.category, args.language,
-            args.time_range, args.engines, args.pages
+            args.query, args.language, args.time_range, args.engines
         ))
 
     elif args.cmd == "search_batch":
         results = asyncio.run(search_batch_workflow(
-            args.queries, args.category, args.language,
-            args.time_range, args.engines, args.pages
+            args.queries, args.language, args.time_range, args.engines
         ))
         print("\n---\n".join(r[0].text for r in results))
         return
+
+    elif args.cmd == "search_more":
+        key = cache_key(args.query, args.language, args.engines, args.time_range)
+        hit = cache_read(key)
+        if hit is not None:
+            urls = hit.get("urls", [])
+            sliced = urls[20: 20 + args.count]
+            if not sliced:
+                print("# search_more: no further URLs in cached pool")
+                return
+            header = "# search_more (cached)\n"
+            print(header + format_cached_slice(sliced, 20))
+            return
+        else:
+            # Cache miss or expired — run fresh search, cache is written as side effect
+            fresh = asyncio.run(search_web_workflow(
+                args.query, args.language, args.time_range, args.engines
+            ))
+            hit2 = cache_read(key)
+            if hit2:
+                sliced = hit2.get("urls", [])[:args.count]
+                header = "# search_more (cache miss — fresh ranking, only first {} shown)\n".format(args.count)
+                print(header + format_cached_slice(sliced, 0))
+            else:
+                # fallback: show what search_web returned
+                print("# search_more (cache miss — fresh ranking)\n")
+                print(fresh[0].text)
+            return
 
     elif args.cmd == "scrape_url":
         if blocked := check_plugin_routed(args.url):

@@ -1,5 +1,6 @@
 # INFRASTRUCTURE
 import logging
+import re
 
 import httpx
 
@@ -46,7 +47,7 @@ async def _fetch_results(query: str, rows: int) -> list[dict] | None:
     return response.json().get("message", {}).get("items", [])
 
 
-# Parse API response items into SearchResult list
+# Parse API response items into SearchResult list; JATS-strip abstract or synthesize from metadata
 def _parse_results(items: list[dict]) -> list[SearchResult]:
     results = []
     for i, item in enumerate(items):
@@ -55,11 +56,56 @@ def _parse_results(items: list[dict]) -> list[SearchResult]:
         title_list = item.get("title") or []
         title = title_list[0] if title_list else ""
         abstract = item.get("abstract") or ""
+        snippet = _build_snippet(abstract, item)
         results.append(SearchResult(
             url=url,
             title=title,
-            snippet=abstract,
+            snippet=snippet,
             engine="crossref",
             position=i + 1,
         ))
     return results
+
+
+# Return JATS-stripped abstract if present, else synthesize author+year+container string
+def _build_snippet(abstract: str, item: dict) -> str:
+    if abstract and abstract.strip():
+        stripped = re.sub(r'<[^>]+>', '', abstract)
+        stripped = re.sub(r'&[a-z]+;|&#\d+;', '', stripped)  # remove HTML entities
+        return ' '.join(stripped.split())
+    return _synthesize(item)
+
+
+# Synthesize a metadata string: "Family, I. et al. (year), Container"
+def _synthesize(item: dict) -> str:
+    author_list = item.get("author", [])
+    if author_list:
+        first = author_list[0]
+        family = first.get("family", "")
+        given = first.get("given", "")
+        initial = (given[0] + ".") if given else ""
+        author_str = f"{family}, {initial}" if initial else family
+        if len(author_list) > 1:
+            author_str += " et al."
+    else:
+        author_str = ""
+
+    year = ""
+    for field_name in ("published-print", "issued", "published-online"):
+        date_field = item.get(field_name) or {}
+        parts = date_field.get("date-parts", [])
+        if parts and parts[0] and parts[0][0] is not None:
+            year = str(parts[0][0])
+            break
+
+    container = (item.get("container-title") or [""])[0]
+
+    if author_str and year and container:
+        return f"{author_str} ({year}), {container}"
+    elif author_str and year:
+        return f"{author_str} ({year})"
+    elif year and container:
+        return f"({year}), {container}"
+    elif year:
+        return f"({year})"
+    return ""
