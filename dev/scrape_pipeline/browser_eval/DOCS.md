@@ -27,4 +27,4 @@ Regression baseline + browser-config tuning for the production scraper (`scrape_
 **Called by:** CLI only.
 
 ## Gotchas
-`12_reports/` (gitignored, referenced by prior probes) is not present in the tree — not a current data path.
+`12_reports/` and sibling `*_reports/` dirs are gitignored raw eval data — present on disk locally, never tracked.
