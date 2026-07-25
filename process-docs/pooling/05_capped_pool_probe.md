@@ -3,7 +3,7 @@
 **Date:** 2026-05-21  
 **Verdict:** C2 BM25 / C3 Cross-Encoder / C4 Embedding-Cosine all equivalent on obvious-garbage-criterion (0 / 20 queries each). C1 Overlap-Count produces 12 obvious-garbage across 20 queries (rate 5.9%), concentrated in one product query.  
 **Report:** `dev/search_pipeline/01_reports/pooling_probe_20260521_215844.md`  
-**Prior probes:** companion rerank-findings entry (4-query Cross-Encoder verdict), companion rerank-validation entry (bee-corrupted predecessor)
+**Prior probes:** an earlier 4-query Cross-Encoder verdict, followed by a 20-query validation run whose results were corrupted by the concurrent rate-limiter cascade bug
 
 ---
 
@@ -87,8 +87,6 @@ Cross-Encoder remains in scope as a future enhancement if a finer-grained-qualit
 
 ## Sources
 
-- Production-architecture decisions (capped pool + Hard-Slot drop) — recorded separately (bee_cdp_starvation area, search_pipeline area)
-- Phase 7 BM25 evaluation: companion BM25-evaluation-findings entry (BM25 alone ties Hard-Slot 34/40 on uncapped pool)
-- Phase 8 Cross-Encoder verdict: companion rerank-findings entry (CE 35/40 with BM25 retrieve prefilter on uncapped pool — beats Hard-Slot)
-- Phase 9 bee-corrupted attempt: companion rerank-validation entry
-- Bee resolution: companion zero-query-diagnosis entry + bee_cdp_starvation area resolution record
+- Phase 7 BM25 evaluation: BM25 alone ties Hard-Slot 34/40 on uncapped pool
+- Phase 8 Cross-Encoder verdict: CE 35/40 with BM25 retrieve prefilter on uncapped pool — beats Hard-Slot
+- Phase 9 first attempt corrupted by the concurrent search-engine rate-limiter cascade bug (root-caused and fixed separately as asyncio event-loop starvation during Google CAPTCHA navigation)

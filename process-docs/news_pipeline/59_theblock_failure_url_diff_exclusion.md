@@ -1,7 +1,7 @@
 # 59 — TheBlock failure-URL diff exclusion from dedup
 
 **Date:** 2026-07-06. **Branch:** `theblock-clean-pass` (stacked on the prior clean-pass + master-list-relocation work).
-**Prior art:** the poison-URL re-scrape problem, the stall-termination entry (failure logging — source of dead/failed lists).
+**Prior art:** the poison-URL re-scrape problem; `dead`/`failed` classification was introduced by the global stall-termination fix, which is the source of the dead/failed lists referenced below.
 
 ## Problem
 

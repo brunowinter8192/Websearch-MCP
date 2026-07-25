@@ -1,7 +1,7 @@
 # Pooling Phase 12 — No-Filter V2 Eval, Algorithmic Backlog
 
 **Date:** 2026-05-23
-**Predecessor:** companion value-eval entry (Phase 11, 8-engine eval blocked by backoff cascade)
+**Predecessor:** Phase 11's 8-engine eval, blocked by the search-engine rate-limiter backoff cascade
 **Probe artifacts:**
 - `dev/search_pipeline/stage1_pool_fetch.py` — Stage 1, no URL filter
 - `dev/search_pipeline/stage3_method_run.py` — Stage 3, dynamic reranker URL via RAG `ensure_ready/find_server_url`

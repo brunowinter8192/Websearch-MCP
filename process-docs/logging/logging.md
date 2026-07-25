@@ -59,8 +59,6 @@ Key findings from audit:
 - 13 INFO verbose progress calls → reclassified DEBUG (per-URL/per-iteration crawler+scraper traces)
 - 93 calls unchanged (already correct level or genuine WARNING/ERROR/INFO)
 
-Options evaluated: see the initial logging audit (2026-05-24) in this folder.
-
 ## Open Questions
 
 None currently. Rate-limited (HTTP 429) calls stay WARNING — distinct from "engine empty" (no results, normal operation). If 429s become frequent enough to be noise, revisit.

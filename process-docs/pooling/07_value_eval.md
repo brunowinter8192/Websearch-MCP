@@ -1,7 +1,7 @@
 # Pooling Phase 11 — LLM-Oracle Value-Eval, Mode-Spanning
 
 **Date:** 2026-05-22
-**Predecessor:** companion Q14-pool-dump entry (Phase 10 — top-source-recall finding, blocked migration)
+**Predecessor:** Phase 10's top-source-recall finding (Q14 single-query pool dump), which blocked migration
 **Probe artifacts:**
 - `dev/search_pipeline/value_eval_probe.py` (369 LOC) — Stage 1+2 fetch + score
 - `dev/search_pipeline/value_eval_aggregate.py` (333 LOC, after B2 fixes) — Stage 4 Jaccard + MDs
@@ -35,7 +35,7 @@ Phase 11 closes step 1.
 
 ## Methodology — LLM-as-Oracle, Scripted Comparison
 
-**Why not garbage-Eyeball at scale.** Phase 9 (companion capped-pool-probe entry) showed garbage-Eyeball as a floor metric only: C2/C2'/C3 all 0 garbage across 20 queries, no discrimination. Phase 10 showed that the more important quality dimension (top-source recall) is not garbage-bounded — all 4 methods missed the same expert URLs. Continuing with the same eyeball methodology would have produced more null results.
+**Why not garbage-Eyeball at scale.** Phase 9 showed garbage-Eyeball as a floor metric only: C2/C2'/C3 all 0 garbage across 20 queries, no discrimination. Phase 10 showed that the more important quality dimension (top-source recall) is not garbage-bounded — all 4 methods missed the same expert URLs. Continuing with the same eyeball methodology would have produced more null results.
 
 **Why not LLM-runtime-quality-judge.** Same reason it's rejected for production: too slow for per-URL per-query judgment. But the same primitive — LLM judgment — is acceptable as a **one-time eval signal** if the LLM doesn't see C-method outputs and picks Top-N independently.
 
@@ -165,7 +165,7 @@ Worker B2 flagged three concrete engine-level issues during oracle selection (no
 
 **Migration remains BLOCKED on the following dependencies (none are pure code refactors of `merge.py`):**
 
-1. **rate_limiter fail-fast cleanup** (separate scope, new work item created). Without it, Google CAPTCHA cascades will keep the eval inconclusive and any 16+-query rapid-fire batch in production will produce wasted wallclock + no Google results. Decision: remove exponential backoff entirely (per session decision, recorded separately in the rate_limiting area).
+1. **rate_limiter fail-fast cleanup** (separate scope, new work item created). Without it, Google CAPTCHA cascades will keep the eval inconclusive and any 16+-query rapid-fire batch in production will produce wasted wallclock + no Google results. Decision: remove exponential backoff entirely (fail-fast, no artificial delay, no session-scoped failure memory).
 
 2. **Cache format extension for per-engine position** (small additive change to `merge.py` + `cache.py`). Needed for the engine-drill-down tool that follows the ranker migration. Not blocking the migration itself.
 
@@ -177,10 +177,9 @@ Worker B2 flagged three concrete engine-level issues during oracle selection (no
 
 ## Sources
 
-- Phase 8 (predecessor with rubric scoring, n=4): companion rerank-findings entry
-- Phase 9 (garbage-floor): companion capped-pool-probe entry
-- Phase 10 (top-source-recall, Q14 single-query): companion Q14-pool-dump entry
+- Phase 8 predecessor with rubric scoring (n=4): CE ties Hard-Slot 35/40, wins Q1 9-vs-8
+- Phase 9 garbage-floor: C2/C2'/C3 all 0 obvious-garbage across 20 queries
+- Phase 10 top-source-recall (Q14 single-query pool dump): all 4 methods missed the same expert URLs
 - Probe scripts: `dev/search_pipeline/value_eval_probe.py`, `value_eval_aggregate.py`
 - Result artifacts: `dev/search_pipeline/01_reports/value_eval_summary_20260522_021950.md` + 14 per-query MDs same prefix
 - Probe-run log: `/tmp/value_eval_probe_run.log` (Google CAPTCHA timeline)
-- Rate-limiter decision (resulting from session diagnosis) recorded separately in the rate_limiting area

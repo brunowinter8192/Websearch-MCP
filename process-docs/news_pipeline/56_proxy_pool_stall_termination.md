@@ -1,7 +1,7 @@
 # 56 — Proxy-pool scrape loop: global stall-termination
 
 **Date:** 2026-06-18. **State:** design decided (chat-derived); implementation in `loop.py` by worker.
-**Resolves:** non-termination on persistent-fail URLs, documented in the poison-URLs backfill entry.
+**Resolves:** non-termination on persistent-fail URLs (The Block's 8 poison URLs — mis-encoded slugs / CF-hard — found during the full backfill run).
 
 ## Problem (recap)
 

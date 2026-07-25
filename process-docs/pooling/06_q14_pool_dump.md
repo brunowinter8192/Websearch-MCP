@@ -1,7 +1,7 @@
 # Pooling Phase 10 — Single-Query Pool Dump (Q14 postgresql index types)
 
 **Date:** 2026-05-21  
-**Predecessor:** companion capped-pool-probe entry (Phase 9 — 20-query garbage-floor verdict)  
+**Predecessor:** Phase 9's 20-query garbage-floor verdict (C2/C3/C4 all 0 obvious-garbage)  
 **Probe artifacts:** `dev/search_pipeline/single_query_pool_dump.py` (385 LOC) + `dev/search_pipeline/01_reports/single_query_pool_postgresql_index_types_btree_g_20260521_231405.md` (878 lines)
 
 ---
@@ -102,6 +102,6 @@ Next session: solve top-URL-identification automation first (Lobsters boost prot
 
 ## Sources
 
-- Phase 9 predecessor: companion capped-pool-probe entry
+- Phase 9 predecessor: 20-query garbage-floor verdict
 - Phase 10 probe artifacts: `dev/search_pipeline/single_query_pool_dump.py`, `dev/search_pipeline/01_reports/single_query_pool_postgresql_index_types_btree_g_20260521_231405.md`
-- Bee resolution (= pool integrity precondition) recorded separately in the bee_cdp_starvation area
+- Pool integrity precondition: search-engine rate-limiter cascade bug fixed prior to this run (bucket-uniformity-fixed codebase, commit `af77cc5`)

@@ -1,7 +1,7 @@
 # BM25 Evaluation Findings — 2026-05-09
 
 **Scope:** Did BM25 in any tested configuration beat Hard-Slot 12/6/2 production baseline on 4 representative queries?  
-**Outcome:** No. Hard-Slot 34/40. Best BM25 variant — BM25+Weighting — ties at 34/40; BM25-Capped 33/40; Vanilla BM25 and BM25+IDF 32/40. Investigation history recorded in the companion state entry in this folder (Phase 7).
+**Outcome:** No. Hard-Slot 34/40. Best BM25 variant — BM25+Weighting — ties at 34/40; BM25-Capped 33/40; Vanilla BM25 and BM25+IDF 32/40.
 
 ---
 

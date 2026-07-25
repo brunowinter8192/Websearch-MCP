@@ -3,7 +3,7 @@
 **Date:** 2026-05-20  
 **Run 2 report:** `dev/search_pipeline/01_reports/rerank_probe_20260520_204414.md`  
 **Per-engine log:** `dev/search_pipeline/01_reports/rerank_probe_20260520_204414.queries.jsonl`  
-**Run 1 reference:** companion rerank-validation entry in this folder (2026-05-20, 8/20 zero)
+**Run 1 reference:** 2026-05-20 20-query validation run, 8/20 zero
 
 ---
 
@@ -143,7 +143,7 @@ Effective sample: 11/20 queries with valid data:
 | Technical | 2/5 (T1-T2) | T3-T5 (docker, postgresql, react) |
 | Mixed-pathology | 3/5 (M3-M5) | M1 (transformer — anchor query), M2 |
 
-**M1 "transformer attention mechanism"** (original Q1 pathology anchor from the companion rerank-findings entry) zero in BOTH runs. The anchor cross-encoder result from the n=1 initial probe remains unconfirmed at scale.
+**M1 "transformer attention mechanism"** (original Q1 pathology anchor from the initial 4-query rerank probe) zero in BOTH runs. The anchor cross-encoder result from the n=1 initial probe remains unconfirmed at scale.
 
 ---
 

@@ -1,7 +1,7 @@
 # Rerank Probe Findings — 2026-05-09
 
 **Scope:** Does URL-filter + BM25-retrieve + semantic rerank beat Hard-Slot 12/6/2 on 4 representative queries?  
-**Outcome:** Cross-Encoder (Qwen3-Reranker-0.6B) ties Hard-Slot at **35/40** and **wins on Q1** (9 vs 8) — first config in this investigation to outperform Hard-Slot on the pathology query. Embedding-Cosine (Qwen3-Embedding-0.6B bi-encoder) underperforms at **26/40**. Preceding BM25 investigation (best BM25: 34/40) and Phases 1–7 history recorded in companion entries in this folder.
+**Outcome:** Cross-Encoder (Qwen3-Reranker-0.6B) ties Hard-Slot at **35/40** and **wins on Q1** (9 vs 8) — first config in this investigation to outperform Hard-Slot on the pathology query. Embedding-Cosine (Qwen3-Embedding-0.6B bi-encoder) underperforms at **26/40**. Preceding BM25 investigation topped out at 34/40.
 
 ---
 
@@ -54,7 +54,7 @@ Source: probe report global summary table.
 
 ## Eyeball Quality Scores — Top-10 per Query
 
-**Method:** count URLs in top-10 clearly topical for the query intent. Excludes: query-echo URLs (`scholar?q=`, `/search?q=`), false friends (PV-cell-defect paper, WSD paper), academic DOIs of unknown topical relevance. Judgment is Opus eyeball, not automated. Same methodology as the companion BM25-evaluation-findings entry.
+**Method:** count URLs in top-10 clearly topical for the query intent. Excludes: query-echo URLs (`scholar?q=`, `/search?q=`), false friends (PV-cell-defect paper, WSD paper), academic DOIs of unknown topical relevance. Judgment is Opus eyeball, not automated — same eyeball methodology used throughout this investigation.
 
 | Config | Q1 transformer | Q2 espresso | Q3 asyncio | Q4 k8s mesh | Sum |
 |---|---|---|---|---|---|

@@ -67,4 +67,4 @@ CDX `filter=mimetype:text/html` + a broken resume-key loop made one worker see o
 
 The feed-floor / archive-vs-feed split is moot: **the timeline API walked by its cursor over plain HTTP gives
 the COMPLETE inventory to the floor** — 61,628 articles 2017–2026 (a later stage's measurement), no Wayback, no browser, no scheme
-split. Wayback abandoned. The 2018-cutoff scope-cut still holds (Binance candles); a later entry covers the method.
+split. Wayback abandoned. The 2018-cutoff scope-cut still holds (Binance candles); the timeline-API cursor method itself is covered where it was adopted.

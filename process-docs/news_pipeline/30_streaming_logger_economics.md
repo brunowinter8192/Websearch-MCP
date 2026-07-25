@@ -44,7 +44,8 @@ Surface 6 throughput curve — was reconstructed offline from the durable JSONL 
 using a standalone script calling `_throughput_buckets()` and `_write_summary()`.
 
 This is the direct proof that the streaming design closes the finalize()-data-loss
-problem documented in the prior sitemap dev-run entry.
+problem observed when a prior sitemap dev-run was killed before its in-memory summary
+could be written.
 
 B-distribution reconstruction note: `proxy_success_count` in each event is the
 running ok-count for that proxy at the time of the event. For proxies that were burned

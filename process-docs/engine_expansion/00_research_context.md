@@ -1,6 +1,6 @@
 # Engine Expansion 2026-05 — Research Context & Deferred Items
 
-Research pass and evaluation summary from the May 2026 engine expansion, which converged on a 9-engine set. Per-engine implementation history is in the sibling files in this folder.
+Research pass and evaluation summary from the May 2026 engine expansion, which converged on a 9-engine set.
 
 ## Research Pass (2026-05-01)
 
@@ -10,7 +10,7 @@ GitHub search for engines that extend the stack with technical bias, without new
 
 **Marginalia** (MarginaliaSearch/MarginaliaSearch, 1.8k Stars, active April 2026): Self-description "Internet search engine for text-oriented websites. Indexing the small, old and weird web." Java stack, own crawler. README: "non-commercial share-alike is always free, commercial API licenses available". API-Key + per-Key rate-limiting in DB schema. User-facing API docs not present in docs.marginalia.nu repo. Self-hosting not practical — README specifies 32 GB RAM minimum + several TB storage. **Deferred** — try-or-drop probe at hosted endpoint `search.marginalia.nu` after HN+SE stabilization.
 
-**HN Algolia API** (hn.algolia.com/api/v1): Free, no auth, no API key. Reference implementations: cyanheads/hn-mcp-server (Apache-2.0, April 2026), voska/hn-cli (Go, April 2026), wei/hn-mcp-server. Endpoints: `/search?query=` (relevance), `/search_by_date?query=` (recency). Filter via `tags` and `numericFilters`. Rate limit not prominently documented. **Added then dropped 2026-05-04** — backoff behavior made it rate-limit-cascade-hostile in the parallel engine architecture (see sibling drop rationale in this folder).
+**HN Algolia API** (hn.algolia.com/api/v1): Free, no auth, no API key. Reference implementations: cyanheads/hn-mcp-server (Apache-2.0, April 2026), voska/hn-cli (Go, April 2026), wei/hn-mcp-server. Endpoints: `/search?query=` (relevance), `/search_by_date?query=` (recency). Filter via `tags` and `numericFilters`. Rate limit not prominently documented. **Added then dropped 2026-05-04** — backoff behavior made it rate-limit-cascade-hostile in the parallel engine architecture.
 
 **Stack Exchange API** (api.stackexchange.com): Free. Python wrapper: lucjon/Py-StackExchange (active January 2026). 300 req/day anonymous, 10k/day with free registered key. **Added 2026-05-04** as the HN replacement.
 

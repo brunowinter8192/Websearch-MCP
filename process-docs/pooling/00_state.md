@@ -149,15 +149,13 @@ Worker `pooling-probe` killed at user direction. Branch + worktree removed. GPU 
 
 Five BM25-family probes run: parameter sweep (16+4 configs), 5-config side-by-side compare, IDF + engine-weighting variants, per-engine top-K cap. Best BM25 config 34/40 quality vs Hard-Slot 34/40 — no BM25 variant decisively beat the production baseline. `k1` had zero effect on short docs, `b` dominant axis with peak at 0.75, IDF didn't help on small-pool short-doc data, engine-inverse-weighting bipolar (helped Q2/Q3 by surfacing multi-engine consensus, over-rewarded sparse engines on Q4 — stack_exchange with 2 URLs got weight 0.5 → SO question floated to #1), per-engine top-K cap shrinks pool 5-7× without changing top-K quality (cap removes depth-tail noise but not engine-top-K noise like semscholar's PV-cell-defect false friend).
 
-Detailed findings + eyeball quality table recorded in a companion BM25-evaluation entry in this folder.
-
 ### Phase 8 — URL-Filter + BM25-Retrieve + Semantic Rerank (executed 2026-05-09)
 
 Pivot to retrieve-then-rerank architecture. Pipeline: URL-pattern filter (search-results-pages like `?q=`, `/search/`) → BM25-Retrieve top-50 → semantic rerank → top-20. Two semantic methods compared: Qwen3-Embedding-0.6B bi-encoder (cosine similarity) vs Qwen3-Reranker-0.6B cross-encoder (joint pair scoring). Both are 0.6B-parameter Q8_0 GGUF on llama-server.
 
 **Cross-Encoder is the first method in this investigation to outperform Hard-Slot.** Aggregate quality 35/40 (ties Hard-Slot) AND wins on Q1 with 9/10 vs Hard-Slot's 8/10 — semantic disambiguation eliminates the PV-cell/WSD/scholar-echo false-friends that BM25 cannot filter. Embedding-Cosine bi-encoder underperforms at 26/40 — architectural limitation of separate query/doc encoding on short snippets, not parameter count (8B bi-encoder ruled out earlier on latency). Latency cost: ~1.7s per query for 50 docs (rerank only); total per-query wallclock ~5s.
 
-Detailed findings recorded in a companion rerank-findings entry in this folder. GitHub research note: SearXNG upstream's ranking formula is `score = num_engines × Σ(1/position_i)` — directly encodes multi-engine-overlap signal, similar to ranx CombMNZ. Independent confirmation that overlap signal matters, but our cross-encoder approach captures it via different mechanism (semantic match on jointly-encoded query+doc).
+GitHub research note: SearXNG upstream's ranking formula is `score = num_engines × Σ(1/position_i)` — directly encodes multi-engine-overlap signal, similar to ranx CombMNZ. Independent confirmation that overlap signal matters, but our cross-encoder approach captures it via different mechanism (semantic match on jointly-encoded query+doc).
 
 ---
 
@@ -192,7 +190,7 @@ If validation confirms: production migration design — modify `src/search/merge
 
 Verdict: C2/C3/C4 all floor-tied at 0 obvious-garbage across 20 queries × ~210 URL slots. C1 produces 12 garbage (5.9% rate), all clustered in one discriminating query (Q6 espresso machine where "500" keyword-matches academic papers).
 
-Detailed findings recorded in a companion capped-pool-probe entry in this folder. Initially suggested BM25 migration as cheapest equivalent; Phase 10 then revealed this conclusion was premature.
+Initially suggested BM25 migration as cheapest equivalent; Phase 10 then revealed this conclusion was premature.
 
 ## Phase 10 (executed 2026-05-21)
 
@@ -205,15 +203,13 @@ Critical findings:
 - Lobsters surfaced 4 of 8 experts; Google had 3 in deep-tail (positions 4-10); Mojeek 1
 - Lobsters is structurally penalized: single-engine origin → engine_count=1 → C1 demotes; terse snippets → C2/C3/C4 demote on text content
 
-Detailed findings recorded in a companion Q14-pool-dump entry in this folder. Production migration BLOCKED — garbage-floor masked top-source-recall failure.
+Production migration BLOCKED — garbage-floor masked top-source-recall failure.
 
 Next-session direction: solve top-URL identification automation first. Lobsters-boost as structural prior is the leading hypothesis (cheap, broadly applicable).
 
 ## Phase 12 (executed 2026-05-23)
 
 No-filter v2 eval — URL filter removed from Stage 1 (BM25/Cross-Encoder handle relevance from title+snippet; filter was host/path-based only, query-blind). Methodology refactored from combined `value_eval_probe.py` into three separate scripts: `stage1_pool_fetch.py` (pool fetch), `stage3_method_run.py` (C-methods), `stage4_aggregate.py` (Jaccard). Dynamic reranker URL via `ensure_ready/find_server_url`. Google CAPTCHA'd all 16 pairs again (backoff cascade); 8-engine eval (same as Phase 11 in practice). C3 Cross-Encoder wins all 4 modes.
-
-Full methodology + findings recorded in a companion no-filter-eval entry in this folder.
 
 ## Phase 13-Prep (executed 2026-05-23)
 
@@ -235,7 +231,7 @@ All 16 pairs output as `<pair>_oracle_v3clean.json` in `value_eval_v2_20260523_0
 
 ## Phase 13 (executed 2026-05-23)
 
-12-method eval — 16 pairs (4 modes × 4 queries), 7-engine pool (google+SS filtered via `clean_pool.py`), `oracle_v3clean.json` as ground truth. Scripts: `stage3_method_run_v3.py` + `stage4_aggregate_v3.py`. Artifacts in `value_eval_v3_20260523_021216/`. Detailed findings recorded in a companion 12-method-eval entry in this folder.
+12-method eval — 16 pairs (4 modes × 4 queries), 7-engine pool (google+SS filtered via `clean_pool.py`), `oracle_v3clean.json` as ground truth. Scripts: `stage3_method_run_v3.py` + `stage4_aggregate_v3.py`. Artifacts in `value_eval_v3_20260523_021216/`.
 
 **Results (overall mean Jaccard):**
 
@@ -283,7 +279,7 @@ C3 wins overall and in both reliable modes. PDF and books are noise (pool sizes 
 
 **Caveats:** Google was out on all 16 pairs due to CAPTCHA + exponential-backoff cascade (3 backoff events, 466s wasted, google=0 throughout). 8-engine eval, not 9-engine. Method-comparison is internally fair (all 4 saw same pool) but Google's absence in general-mode means the +0.121 margin could shift in a 9-engine re-eval. Books mode broken for ML/DL queries (Open Library returns philosophy classics), docs mode has academic-engine precision noise — separate engine-coverage work items.
 
-Detailed findings recorded in a companion value-eval entry in this folder. Migration recommended-but-still-BLOCKED on: (1) rate-limiter fail-fast refactor (new work item created for it), (2) optional 9-engine re-eval, (3) cache format extension for per-engine position (prerequisite for drill-down tool), (4) cross-encoder SERVERS-dict registration in RAG infra.
+Migration recommended-but-still-BLOCKED on: (1) rate-limiter fail-fast refactor (new work item created for it), (2) optional 9-engine re-eval, (3) cache format extension for per-engine position (prerequisite for drill-down tool), (4) cross-encoder SERVERS-dict registration in RAG infra.
 
 ---
 

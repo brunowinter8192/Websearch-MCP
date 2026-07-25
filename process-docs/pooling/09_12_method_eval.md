@@ -5,7 +5,7 @@
 - `dev/search_pipeline/stage3_method_run_v3.py` — 12-method runner
 - `dev/search_pipeline/stage4_aggregate_v3.py` — aggregate + latency + Pareto
 - `dev/search_pipeline/01_reports/value_eval_v3_20260523_021216/eval_summary_v3.md` — full tables
-- Oracle: `value_eval_v2_20260523_000156/*_oracle_v3clean.json` (backfilled, see companion state entry Phase 13-Prep)
+- Oracle: `value_eval_v2_20260523_000156/*_oracle_v3clean.json` (backfilled in Phase 13-Prep: schema extended with per-engine positions, 5 lost oracle picks replaced from the filtered pool)
 
 ---
 
