@@ -4,6 +4,8 @@ not_working/
 
 # Dev suite output (generated reports and markdown files)
 dev/scrape_pipeline/browser_eval/01_baselines/
+dev/scrape_pipeline/browser_eval/*_reports/
+dev/scrape_pipeline/garbage_eval/*_reports/
 dev/scrape_pipeline/filter_eval/*_reports/
 venv/
 .venv/
