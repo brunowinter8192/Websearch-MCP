@@ -13,10 +13,10 @@ _MARKER_MAX_AGE_SECS = 3600  # 1-hour fast-path window
 
 # FUNCTIONS
 
-# Read SEARXNG_LOG_RETENTION_DAYS env, default 14
+# Read WEBSEARCH_LOG_RETENTION_DAYS env, default 14
 def get_retention_days() -> int:
     try:
-        return int(os.environ.get("SEARXNG_LOG_RETENTION_DAYS", 14))
+        return int(os.environ.get("WEBSEARCH_LOG_RETENTION_DAYS", 14))
     except (ValueError, TypeError):
         return 14
 

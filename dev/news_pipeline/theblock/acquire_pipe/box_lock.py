@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
-LOCK_DIR    = Path.home() / ".searxng-cli-locks"
+LOCK_DIR    = Path.home() / ".websearch-locks"
 _FLOCK_FILE = LOCK_DIR / "acquire_pipe.flock"
 _SIDECAR    = LOCK_DIR / "acquire_pipe.lock"
 _TS_FMT     = "%Y-%m-%dT%H:%M:%SZ"

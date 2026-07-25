@@ -43,10 +43,10 @@ def _deep_unescape(s: str) -> str:
         s = new
 
 
-# Fetch raw work items from CrossRef API; polite-pool mailto appended if SEARXNG_CROSSREF_MAILTO is set
+# Fetch raw work items from CrossRef API; polite-pool mailto appended if WEBSEARCH_CROSSREF_MAILTO is set
 async def _fetch_results(query: str, rows: int) -> list[dict] | None:
     params: dict = {"query": query, "rows": rows}
-    mailto = os.getenv("SEARXNG_CROSSREF_MAILTO")
+    mailto = os.getenv("WEBSEARCH_CROSSREF_MAILTO")
     if mailto:
         params["mailto"] = mailto
     async with httpx.AsyncClient(timeout=6.0) as client:  # aligned with ENGINE_WATCHDOG_OVERRIDE

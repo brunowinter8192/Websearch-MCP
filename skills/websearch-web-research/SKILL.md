@@ -1,28 +1,28 @@
 ---
-name: searxng-cli-web-research
+name: websearch-web-research
 description:
 ---
 
-# SearXNG Web Research — Skill
+# Web Research — Skill
 
 **Default = Permanent Capture Workflow (worker).** When the user wants a source pulled in, assume they want it captured into RAG — spawn the capture worker (bottom of this file). Only run ad-hoc in-chat scraping (`search_web` / `search_engine_drilldown` / `scrape_url` directly) when the user EXPLICITLY says "ad hoc" (or equivalent: "nur kurz nachschauen", "nicht indexieren").
 
-Ad-hoc web research via `searxng-cli`: search across engines, drill into one engine for its URLs, scrape a page to filtered markdown. To permanently capture a whole domain into RAG, use the Permanent Capture Workflow at the bottom — that spawns a worker; this CLI is for in-chat lookups. (PDF → MD conversion is a separate flow — see the `searxng-cli-pdf` skill.)
+Ad-hoc web research via `websearch`: search across engines, drill into one engine for its URLs, scrape a page to filtered markdown. To permanently capture a whole domain into RAG, use the Permanent Capture Workflow at the bottom — that spawns a worker; this CLI is for in-chat lookups. (PDF → MD conversion is a separate flow — see the `websearch-pdf` skill.)
 
 ## CLI Invocation
 
-All tools run via the `searxng-cli` wrapper (in PATH). Run them in the foreground — no `&`, no redirect.
+All tools run via the `websearch` wrapper (in PATH). Run them in the foreground — no `&`, no redirect.
 
 ```bash
 # Search — engine breakdown (counts per engine, no URLs)
-searxng-cli search_web "machine learning retrieval"
-searxng-cli search_web --docs "react hooks"
+websearch search_web "machine learning retrieval"
+websearch search_web --docs "react hooks"
 
 # URLs for one engine (from the search_web cache)
-searxng-cli search_engine_drilldown "machine learning retrieval" --engine google
+websearch search_engine_drilldown "machine learning retrieval" --engine google
 
 # Scrape a page to filtered markdown
-searxng-cli scrape_url "https://example.com/article"
+websearch scrape_url "https://example.com/article"
 ```
 
 On error (missing dependency, engine timeout): prints to stderr, exits non-zero.
@@ -72,7 +72,7 @@ Query diversity: when investigating an entity X, vary the angle across queries �
 
 ## Permanent Capture Workflow
 
-When the user wants to permanently capture a whole domain into RAG — "crawl X and index it", "RAG-fähig machen". A worker drives the capture; this is the Opus-side setup. The worker activates `searxng-cli-capture-and-index`. (PDF → MD conversion is a separate flow — see the `searxng-cli-pdf` skill.)
+When the user wants to permanently capture a whole domain into RAG — "crawl X and index it", "RAG-fähig machen". A worker drives the capture; this is the Opus-side setup. The worker activates `websearch-capture-and-index`. (PDF → MD conversion is a separate flow — see the `websearch-pdf` skill.)
 
 **1.** Identify the source: a seed domain URL.
 
@@ -81,13 +81,13 @@ When the user wants to permanently capture a whole domain into RAG — "crawl X 
 
 Default is `<current_project>_reference`, but it may be another project's reference collection.
 
-**3.** Spawn the worker. It activates the `searxng-cli-capture-and-index` skill and runs the pipe: Discovery → URL Selection → **STOP (Opus cull, Phase 1b)** → Scrape → Cleanup → Index. Opus provides the seed, collection, output dir.
+**3.** Spawn the worker. It activates the `websearch-capture-and-index` skill and runs the pipe: Discovery → URL Selection → **STOP (Opus cull, Phase 1b)** → Scrape → Cleanup → Index. Opus provides the seed, collection, output dir.
 
 Worker prompt (`/tmp/spawn-<name>.md`):
 
 ```markdown
 You are a WORKER.
-FIRST: activate the searxng-cli-capture-and-index skill via Skill(skill="searxng-cli-capture-and-index").
+FIRST: activate the websearch-capture-and-index skill via Skill(skill="websearch-capture-and-index").
 Inputs:
 - SEED_URL: <root domain URL>
 - COLLECTION: <name>

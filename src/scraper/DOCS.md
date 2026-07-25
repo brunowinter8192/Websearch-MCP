@@ -29,7 +29,7 @@ URL scraping for the `scrape_url` CLI subcommand and the shared garbage classifi
 ### scrape_logger.py (88 LOC)
 
 **Purpose:** Per-URL structured logging for scrape_url. Two outputs per call: one JSONL record appended to the scrape log, one sidecar `.md` holding the exact content the caller received. No sidecar on empty outcome; sidecar IS written on garbage outcome (the classified content is preserved for inspection).
-**Reads:** `SEARXNG_SCRAPE_LOG_PATH` env var (fallback `src/logs/scrape_log.jsonl`); sidecar dir `<log_dir>/scrape_content/`.
+**Reads:** `WEBSEARCH_SCRAPE_LOG_PATH` env var (fallback `src/logs/scrape_log.jsonl`); sidecar dir `<log_dir>/scrape_content/`.
 **Writes:** `src/logs/scrape_log.jsonl` (one line per call); `<log_dir>/scrape_content/<ts>_<slug>.md` (per-call sidecar). Both gitignored.
 **Called by:** `scrape_url.py` (end of scrape_url_workflow).
 **Calls out:** `src/log_janitor.py` (maybe_prune_jsonl, maybe_prune_sidecars).

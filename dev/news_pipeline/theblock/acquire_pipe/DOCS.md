@@ -60,9 +60,9 @@ Production-candidate acquire pipeline for theblock.co content. Fetches a defined
 
 ### box_lock.py (102 LOC)
 
-**Purpose:** Global single-job flock — one acquire-pipe job at a time, system-wide. Fixed lock paths: `~/.searxng-cli-locks/acquire_pipe.flock` (flock vessel) + `~/.searxng-cli-locks/acquire_pipe.lock` (JSON sidecar `{pid, job, target, started_at, status}`). `job`/`target` are sidecar metadata for the busy message — not in filenames. `cleanup_stale()`: reads PID → `os.kill(pid,0)` → `ProcessLookupError` → unlink sidecar (`PermissionError` → treat as held). `acquire(job, target)` contextmanager: `mkdir` → `cleanup_stale` → open flock file → `fcntl.LOCK_EX|LOCK_NB` → `BlockingIOError` → `LockBusyError(pid+job+elapsed from sidecar)`; on success: write sidecar atomically (`mkstemp`+`os.rename`) → `yield` → `finally`: unlink sidecar + `LOCK_UN` + close. Crash-safe: kernel releases flock on process death; stale sidecar cleaned on next `acquire()`.
-**Reads:** `~/.searxng-cli-locks/acquire_pipe.lock` (in `cleanup_stale` + busy message).
-**Writes:** `~/.searxng-cli-locks/acquire_pipe.{flock,lock}`.
+**Purpose:** Global single-job flock — one acquire-pipe job at a time, system-wide. Fixed lock paths: `~/.websearch-locks/acquire_pipe.flock` (flock vessel) + `~/.websearch-locks/acquire_pipe.lock` (JSON sidecar `{pid, job, target, started_at, status}`). `job`/`target` are sidecar metadata for the busy message — not in filenames. `cleanup_stale()`: reads PID → `os.kill(pid,0)` → `ProcessLookupError` → unlink sidecar (`PermissionError` → treat as held). `acquire(job, target)` contextmanager: `mkdir` → `cleanup_stale` → open flock file → `fcntl.LOCK_EX|LOCK_NB` → `BlockingIOError` → `LockBusyError(pid+job+elapsed from sidecar)`; on success: write sidecar atomically (`mkstemp`+`os.rename`) → `yield` → `finally`: unlink sidecar + `LOCK_UN` + close. Crash-safe: kernel releases flock on process death; stale sidecar cleaned on next `acquire()`.
+**Reads:** `~/.websearch-locks/acquire_pipe.lock` (in `cleanup_stale` + busy message).
+**Writes:** `~/.websearch-locks/acquire_pipe.{flock,lock}`.
 **Called by:** `acquire_pipe.py`.
 **Calls out:** `fcntl`, `os` (stdlib only).
 

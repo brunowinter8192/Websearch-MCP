@@ -15,7 +15,7 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 
 ## Flow
 
-`search_web_workflow` selects engines → `asyncio.gather` of `_engine_with_timing` tasks (each acquires a rate-limiter token, then runs the engine) → flat `raw_results` → `filter_urls_by_mode` (if a filter flag set) → `build_engine_pools` dedups by URL owner → post-dedup pool cap to Google's pool size (fallback 10) → `_format_breakdown` table → `cache_write` to `~/.cache/searxng/<key>.json`. `search_engine_drilldown` skips all of this: `cache_read` the per-engine pool → `format_engine_pool` numbers + cleans snippets.
+`search_web_workflow` selects engines → `asyncio.gather` of `_engine_with_timing` tasks (each acquires a rate-limiter token, then runs the engine) → flat `raw_results` → `filter_urls_by_mode` (if a filter flag set) → `build_engine_pools` dedups by URL owner → post-dedup pool cap to Google's pool size (fallback 10) → `_format_breakdown` table → `cache_write` to `~/.cache/websearch/<key>.json`. `search_engine_drilldown` skips all of this: `cache_read` the per-engine pool → `format_engine_pool` numbers + cleans snippets.
 
 ## Modules
 
@@ -23,7 +23,7 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 
 **Purpose:** Search orchestrator. Fans out across the 14 active engines via `asyncio.gather`, then filters → builds pools → caps → formats → caches. Post-dedup pool cap: K = `len(pools['google'])` if >0 else 10, each pool trimmed to `pool[:K]` (prevents CrossRef/OpenAlex/StackExchange/OpenLibrary drilldown floods). Three-tier timeout: `ENGINE_WATCHDOG_TIMEOUT=3.6s` default, `ENGINE_WATCHDOG_OVERRIDE` per-engine (open_library 6.0, semantic_scholar 5.0, crossref 6.0, startpage 6.0, brave 6.0) — `bing`, `yandex`, and `marginalia` deliberately have NO override entry: all three probed well under the default (yandex additionally short-circuits its own blocked-query path via an upfront `showcaptcha`-URL check; marginalia's httpx-API round-trip never approaches 3.6s regardless of rate-limit outcome). `RATE_WAIT_TIMEOUT=60.0s` acquire cap → RATE_SKIP. `_engine_with_timing` returns a 5-tuple `(results, rate_wait_ms, search_ms, status, drop_reason)` with sub-classified TIMEOUT/ERROR statuses. Two-record logging: `engine_run` after fanout, `workflow_summary` after pool-build. `fetch_search_results` is a sync dev wrapper (raw list, no pools).
 **Reads:** query + params; per-engine caps in `ENGINE_MAX_RESULTS`; default set via `_DEFAULT_ENGINES`.
-**Writes:** disk cache `~/.cache/searxng/<key>.json` (via cache_write); query log (via log_query).
+**Writes:** disk cache `~/.cache/websearch/<key>.json` (via cache_write); query log (via log_query).
 **Called by:** `cli.py` (search_web_workflow); dev scripts (fetch_search_results).
 **Calls out:** `httpx`, `pydoll.exceptions`, `websockets.exceptions`, `mcp.types.TextContent`; `engines/` (all 14 engine classes); `cache` (cache_key, cache_write), `rate_limiter` (get_limiter), `merge` (build_engine_pools), `result` (SearchResult), `status`, `query_logger` (log_query), `filter_modes` (apply_filter_mode, filter_urls_by_mode, _DEFAULT_ENGINES).
 
@@ -66,9 +66,9 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 
 ### cache.py (117 LOC)
 
-**Purpose:** Disk cache for per-engine pools, backing `search_engine_drilldown`. Cache key `sha256(query|language|engines|time_range[|modifier_id])[:16]`; path `~/.cache/searxng/<key>.json`; 1h mtime TTL; atomic write via `tempfile.mkstemp` + `os.replace`. JSON holds the full per-engine pool dict with native positions. `format_engine_pool(pool, engine_name, query)` renders one engine's pool as a numbered list with snippet cleanup applied.
-**Reads:** cache files under `~/.cache/searxng/`.
-**Writes:** `~/.cache/searxng/<key>.json`.
+**Purpose:** Disk cache for per-engine pools, backing `search_engine_drilldown`. Cache key `sha256(query|language|engines|time_range[|modifier_id])[:16]`; path `~/.cache/websearch/<key>.json`; 1h mtime TTL; atomic write via `tempfile.mkstemp` + `os.replace`. JSON holds the full per-engine pool dict with native positions. `format_engine_pool(pool, engine_name, query)` renders one engine's pool as a numbered list with snippet cleanup applied.
+**Reads:** cache files under `~/.cache/websearch/`.
+**Writes:** `~/.cache/websearch/<key>.json`.
 **Called by:** `cli.py` (cache_key, cache_read, format_engine_pool); `search_web.py` (cache_key, cache_write).
 **Calls out:** `result` (SearchResult), `snippet` (_strip_bloat, _truncate, MAX_SNIPPET_LEN).
 
@@ -82,7 +82,7 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 ### query_logger.py (64 LOC)
 
 **Purpose:** Append-only JSONL query log. `log_query(record)` writes one line. Two record types: `engine_run` (per fanout) and `workflow_summary` (after pool-build).
-**Reads:** `SEARXNG_QUERY_LOG_PATH` env (fallback `src/logs/query_log.jsonl`).
+**Reads:** `WEBSEARCH_QUERY_LOG_PATH` env (fallback `src/logs/query_log.jsonl`).
 **Writes:** `src/logs/query_log.jsonl`.
 **Called by:** `search_web.py`.
 **Calls out:** `src/log_janitor.py` (maybe_prune_jsonl).
@@ -116,7 +116,7 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 
 ## State
 
-Two module-owned states. `rate_limiter._limiters` — the per-engine token-bucket registry, populated at engine import, read/mutated via `get_limiter().acquire()`. The disk cache (`~/.cache/searxng/`) — written by `cache.cache_write` (from search_web), read by `cache.cache_read` (from the drilldown path); 1h TTL, atomic writes. No cross-request in-memory search state — each `search_web_workflow` call is independent.
+Two module-owned states. `rate_limiter._limiters` — the per-engine token-bucket registry, populated at engine import, read/mutated via `get_limiter().acquire()`. The disk cache (`~/.cache/websearch/`) — written by `cache.cache_write` (from search_web), read by `cache.cache_read` (from the drilldown path); 1h TTL, atomic writes. No cross-request in-memory search state — each `search_web_workflow` call is independent.
 
 ## Gotchas
 

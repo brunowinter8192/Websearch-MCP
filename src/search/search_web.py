@@ -325,7 +325,7 @@ def _format_breakdown(query: str, pools: dict[str, list[SearchResult]], all_engi
         count = len(pools.get(engine, []))
         lines.append(f"  {engine:<20} {count}")
     lines.append("")
-    lines.append(f'Use `searxng-cli search_engine_drilldown "{query}" --engine <name>` to see URLs per engine.')
+    lines.append(f'Use `websearch search_engine_drilldown "{query}" --engine <name>` to see URLs per engine.')
     return "\n".join(lines)
 
 

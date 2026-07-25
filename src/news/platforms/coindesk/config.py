@@ -3,7 +3,7 @@ from pathlib import Path
 
 from src.news.platform import ScrapeConfig
 
-PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent  # searxng-cli/
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent.parent  # websearch/
 
 # Precise regwall signals — do NOT use loose markers (subscribe/register fire on article footers)
 REGWALL_SIGNALS: list[str] = [

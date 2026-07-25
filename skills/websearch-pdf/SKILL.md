@@ -1,5 +1,5 @@
 ---
-name: searxng-cli-pdf
+name: websearch-pdf
 description:
 ---
 

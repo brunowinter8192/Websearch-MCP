@@ -43,7 +43,7 @@ atexit.register(kill_stale_chrome)
 def main():
     parser = argparse.ArgumentParser(
         prog="cli.py",
-        description="SearXNG Web Research CLI — search_web, search_engine_drilldown, scrape_url."
+        description="websearch CLI — search_web, search_engine_drilldown, scrape_url."
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 

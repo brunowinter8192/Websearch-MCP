@@ -31,7 +31,7 @@ DEFAULT_LOG_PATH = Path(__file__).parent.parent.parent / "src" / "logs" / "scrap
 #   "content_path": str | null            # relative path under log dir, e.g. "scrape_content/<file>.md"
 # }
 #
-# Log path: SEARXNG_SCRAPE_LOG_PATH env var → DEFAULT_LOG_PATH fallback.
+# Log path: WEBSEARCH_SCRAPE_LOG_PATH env var → DEFAULT_LOG_PATH fallback.
 # Sidecar path: <log_dir>/scrape_content/<ts_safe>_<url_slug>.md
 
 
@@ -54,7 +54,7 @@ def _url_slug(url: str) -> str:
 def write_sidecar(url: str, ts: str, content: str, outcome: str, mode: str) -> str | None:
     if not content:
         return None
-    env = os.environ.get("SEARXNG_SCRAPE_LOG_PATH")
+    env = os.environ.get("WEBSEARCH_SCRAPE_LOG_PATH")
     log_path = Path(env) if env else DEFAULT_LOG_PATH
     sidecar_dir = log_path.parent / "scrape_content"
     filename = f"{_sanitize_ts(ts)}_{_url_slug(url)}.md"
@@ -75,9 +75,9 @@ def write_sidecar(url: str, ts: str, content: str, outcome: str, mode: str) -> s
         return None
 
 
-# Append one JSONL record; path from SEARXNG_SCRAPE_LOG_PATH env var; fail-soft
+# Append one JSONL record; path from WEBSEARCH_SCRAPE_LOG_PATH env var; fail-soft
 def log_scrape(record: dict) -> None:
-    env = os.environ.get("SEARXNG_SCRAPE_LOG_PATH")
+    env = os.environ.get("WEBSEARCH_SCRAPE_LOG_PATH")
     log_path = Path(env) if env else DEFAULT_LOG_PATH
     try:
         log_path.parent.mkdir(parents=True, exist_ok=True)

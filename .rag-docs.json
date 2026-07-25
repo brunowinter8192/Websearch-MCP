@@ -1,5 +1,5 @@
 {
-  "collection": "searxng-cli-docs",
+  "collection": "websearch-docs",
   "include": [
     "**/DOCS.md",
     "process-docs/**/*.md"

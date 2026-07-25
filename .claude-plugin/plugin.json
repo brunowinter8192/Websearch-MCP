@@ -1,10 +1,10 @@
 {
-  "name": "searxng-cli",
+  "name": "websearch",
   "version": "1.0.0",
-  "description": "SearXNG CLI - web search and URL scraping with markdown conversion",
+  "description": "Websearch CLI - web search and URL scraping with markdown conversion",
   "author": {
     "name": "Bruno Winter"
   },
-  "keywords": ["searxng", "search", "scraper", "cli", "web"],
-  "skills": ["./skills/searxng-cli-web-research/", "./skills/searxng-cli-capture-and-index/", "./skills/searxng-cli-pdf/"]
+  "keywords": ["websearch", "search", "scraper", "cli", "web"],
+  "skills": ["./skills/websearch-web-research/", "./skills/websearch-capture-and-index/", "./skills/websearch-pdf/"]
 }

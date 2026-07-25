@@ -20,7 +20,7 @@ from src.news.engine.proxy_riding.scrape import scrape_entries_riding, RidingScr
 from src.news.engine.proxy_riding.reporter import write_riding_report
 from src.news.engine.publish import pub_date_str
 
-PROJECT_ROOT = Path(__file__).parent.parent.parent   # searxng-cli/
+PROJECT_ROOT = Path(__file__).parent.parent.parent   # websearch/
 
 LOG_DIR = PROJECT_ROOT / "src" / "logs"
 DATA_ROOT = PROJECT_ROOT / "data" / "news"

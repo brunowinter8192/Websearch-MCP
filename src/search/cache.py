@@ -13,7 +13,7 @@ from src.search.snippet import _strip_bloat, _truncate, MAX_SNIPPET_LEN
 
 logger = logging.getLogger(__name__)
 
-CACHE_DIR = Path.home() / ".cache" / "searxng"
+CACHE_DIR = Path.home() / ".cache" / "websearch"
 DEFAULT_TTL = 3600  # 1 hour
 
 
@@ -33,7 +33,7 @@ def cache_key(
     return hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
 
-# ~/.cache/searxng/<key>.json
+# ~/.cache/websearch/<key>.json
 def cache_path(key: str) -> Path:
     return CACHE_DIR / f"{key}.json"
 

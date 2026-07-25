@@ -45,15 +45,15 @@ logger = logging.getLogger(__name__)
 # }
 #
 # Old records (no record_type field) are workflow_summary-equivalent — backward compatible.
-# Log path: SEARXNG_QUERY_LOG_PATH env var → DEFAULT_LOG_PATH fallback.
+# Log path: WEBSEARCH_QUERY_LOG_PATH env var → DEFAULT_LOG_PATH fallback.
 DEFAULT_LOG_PATH = Path(__file__).parent.parent.parent / "src" / "logs" / "query_log.jsonl"
 
 
 # FUNCTIONS
 
-# Append one JSONL record; path read from SEARXNG_QUERY_LOG_PATH env var at call time; fail-soft
+# Append one JSONL record; path read from WEBSEARCH_QUERY_LOG_PATH env var at call time; fail-soft
 def log_query(record: dict) -> None:
-    env = os.environ.get("SEARXNG_QUERY_LOG_PATH")
+    env = os.environ.get("WEBSEARCH_QUERY_LOG_PATH")
     log_path = Path(env) if env else DEFAULT_LOG_PATH
     try:
         log_path.parent.mkdir(parents=True, exist_ok=True)

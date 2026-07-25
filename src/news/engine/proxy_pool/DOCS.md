@@ -113,8 +113,8 @@ Key: `_sleep = time.sleep` is a module-level alias — patch it in tests, not `t
 ### box_lock.py (102 LOC)
 
 **Purpose:** System-wide single-job flock — `acquire(job, target, lock_name="proxy_pool")`; crash-safe (kernel releases flock on process death). Raises `LockBusyError` on contention.
-**Reads:** `~/.searxng-cli-locks/{lock_name}.lock` sidecar (in `cleanup_stale` + busy message).
-**Writes:** `~/.searxng-cli-locks/{lock_name}.{flock,lock}`.
+**Reads:** `~/.websearch-locks/{lock_name}.lock` sidecar (in `cleanup_stale` + busy message).
+**Writes:** `~/.websearch-locks/{lock_name}.{flock,lock}`.
 **Called by:** `pipeline.py:run_pipeline`.
 **Calls out:** `fcntl`, `os` (stdlib).
 

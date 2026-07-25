@@ -1,4 +1,4 @@
-# searxng/
+# websearch/
 
 ## Role
 

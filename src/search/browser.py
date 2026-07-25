@@ -11,7 +11,7 @@ from pydoll.commands import PageCommands, TargetCommands
 
 logger = logging.getLogger(__name__)
 
-SESSION_DIR = str(Path.home() / ".searxng-mcp" / "browser-session")
+SESSION_DIR = str(Path.home() / ".websearch" / "browser-session")
 
 # Real Chrome UA for installed version — removes HeadlessChrome signal
 REAL_USER_AGENT = (
@@ -67,7 +67,7 @@ _init_lock = asyncio.Lock()
 # Build Chrome options with session persistence and anti-detection
 def build_options() -> ChromiumOptions:
     options = ChromiumOptions()
-    options.headless = not os.environ.get("SEARXNG_HEADED")
+    options.headless = not os.environ.get("WEBSEARCH_HEADED")
     options.add_argument(f"--user-data-dir={SESSION_DIR}")
     options.block_popups = True
     options.block_notifications = True
