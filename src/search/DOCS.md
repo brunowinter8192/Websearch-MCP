@@ -35,7 +35,7 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 **Called by:** `search_web.py`.
 **Calls out:** `result` (SearchResult).
 
-### filter_modes.py (76 LOC)
+### filter_modes.py (78 LOC)
 
 **Purpose:** Engine restriction + URL filtering for the `--books`/`--pdf`/`--docs` flags, plus `_DEFAULT_ENGINES`. `apply_filter_mode(...)` resolves the 3-way mutex (`pdf > docs > books`), sets the per-engine query-modifier map, returns `(selected, qmm, mode_id, excluded)`. `filter_urls_by_mode(raw_results, mode)` applies the post-fanout URL filter on the flat list BEFORE pool-build. Engine subsets are modifier-target sets, not restriction sets — all engines still fire on every query.
 **Reads:** selected engines + flag booleans.
