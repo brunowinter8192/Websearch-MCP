@@ -1,6 +1,6 @@
-# Pooling Feature — Investigation State
+# Pooling Feature — Investigation State (as of 2026-05-09)
 
-**Date:** 2026-05-09 (continuously updated)
+**Date:** 2026-05-09 (snapshot; later findings live in the numbered entries of this area)
 
 ---
 

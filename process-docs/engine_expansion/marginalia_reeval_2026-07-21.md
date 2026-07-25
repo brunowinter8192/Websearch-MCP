@@ -2,7 +2,7 @@
 
 **Probe:** `dev/search_pipeline/30_marginalia_probe.py` (plain `httpx`, no browser/stealth stack)
 **Report:** `dev/search_pipeline/md/marginalia_probe_20260722_003427.md`
-**Prior status:** deferred in `process-docs/engine_expansion_2026-05/00_research_context.md` — "try-or-drop probe... open question: does a public endpoint exist without API key?"
+**Prior status:** deferred in the 2026-05 engine-expansion research — "try-or-drop probe... open question: does a public endpoint exist without API key?"
 
 ## Verdict: CANDIDATE
 

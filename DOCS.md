@@ -16,6 +16,6 @@ CLI-driven web research toolkit for Claude Code. `cli.py` is the sole root-level
 
 ## Gotchas
 
-- Only 3 subcommands exist (`search_web`, `search_engine_drilldown`, `scrape_url`). `download_pdf_workflow` exists in `src/scraper/download_pdf.py` but is NOT wired into `cli.py` — dev-test only.
+- Only 3 subcommands exist (`search_web`, `search_engine_drilldown`, `scrape_url`); `scrape_url` rejects `.pdf` URLs — PDF download is delegated to the user.
 - Logging setup MUST run before any `src.*` import — module-load-time log calls from those imports would otherwise route to Python's default stderr `lastResort` handler instead of the file handler.
 - `atexit.register(kill_stale_chrome)` ensures pydoll Chrome processes are killed on interpreter exit, including on uncaught exceptions.

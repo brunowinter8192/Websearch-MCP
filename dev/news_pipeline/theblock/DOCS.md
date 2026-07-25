@@ -27,7 +27,7 @@ Discovery + proxy-pool infrastructure for scraping theblock.co past Cloudflare. 
 **Reads:** `logs/proxy_status_log.json`.
 **Writes:** `logs/proxy_status_log.json` (upserted).
 **Called by:** `probe_liveness.py`, `curated_sources.py`, `acquire_pipe/p2_cooldown.py`, `acquire_pipe/p5_logger.py`.
-**Gotcha:** `load_cooled_at`/`mark_cooled_batch`/`_parse_proxy_key` functions were added then removed in a later iteration when cooldown reverted to in-memory (see `process-docs/news_pipeline_layers/`); a `cooled_at` field may still appear in legacy log entries — `probe_liveness.py` never reads it.
+**Gotcha:** `load_cooled_at`/`mark_cooled_batch`/`_parse_proxy_key` functions were added then removed in a later iteration when cooldown reverted to in-memory; a `cooled_at` field may still appear in legacy log entries — `probe_liveness.py` never reads it.
 
 ### probe_discovery.py (457 LOC)
 
