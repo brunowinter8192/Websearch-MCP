@@ -1,7 +1,7 @@
 # dev/scrape_pipeline/05_paper_mode/
 
 ## Role
-Standalone direct-PDF-download prototype — no prod imports, no Crawl4AI. Evaluates plain `requests`-based PDF acquisition as a baseline against the production PDF chain.
+Standalone direct-PDF-download prototype — no prod imports, no Crawl4AI. Evaluates plain `requests`-based PDF acquisition as a baseline; the production PDF-download chain it was benchmarked against (`src/scraper/download_pdf.py` + `pdf_chain.py`) has since been removed — PDF download is now delegated to the user (see root `DOCS.md` gotcha).
 
 ## Modules
 

@@ -3,16 +3,8 @@ bug_fixes/
 not_working/
 
 # Dev suite output (generated reports and markdown files)
-dev/crawling_suite/01_reports/
-dev/scraping_suite/01_baselines/
-dev/scraping_suite/02_iteration_reports/
-dev/scraping_suite/03_filter_comparison/
-dev/scraping_suite/04_filter_reports/
-dev/scraping_suite/05_content_source/
-dev/scraping_suite/06_js_rendering/
-dev/scrape_pipeline/browser_eval/*_reports/
+dev/scrape_pipeline/browser_eval/01_baselines/
 dev/scrape_pipeline/filter_eval/*_reports/
-dev/scrape_pipeline/garbage_eval/*_reports/
 venv/
 .venv/
 __pycache__/

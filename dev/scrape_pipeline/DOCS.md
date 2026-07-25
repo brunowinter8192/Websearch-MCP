@@ -1,7 +1,7 @@
 # dev/scrape_pipeline/
 
 ## Role
-Quality monitoring and configuration testing for the URL scraper module (`src/scraper/`). Own-level scripts cover the GH REST API docs pipe-scraper eval, dual-mode A/B comparison, raw-scrape baseline, Cloudflare markdown-adoption probing, and the `pdf_chain` pytest suite. Sub-suites (`filter_eval/`, `browser_eval/`, `garbage_eval/`, `03_cleanup/`, `04_overview_sweep/`, `05_paper_mode/`) each document their own modules.
+Quality monitoring and configuration testing for the URL scraper module (`src/scraper/`). Own-level scripts cover the GH REST API docs pipe-scraper eval, dual-mode A/B comparison, raw-scrape baseline, and Cloudflare markdown-adoption probing. Sub-suites (`filter_eval/`, `browser_eval/`, `garbage_eval/`, `03_cleanup/`, `04_overview_sweep/`, `05_paper_mode/`) each document their own modules.
 
 ## Modules
 
@@ -39,13 +39,6 @@ Quality monitoring and configuration testing for the URL scraper module (`src/sc
 **Reads:** hardcoded 29-URL set.
 **Writes:** `md/06_cf_md_adoption_<YYYYMMDD_HHMMSS>.md` — per-URL table (URL, CF-fronted, MD-served, status, content-type, x-md-tokens, HTML-bytes, MD-bytes, byte-reduction, response-ms) plus summary (counts, mean/median byte-reduction on positives, positive-case URL list for run-to-run comparison, server header distribution among CF-fronted hits).
 **Called by:** CLI only. `--output-dir` overridable.
-
-### test_pdf_chain.py (302 LOC) + conftest.py (18 LOC)
-
-**Purpose:** Pytest suite for `src/scraper/pdf_chain.py` and `download_pdf_workflow`. Unit layer (no network): 52 pure-function regression guards on `apply_tier1_transform`, `is_blacklisted`, `is_github_blob`, `should_download_as_pdf`, `parse_citation_pdf_url`. Integration layer (`@pytest.mark.network`, gated by `--network` flag): exercises `download_pdf_workflow` end-to-end against real arxiv/aclanthology/openreview URLs, asserts real PDF bytes land in `tmp_path`; plus blacklist + GitHub-blob error-path assertions. `conftest.py` registers the `network` marker and adds the `--network` CLI option.
-**Reads:** live URLs (network layer only).
-**Writes:** pytest results; `tmp_path` fixture artifacts (network layer).
-**Called by:** CLI only. `./venv/bin/python -m pytest dev/scrape_pipeline/test_pdf_chain.py [--network]`.
 
 ## State
 `domains.txt` — shared test URL list for `browser_eval/` and `filter_eval/` scripts, one URL per line, `#` comments. `failures.jsonl` (gitignored) — persistent failure log from production `scrape_url` runs; written by `log_scrape_failure()` in `src/scraper/scrape_url.py` at the final failure exit in `scrape_url_workflow()`. Fields: `ts` (ISO 8601 UTC), `url`, `garbage_type` (`http_error`/`cookie_wall`/`login_wall`/`cloudflare`/`nav_dump`/`crawl4ai_error`/null), `status_code` (int/null). Local analysis only — accumulates across production MCP tool calls, not committed.
