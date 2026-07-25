@@ -124,7 +124,7 @@ mkdir -p $OUTPUT_DIR
 Launch the pipe-scraper as a **background Bash call** (`run_in_background=true`), then go idle. Invoke via the absolute source path:
 
 ```bash
-WEBSEARCH=/Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/cli/searxng-cli
+WEBSEARCH=/Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/cli/websearch
 cd "$WEBSEARCH" && ./venv/bin/python -m src.crawler.pipe_scraper \
     --url-file /tmp/<domain>_discovered_urls.txt \
     --output-dir $OUTPUT_DIR > /tmp/<domain>_scrape.log 2>&1
