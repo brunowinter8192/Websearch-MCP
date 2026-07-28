@@ -6,7 +6,7 @@ description:
 # PDF → MD → Index — Skill
 
 Interactive. The USER runs the convert command; Claude does ONLY: naming, cleanup, index.
-ONE command converts ALL PDFs in the batch sequentially — each as a whole document,
+ONE command converts ALL PDFs in the batch sequentially, each as a whole document,
 MinerU `vlm-auto-engine` (mlx).
 
 ## Paths
@@ -33,7 +33,6 @@ PYTHONUNBUFFERED=1 ~/Documents/ai/Mineru/venv/bin/python ~/Documents/ai/Mineru/w
   --pdf "<PDF1>" "<PDF2>" "<PDF3>" ... \
   --out-dir <OUTPUT_DIR> 2>&1 | tee /tmp/<batch>_mineru.log
 ```
-- ONE invocation processes all PDFs sequentially — each as a single whole-document mineru process.
 - Output: flat `<OUTPUT_DIR>/<STEM>.md` per PDF.
 - USER runs the block, reports done.
 
@@ -43,14 +42,14 @@ Run on each `<OUTPUT_DIR>/<STEM>.md`. Audit FIRST — sample the hits, then stri
 Per-class detection + action:
 - **A — lost formula (UNRECOVERABLE → do NOT clean):** `??`, `` (U+FFFD), empty/`?`-containing
   `<sub>`/`<sup>` (`<su[bp]>[[:space:]]*</su[bp]>|<su[bp]>[^<]*\?[^<]*</su[bp]>`), whitespace-only
-  `$$…$$` blocks (split on `$$`, test odd segments). Any A hit → the output for that doc is
-  gone; cleaning cannot recover it. **Report the symbol/page to the user.**
+  `$$…$$` blocks (split on `$$`, test odd segments). Any A hit → do NOT clean.
+  **Report the symbol/page to the user.**
 - **B — spaced math (RECOVERABLE → de-space):** `_ {`, `^ {`, `\ [a-z]( [a-z])+`, spaced single-char
   runs `([A-Za-z] ){3,}[A-Za-z]`. Collapse runs to real tokens (`\mathrm { a r g m i n }` →
   `\mathrm{argmin}`). Invariant: alphanumeric-char count EXACTLY stable; word count drops.
 - **C — encoding (RECOVERABLE → unescape):** HTML entities
   `&(amp|lt|gt|quot|apos|nbsp|#\d+|#x[0-9a-fA-F]+);`, mojibake `Ã.`/`â€`. Entity count → 0.
-- **D — prose char-typos:** ignore (negligible). Pervasive prose garble = treat as A → report (unrecoverable).
+- **D — prose char-typos:** ignore. Pervasive prose garble → treat as A, report.
 - **E — backmatter (MANDATORY STRIP):** from the first
   References/Bibliography/Index/Symbols/Abbreviations/Nomenclature heading in the last ~40% (or
   headingless reference run: most non-blank lines match `\(\d{4}[a-z]?\)`/`^Surname, Init.`; index run:
@@ -63,13 +62,24 @@ Per-class detection + action:
   emptied by the removal; collapse 3+ consecutive blank lines → 1. Re-scan: count → 0.
 - **H — block noise (MANDATORY STRIP):** consecutive runs ≥ 2 of bare fence lines (line = optional
   whitespace + 3+ backticks + optional whitespace, nothing else) → remove the whole run. KEEP isolated
-  fences and language-tagged openers (```` ```txt ````, ```` ```csv ````) — real code/data blocks.
+  fences and language-tagged openers (```` ```txt ````, ```` ```csv ````).
   Separator lines: on the space-stripped line, if the most-common char ∈ `=#-~*_.+` is > 70% of chars
   AND length ≥ 20 → remove the line. Re-scan: max consecutive bare-fence run = 1.
 - **I — run-on tokens (CONDITIONAL → user decision):** whitespace-split; flag tokens ≥ 46 chars with
   alpha-ratio > 0.7, excluding tokens containing `\` / `http` / `/`. Any flagged token > 2000 chars →
   STOP, list doc + token to the user, wait for decision. All flagged ≤ 2000 chars → leave in place, do
   NOT strip.
+- **J — oversized spans (MANDATORY):** scan BOTH granularities, report every hit with line number +
+  first 200 chars:
+  ```bash
+  awk '{ if (length($0) > 1000) print NR, length($0) }' "$MD"                       # long lines
+  awk 'BEGIN{RS="\n\n"} { gsub(/\n/," "); if (length($0) > 1000) print NR, length($0) }' "$MD"  # long blocks
+  ```
+  Per hit, classify and act:
+  - **repeated-char run** (`(.)\1{39,}`) → collapse to 3 chars:
+    `re.sub(r"(.)\1{39,}", lambda m: m.group(1)*3, text)`.
+  - **real prose/table/formula** → leave in place.
+  Re-scan: report max line length + max block length; name every remaining > 1000 span as real content.
 
 Prose window (every md): pull 1–2 body lines (len > 70, starts alpha, > 10 spaces, alpha-ratio > 0.78)
 from the middle third and READ. Coherent → pass; garbled → A → report (unrecoverable).
@@ -82,4 +92,12 @@ spot-check 10–15 middle lines. Preserve source content; overwrite in place; ba
 ```
 rag-cli index --collection <COLLECTION>
 ```
-Incremental (hash-skip). Report files indexed + chunks. Confirm docs in the collection.
+Incremental (hash-skip). Self-backgrounds — set NO timer; wait for its completion notice.
+
+On the notice: READ THE OUTPUT FILE IN FULL (`Output: <path>`) before reporting or diagnosing.
+The error sits in the FIRST line. A stalled chunk counter = run ENDED, never "slow".
+
+`HTTP 400 … exceeds the available context size` → re-run class J's scan on the named document, fix,
+re-index.
+
+Report files indexed + chunks. Confirm docs in the collection.
