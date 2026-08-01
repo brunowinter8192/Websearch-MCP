@@ -5,24 +5,6 @@ description:
 
 # Capture-and-Index — Skill
 
-## Background-Run Discipline (HARD — scrape, index)
-
-Every long run (scrape / index) is launched as a background Bash call (`run_in_background=true`). After launch you go idle and do **nothing** about that run until you receive the message:
-
-> **`background done — check worker or other process`**
-
-That message is your ONLY trigger to look. It is a push event — it arrives on its own. You never go looking for completion, and you never schedule yourself to look.
-
-Until that message arrives, FORBIDDEN:
-- **setting a timer (`sleep N && echo done`) to wake yourself.**
-- reading the scrape log / index log (`logread` included), or `ls` / `wc` / byte-size on the output dir or the redirect targets
-- `ps` / `pgrep` / `top` liveness checks
-- any "early sanity check" that the run started cleanly
-
-When `background done — check worker or other process` arrives: read the run's log EXACTLY ONCE, then continue the pipeline on your own. A crash surfaces HERE — as a non-zero `EXIT` + traceback in the log at this same single read; there is no earlier check that would catch it sooner. The ONLY check you run before the background launch is pre-launch validation (binary exists, `--help` parses), in the foreground.
-
----
-
 ### Web-MD Capture (discovery → select → scrape → clean → index)
 
 Pipeline: Discovery → URL Selection (pre-scrape) → Scrape (raw) → Cleanup (incl. post-scrape drop) → Index.
@@ -121,7 +103,7 @@ Scrape every URL in the filtered list **raw and maximal** — no content filter,
 mkdir -p $OUTPUT_DIR
 ```
 
-Launch the pipe-scraper as a **background Bash call** (`run_in_background=true`), then go idle. Invoke via the absolute source path:
+Run the pipe-scraper via the absolute source path:
 
 ```bash
 WEBSEARCH=/Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/cli/websearch
@@ -130,7 +112,7 @@ cd "$WEBSEARCH" && ./venv/bin/python -m src.crawler.pipe_scraper \
     --output-dir $OUTPUT_DIR > /tmp/<domain>_scrape.log 2>&1
 ```
 
-> You own Scrape → Cleanup → Index end-to-end — never hand back to Opus mid-pipeline. After launch, go idle per **Background-Run Discipline**: no timer, no log/dir probe. ONLY when `background done — check worker or other process` arrives, read `/tmp/<domain>_scrape.log` ONCE for the `Scraped N/N ok` summary, then continue on your own to Cleanup → Index → final report.
+> You own Scrape → Cleanup → Index end-to-end — never hand back to Opus mid-pipeline. When the run returns, read `/tmp/<domain>_scrape.log` ONCE for the `Scraped N/N ok` summary, then continue on your own to Cleanup → Index → final report.
 
 The scraper's own output is short: a console line with **success count, error count, and total duration**, plus a full per-URL report written to `/tmp/<domain>_scrape_report.md` (per-URL status + outcome). It does NOT dump a per-URL list to the console — failures live in the report md.
 
@@ -240,7 +222,7 @@ mkdir -p "$OUTPUT_DIR"
 
 Set this BEFORE the Scrape phase (Phase 2).
 
-Then launch index as a background Bash call:
+Then run the index:
 
 ```bash
 PYTHONUNBUFFERED=1 rag-cli index --collection "$COLLECTION" \
@@ -253,9 +235,7 @@ The script prints per file `Indexed <doc> -> N chunks` and a final summary line:
 Done: N files indexed (X chunks), Y skipped, Z adopted
 ```
 
-Report `N` (files indexed) and `X` (chunks) from that line — `N` is the **final md** count for the Completion Report.
-
-Launch index as a background Bash call (`run_in_background=true`) and go idle per **Background-Run Discipline**: no timer, no probe. ONLY when `background done — check worker or other process` arrives, read `/tmp/${COLLECTION}_index.log` ONCE for the summary line, then output the Completion Report.
+Report `N` (files indexed) and `X` (chunks) from that line — `N` is the **final md** count for the Completion Report. When the run returns, read `/tmp/${COLLECTION}_index.log` ONCE for the summary line, then output the Completion Report.
 
 No separate verify step inside the pipe.
 
