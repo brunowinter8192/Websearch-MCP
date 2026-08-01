@@ -105,4 +105,4 @@ worker-cli spawn capture-<collection_lower> /tmp/spawn-<name>.md <current_projec
 
 **5.** When the worker reports the funnel, check `blocks detected` — non-zero means it found cookie/paywall MDs (not auto-stripped). Decide from the reported patterns whether a `src/` strip-script is warranted.
 
-**Between step 4 and step 5, Opus does NOTHING.** No log-checking, no `rag-cli status` polling, no waking the worker for Cleanup/Index, no progress probes. The worker owns Scrape → Cleanup → Index end-to-end. Opus intervenes at exactly TWO points: (a) hand the worker the culled `/tmp` URL list + go (step 4), and (b) receive the final funnel report (step 5).
+**Between step 4 and step 5, the worker owns Scrape → Cleanup → Index end-to-end.** Opus intervenes at exactly TWO points: (a) hand the worker the culled `/tmp` URL list + go (step 4), and (b) receive the final funnel report (step 5).

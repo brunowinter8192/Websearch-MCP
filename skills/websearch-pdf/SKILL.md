@@ -92,9 +92,10 @@ spot-check 10–15 middle lines. Preserve source content; overwrite in place; ba
 ```
 rag-cli index --collection <COLLECTION>
 ```
-Incremental (hash-skip). Self-backgrounds — set NO timer; wait for its completion notice.
+Incremental (hash-skip). Must be the ONLY command in its Bash call — assignments, a `cd` and a
+redirect may accompany it, nothing else, no command substitution.
 
-On the notice: READ THE OUTPUT FILE IN FULL (`Output: <path>`) before reporting or diagnosing.
+When it returns: READ THE OUTPUT IN FULL before reporting or diagnosing.
 The error sits in the FIRST line. A stalled chunk counter = run ENDED, never "slow".
 
 `HTTP 400 … exceeds the available context size` → re-run class J's scan on the named document, fix,
