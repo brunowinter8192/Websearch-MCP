@@ -5,6 +5,10 @@ description:
 
 # Capture-and-Index — Skill
 
+## /tmp files are written with a heredoc, never with Write
+
+Every file this pipeline produces under `/tmp` — URL lists, discovery scripts, cleaner scripts — is written from Bash via a quoted heredoc (`cat > /tmp/x <<'EOF' … EOF`). The Write tool is for repo files; a throwaway under `/tmp` is a shell artifact and stays in the shell. Quote the delimiter (`<<'EOF'`) so nothing in the body gets expanded.
+
 ### Web-MD Capture (discovery → select → scrape → clean → index)
 
 Pipeline: Discovery → URL Selection (pre-scrape) → Scrape (raw) → Cleanup (incl. post-scrape drop) → Index.
