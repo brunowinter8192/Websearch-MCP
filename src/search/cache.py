@@ -57,6 +57,7 @@ def cache_write(
                 "title":    r.title,
                 "snippet":  r.snippet,
                 "position": r.position,
+                "date":     r.date,
             }
             for r in pool
         ]
@@ -108,6 +109,9 @@ def format_engine_pool(pool: list[dict], engine_name: str, query: str) -> str:
     for entry in pool:
         lines.append(f"{entry['position']}. {entry['title']}")
         lines.append(f"   URL: {entry['url']}")
+        date = entry.get("date")
+        if date:
+            lines.append(f"   Date: {date}")
         raw = entry.get("snippet") or ""
         if raw:
             snippet = _truncate(_strip_bloat(raw), MAX_SNIPPET_LEN)

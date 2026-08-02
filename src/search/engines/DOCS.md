@@ -114,9 +114,9 @@ Query string in → engine-specific fetch (pydoll tab navigation + JS extraction
 
 ---
 
-### crossref.py (122 LOC)
+### crossref.py (154 LOC)
 
-**Purpose:** CrossRef academic works search via `httpx` GET against `api.crossref.org/works` (JSON API, no browser). Iterative HTML-entity unescape (handles double-encoded entities) on titles.
+**Purpose:** CrossRef academic works search via `httpx` GET against `api.crossref.org/works` (JSON API, no browser). Iterative HTML-entity unescape (handles double-encoded entities) on titles. `_extract_date` reads `date-parts` at native precision (`"YYYY"`/`"YYYY-MM"`/`"YYYY-MM-DD"`), truncating at the first missing/null slot (never shifts a later value into a wrong position) — populates `SearchResult.date`. Shared `DATE_KEY_PRIORITY = ("issued", "published-online", "published-print")` module constant, used by both `_extract_date` and `_synthesize`'s year fallback, so the date and the snippet-embedded year can never disagree (`created`/`indexed` excluded — deposit/indexing timestamps, not publication dates).
 **Reads:** none (network only).
 **Writes:** none (network only).
 **Called by:** `src/search/search_web.py`.
@@ -124,9 +124,9 @@ Query string in → engine-specific fetch (pydoll tab navigation + JS extraction
 
 ---
 
-### openalex.py (105 LOC)
+### openalex.py (117 LOC)
 
-**Purpose:** OpenAlex academic graph search via `httpx` GET against `api.openalex.org/works` (JSON API, no browser). Same entity-unescape treatment as `crossref.py`.
+**Purpose:** OpenAlex academic graph search via `httpx` GET against `api.openalex.org/works` (JSON API, no browser). Same entity-unescape treatment as `crossref.py`. `_extract_date` populates `SearchResult.date` from `publication_date` (day-accurate, nullable), falling back to `str(publication_year)` (year precision) when null.
 **Reads:** `OPENALEX_MAILTO` env var (polite-pool identification, optional).
 **Writes:** none (network only).
 **Called by:** `src/search/search_web.py`.
@@ -134,9 +134,9 @@ Query string in → engine-specific fetch (pydoll tab navigation + JS extraction
 
 ---
 
-### stack_exchange.py (96 LOC)
+### stack_exchange.py (106 LOC)
 
-**Purpose:** Stack Overflow search via `httpx` GET against `api.stackexchange.com/2.3/search/advanced` (JSON API, no browser). Warns once (module-level `_KEY_WARNED` flag) when no API key is configured (anonymous quota).
+**Purpose:** Stack Overflow search via `httpx` GET against `api.stackexchange.com/2.3/search/advanced` (JSON API, no browser). Warns once (module-level `_KEY_WARNED` flag) when no API key is configured (anonymous quota). `_extract_date` converts `creation_date` (Unix epoch int, part of the default `withbody` filter, always present) to a day-precision ISO string via `datetime.fromtimestamp(ts, tz=timezone.utc)` — populates `SearchResult.date`.
 **Reads:** `STACK_EXCHANGE_API_KEY` env var (optional; anonymous quota if unset).
 **Writes:** none (network only).
 **Called by:** `src/search/search_web.py`.
@@ -144,9 +144,9 @@ Query string in → engine-specific fetch (pydoll tab navigation + JS extraction
 
 ---
 
-### open_library.py (81 LOC)
+### open_library.py (88 LOC)
 
-**Purpose:** Open Library book-catalog search via `httpx` GET against `openlibrary.org/search.json` (JSON API, no browser).
+**Purpose:** Open Library book-catalog search via `httpx` GET against `openlibrary.org/search.json` (JSON API, no browser). `_extract_date` populates `SearchResult.date` from `first_publish_year` (year precision only).
 **Reads:** none (network only).
 **Writes:** none (network only).
 **Called by:** `src/search/search_web.py`.

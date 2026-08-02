@@ -27,9 +27,9 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 **Called by:** `cli.py` (search_web_workflow); dev scripts (fetch_search_results).
 **Calls out:** `httpx`, `pydoll.exceptions`, `websockets.exceptions`, `mcp.types.TextContent`; `engines/` (all 14 engine classes); `cache` (cache_key, cache_write), `rate_limiter` (get_limiter), `merge` (build_engine_pools), `result` (SearchResult), `status`, `query_logger` (log_query), `filter_modes` (apply_filter_mode, filter_urls_by_mode, _DEFAULT_ENGINES).
 
-### merge.py (36 LOC)
+### merge.py (37 LOC)
 
-**Purpose:** Cross-engine URL dedup + per-engine pool builder. `build_engine_pools(results)` groups SearchResults by URL, assigns each URL to the owner engine (lowest position value, random tie-break), returns `{engine → [owned SearchResult, …]}` sorted by native position. Populates `engine_positions` on each result (all engines' positions for that URL).
+**Purpose:** Cross-engine URL dedup + per-engine pool builder. `build_engine_pools(results)` groups SearchResults by URL, assigns each URL to the owner engine (lowest position value, random tie-break), returns `{engine → [owned SearchResult, …]}` sorted by native position. Populates `engine_positions` on each result (all engines' positions for that URL). Constructs a FRESH `SearchResult` per winning URL — any field not explicitly named in that constructor call (e.g. `date`) is silently dropped, so new `SearchResult` fields must be threaded through here explicitly.
 **Reads:** flat `list[SearchResult]` from fan-out.
 **Writes:** none (returns the pool dict).
 **Called by:** `search_web.py`.
@@ -64,9 +64,9 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 **Called by:** `filter_modes.py`.
 **Calls out:** none (stdlib `urllib` only).
 
-### cache.py (117 LOC)
+### cache.py (121 LOC)
 
-**Purpose:** Disk cache for per-engine pools, backing `search_engine_drilldown`. Cache key `sha256(query|language|engines|time_range[|modifier_id])[:16]`; path `~/.cache/websearch/<key>.json`; 1h mtime TTL; atomic write via `tempfile.mkstemp` + `os.replace`. JSON holds the full per-engine pool dict with native positions. `format_engine_pool(pool, engine_name, query)` renders one engine's pool as a numbered list with snippet cleanup applied.
+**Purpose:** Disk cache for per-engine pools, backing `search_engine_drilldown`. Cache key `sha256(query|language|engines|time_range[|modifier_id])[:16]`; path `~/.cache/websearch/<key>.json`; 1h mtime TTL; atomic write via `tempfile.mkstemp` + `os.replace`. JSON holds the full per-engine pool dict with native positions. `format_engine_pool(pool, engine_name, query)` renders one engine's pool as a numbered list with snippet cleanup applied. `date` (ISO-8601 partial: `"YYYY"`/`"YYYY-MM"`/`"YYYY-MM-DD"`, or `None`) is serialized per entry and rendered as a `Date: <value>` line when present; read via `entry.get("date")` so cache files written before this field existed (no `date` key at all) still render without error.
 **Reads:** cache files under `~/.cache/websearch/`.
 **Writes:** `~/.cache/websearch/<key>.json`.
 **Called by:** `cli.py` (cache_key, cache_read, format_engine_pool); `search_web.py` (cache_key, cache_write).
@@ -102,9 +102,9 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 **Called by:** `search_web.py` (get_limiter); `engines/` (RateLimiter, _limiters).
 **Calls out:** none (stdlib `asyncio`, `time`).
 
-### result.py (15 LOC)
+### result.py (16 LOC)
 
-**Purpose:** `SearchResult` dataclass. Fields: `url, title, snippet, engine, position, preview, engines, snippets, engine_positions`. `engine_positions` populated by `build_engine_pools`; `engines`/`snippets`/`preview` retained for dev-script backward compat.
+**Purpose:** `SearchResult` dataclass. Fields: `url, title, snippet, engine, position, preview, engines, snippets, engine_positions, date`. `engine_positions` populated by `build_engine_pools`; `engines`/`snippets`/`preview` retained for dev-script backward compat. `date: str | None` — ISO-8601 partial date at native precision (`"YYYY"`, `"YYYY-MM"`, or `"YYYY-MM-DD"`; the string's own shape is the precision signal, no separate precision field); populated only by `engines/openalex.py`, `engines/stack_exchange.py`, `engines/crossref.py`, `engines/open_library.py` — the other 10 engines leave it at the `None` default.
 **Called by:** `search_web.py`, `merge.py`, `cache.py`, `engines/`.
 **Calls out:** none (stdlib `dataclasses`).
 

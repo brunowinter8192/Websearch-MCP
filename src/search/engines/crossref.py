@@ -17,6 +17,13 @@ API_URL = "https://api.crossref.org/works"
 # Uniform 4 req/min across all engines (Google-Baseline, normalized 2026-05-04)
 _limiters["crossref"] = RateLimiter(max_requests=4, window_seconds=60)
 
+# Publication-date key priority, shared by _extract_date and _synthesize so the rendered date
+# and the snippet year never disagree. 'issued' is CrossRef's already-resolved publication date
+# (earliest of print/online, most consistently populated); published-online preferred over
+# published-print as second choice since online-first typically precedes print.
+# created/indexed deliberately excluded — deposit/indexing timestamps, not publication dates.
+DATE_KEY_PRIORITY = ("issued", "published-online", "published-print")
+
 
 # ORCHESTRATOR
 
@@ -74,8 +81,33 @@ def _parse_results(items: list[dict]) -> list[SearchResult]:
             snippet=snippet,
             engine="crossref",
             position=i + 1,
+            date=_extract_date(item),
         ))
     return results
+
+
+# Publication date at native precision from date-parts ([year], [year,month], or [year,month,day]).
+def _extract_date(item: dict) -> str | None:
+    for field_name in DATE_KEY_PRIORITY:
+        date_field = item.get(field_name) or {}
+        parts_list = date_field.get("date-parts", [])
+        if not parts_list or not parts_list[0] or parts_list[0][0] is None:
+            continue
+        return _format_date_parts(parts_list[0])
+    return None
+
+
+# Truncate at the first missing/null slot — a gap never shifts a later value into the wrong position
+# (e.g. [2019, None, 15] is year-month-day with month missing -> "2019", never "2019-15").
+def _format_date_parts(parts: list) -> str:
+    year = parts[0]
+    if len(parts) < 2 or parts[1] is None:
+        return f"{year:04d}"
+    month = parts[1]
+    if len(parts) < 3 or parts[2] is None:
+        return f"{year:04d}-{month:02d}"
+    day = parts[2]
+    return f"{year:04d}-{month:02d}-{day:02d}"
 
 
 # Return JATS-stripped abstract if present, else synthesize author+year+container string
@@ -102,7 +134,7 @@ def _synthesize(item: dict) -> str:
         author_str = ""
 
     year = ""
-    for field_name in ("published-print", "issued", "published-online"):
+    for field_name in DATE_KEY_PRIORITY:
         date_field = item.get(field_name) or {}
         parts = date_field.get("date-parts", [])
         if parts and parts[0] and parts[0][0] is not None:
