@@ -34,9 +34,9 @@ Query string in → engine-specific fetch (pydoll tab navigation + JS extraction
 
 ---
 
-### duckduckgo.py (155 LOC)
+### duckduckgo.py (164 LOC)
 
-**Purpose:** DuckDuckGo HTML-endpoint search via pydoll Chrome tab (`html.duckduckgo.com/html/`). Waits for `#links > div.web-result` containers, detects challenge-form CAPTCHA selector, extracts via injected JS parse script.
+**Purpose:** DuckDuckGo HTML-endpoint search via pydoll Chrome tab (`html.duckduckgo.com/html/`). Waits for `#links > div.web-result` containers, detects challenge-form CAPTCHA selector, extracts via injected JS parse script. `_extract_date` populates `SearchResult.date` (day precision) from the optional bare `<span>` in `.result__extras__url` — identified by `:not(.result__icon)`, not position (a dated result has 3 children: icon span, url anchor, date span; undated is a clean 2-child div, no crash). Present only when the source page has structured date metadata (verified: absent on Wikipedia-type results, present on ~40-100% of results depending on query).
 **Reads:** none (network only).
 **Writes:** none (network only).
 **Called by:** `src/search/search_web.py`.
@@ -74,9 +74,9 @@ Query string in → engine-specific fetch (pydoll tab navigation + JS extraction
 
 ---
 
-### bing.py (175 LOC)
+### bing.py (210 LOC)
 
-**Purpose:** Bing web search (direct path to the Bing index — DuckDuckGo is the existing surrogate) via pydoll Chrome tab, headless. Single GET `https://www.bing.com/search?q=<q>`, no consent/form step (a Microsoft cookie banner is present in the DOM but does not gate result rendering). Waits for `li.b_algo` containers, extracts title/href/snippet via injected JS parse script. Every organic href arrives wrapped in a `bing.com/ck/a?...&u=<prefixed-base64>&...` tracking redirect — `_clean_url` unwraps it: parses the `u` query param, strips its 2-char prefix (observed `a1`), base64url-decodes with padding restored, graceful fallback to the raw wrapped href on any failure or missing `u` param. Block detection via EN+DE title/body marker scan; `_build_results`/`_classify_diagnosis` factored out as pure functions (unit-tested in `tests/test_bing_engine.py`, including a real captured `ck/a` sample for the unwrap).
+**Purpose:** Bing web search (direct path to the Bing index — DuckDuckGo is the existing surrogate) via pydoll Chrome tab, headless. Single GET `https://www.bing.com/search?q=<q>`, no consent/form step (a Microsoft cookie banner is present in the DOM but does not gate result rendering). Waits for `li.b_algo` containers, extracts title/href/snippet via injected JS parse script. Every organic href arrives wrapped in a `bing.com/ck/a?...&u=<prefixed-base64>&...` tracking redirect — `_clean_url` unwraps it: parses the `u` query param, strips its 2-char prefix (observed `a1`), base64url-decodes with padding restored, graceful fallback to the raw wrapped href on any failure or missing `u` param. Block detection via EN+DE title/body marker scan; `_build_results`/`_classify_diagnosis` factored out as pure functions (unit-tested in `tests/test_bing_engine.py`, including a real captured `ck/a` sample for the unwrap). `_extract_date` populates `SearchResult.date` from `span.news_dt`'s localized display string (`"14. März 2023"` / `"May 20, 2026"`) via two regexes + DE/EN month-name maps — inconsistent across results (only present on some, e.g. news-style listings), an unrecognized shape (e.g. relative "vor N Tagen") or absent element returns `None`, never a guess. Deliberately no snippet-text fallback — a result with a plain-text date but no `news_dt` span (e.g. `"...Research May 20, 2026 …"`) gets no `date`.
 **Reads:** none (network only).
 **Writes:** none (network only).
 **Called by:** `src/search/search_web.py`.
@@ -94,9 +94,9 @@ Query string in → engine-specific fetch (pydoll tab navigation + JS extraction
 
 ---
 
-### lobsters.py (130 LOC)
+### lobsters.py (147 LOC)
 
-**Purpose:** Lobsters (lobste.rs) search via pydoll Chrome tab, `what=stories&order=relevance` endpoint. Waits for `li.story` containers, extracts direct hrefs — no CAPTCHA check (site has none).
+**Purpose:** Lobsters (lobste.rs) search via pydoll Chrome tab, `what=stories&order=relevance` endpoint. Waits for `li.story` containers, extracts direct hrefs — no CAPTCHA check (site has none). `_extract_date` populates `SearchResult.date` (day precision, truncated from the `<time datetime="YYYY-MM-DD HH:MM:SS">` attribute — no invented/kept time component) — the cleanest dedicated-date element of any of the 8 DOM-scraped engines (three machine-readable representations: `datetime`, `title`, `data-at-unix`).
 **Reads:** none (network only).
 **Writes:** none (network only).
 **Called by:** `src/search/search_web.py`.
