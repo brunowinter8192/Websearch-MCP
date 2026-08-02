@@ -77,9 +77,9 @@ When the user wants to permanently capture a whole domain into RAG — "crawl X 
 **1.** Identify the source: a seed domain URL.
 
 **2.** Confirm the target collection with the user (MANDATORY ASK — never pick it yourself):
-> "Target collection: `<project>_reference`. OUTPUT_DIR: `~/Documents/ai/Meta/ClaudeCode/cli/rag-cli/data/documents/<project>_reference/`. Confirm or override?"
+> "Target collection: `<project>-reference`. OUTPUT_DIR: `~/Documents/ai/Meta/ClaudeCode/cli/rag-cli/data/documents/<project>-reference/`. Confirm or override?"
 
-Default is `<current_project>_reference`, but it may be another project's reference collection.
+Default is `<current_project>-reference`, but it may be another project's reference collection. Collection names are hyphen-separated (`websearch-reference`), never underscore — an underscore variant creates a second, parallel collection instead of appending to the existing one.
 
 **3.** Spawn the worker. It activates the `websearch-capture-and-index` skill and runs the pipe: Discovery → URL Selection → **STOP (Opus cull, Phase 1b)** → Scrape → Cleanup → Index. Opus provides the seed, collection, output dir.
 
