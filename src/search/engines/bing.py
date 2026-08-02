@@ -3,6 +3,7 @@ import asyncio
 import base64
 import json
 import logging
+import re
 from urllib.parse import urlparse, parse_qs
 
 from src.search.browser import new_tab, kill_tab
@@ -26,11 +27,13 @@ for (var _i = 0; _i < _cs.length; _i++) {
     var _c = _cs[_i];
     var _h2a = _c.querySelector('h2 a');
     var _cap = _c.querySelector('.b_caption p') || _c.querySelector('.b_caption');
+    var _dt = _c.querySelector('span.news_dt');
     if (!_h2a || !_h2a.href) continue;
     _out.push({
         url: _h2a.href,
         title: _h2a.textContent.trim(),
-        snippet: _cap ? _cap.textContent.trim() : ''
+        snippet: _cap ? _cap.textContent.trim() : '',
+        date_raw: _dt ? _dt.textContent.trim() : ''
     });
 }
 return JSON.stringify(_out);
@@ -135,8 +138,40 @@ def _build_results(items: list[dict], max_results: int) -> list[SearchResult]:
         results.append(SearchResult(
             url=url, title=item.get("title", ""), snippet=item.get("snippet", ""),
             engine="bing", position=i + 1,
+            date=_extract_date(item.get("date_raw", "")),
         ))
     return results
+
+
+_DE_MONTHS = {
+    "januar": 1, "februar": 2, "märz": 3, "april": 4, "mai": 5, "juni": 6,
+    "juli": 7, "august": 8, "september": 9, "oktober": 10, "november": 11, "dezember": 12,
+}
+_EN_MONTHS = {
+    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+    "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
+}
+_DE_DATE_RE = re.compile(r'^(\d{1,2})\.\s*([A-Za-zÄÖÜäöü]+)\s+(\d{4})$')
+_EN_DATE_RE = re.compile(r'^([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})$')
+
+
+# Parse span.news_dt's localized display string ('14. März 2023' / 'May 20, 2026') to a day-precision
+# ISO date. Absent or unrecognized formats (e.g. relative 'vor N Tagen') degrade to None — never guess.
+def _extract_date(news_dt_text: str) -> str | None:
+    text = (news_dt_text or "").strip()
+    if not text:
+        return None
+    m = _DE_DATE_RE.match(text)
+    if m:
+        day, month_name, year = m.groups()
+        month = _DE_MONTHS.get(month_name.lower())
+        return f"{int(year):04d}-{month:02d}-{int(day):02d}" if month else None
+    m = _EN_DATE_RE.match(text)
+    if m:
+        month_name, day, year = m.groups()
+        month = _EN_MONTHS.get(month_name.lower())
+        return f"{int(year):04d}-{month:02d}-{int(day):02d}" if month else None
+    return None
 
 
 # Query DOM for li.b_algo containers and return SearchResult list
