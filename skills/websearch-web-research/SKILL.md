@@ -101,7 +101,9 @@ worker-cli spawn capture-<collection_lower> /tmp/spawn-<name>.md <current_projec
 
 ### Opus gates
 
-**4.** Cull review. When the worker stops at Phase 1b it reports the URL-list path + a per-section breakdown. Review it against what the user actually needs this session — drop sections that are valid content but off-topic (e.g. a GitHub REST capture aimed at search/contents/git-trees does not need `actions`/`enterprise-admin`/`scim`). Send the worker the sections/patterns to drop. The worker applies the cull and proceeds. This is YOUR call, not the worker's.
+**4.** Cull review. When the worker stops at Phase 1b it reports the URL-list path + a per-section breakdown. Review it against what the user actually needs this session — drop sections that are valid content but off-topic (e.g. a GitHub REST capture aimed at search/contents/git-trees does not need `actions`/`enterprise-admin`/`scim`). This is YOUR call, not the worker's.
+
+**YOU edit the `/tmp` URL-list file itself — never send the worker patterns to apply.** Strip the unwanted URLs from the file, then tell the worker the resulting line count and give it go. The worker re-reads the same path and scrapes whatever is in it; it never rewrites the list. Rationale: the culled file on disk IS the verifiable state — its line count says exactly what will be scraped. Handing over patterns instead defers the cull into the worker and makes it visible only after the scrape has already run.
 
 **5.** When the worker reports the funnel, check `blocks detected` — non-zero means it found cookie/paywall MDs (not auto-stripped). Decide from the reported patterns whether a `src/` strip-script is warranted.
 

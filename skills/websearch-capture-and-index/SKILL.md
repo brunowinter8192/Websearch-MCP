@@ -102,6 +102,8 @@ Then WAIT. Opus strips the unwanted URLs from `/tmp/<domain>_discovered_urls.txt
 
 Do NOT scrape before Opus says go.
 
+**Pre-scrape line-count gate (MANDATORY).** In a Bash call of its OWN — never chained onto the scrape command — run `wc -l` on the URL file and compare it against the count Opus gave with the go. Mismatch → STOP and report to Opus; do not scrape. A stale or un-culled list otherwise burns a full scrape run against hundreds of unwanted URLs and is only noticed afterwards. Keep it a separate call: anything chained onto the scrape command defeats auto-backgrounding.
+
 #### Phase 2 — Scrape
 
 Scrape every URL in the filtered list **raw and maximal** — no content filter, no truncation.
