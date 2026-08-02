@@ -30,6 +30,7 @@ def build_engine_pools(results: list[SearchResult]) -> dict[str, list[SearchResu
             engine=winner.engine,
             position=winner.position,
             engine_positions=engine_positions,
+            date=winner.date,
         ))
 
     # Step 3: sort each pool by owner engine's native position (ascending)

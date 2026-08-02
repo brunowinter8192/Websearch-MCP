@@ -78,8 +78,20 @@ def _parse_results(works: list[dict]) -> list[SearchResult]:
             snippet=snippet,
             engine="openalex",
             position=i + 1,
+            date=_extract_date(work),
         ))
     return results
+
+
+# publication_date is day-accurate ISO 8601 but nullable; fall back to publication_year (year precision)
+def _extract_date(work: dict) -> str | None:
+    pub_date = work.get("publication_date")
+    if pub_date:
+        return pub_date
+    pub_year = work.get("publication_year")
+    if pub_year:
+        return str(pub_year)
+    return None
 
 
 # Reconstruct abstract text from OpenAlex inverted index (word -> [positions])

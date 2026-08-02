@@ -3,6 +3,7 @@ import html
 import logging
 import os
 import re
+from datetime import datetime, timezone
 
 import httpx
 
@@ -85,6 +86,7 @@ def _parse_results(items: list[dict]) -> list[SearchResult]:
             snippet=snippet,
             engine="stack_exchange",
             position=i + 1,
+            date=_extract_date(item),
         ))
     return results
 
@@ -94,3 +96,11 @@ def _strip_html(text: str) -> str:
     text = re.sub(r'<[^>]+>', ' ', text)
     text = html.unescape(text)
     return ' '.join(text.split())
+
+
+# creation_date is a Unix epoch int (part of the default filter, always present) -> day-precision ISO date
+def _extract_date(item: dict) -> str | None:
+    ts = item.get("creation_date")
+    if not ts:
+        return None
+    return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")

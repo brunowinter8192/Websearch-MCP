@@ -74,8 +74,30 @@ def _parse_results(items: list[dict]) -> list[SearchResult]:
             snippet=snippet,
             engine="crossref",
             position=i + 1,
+            date=_extract_date(item),
         ))
     return results
+
+
+# Publication date at native precision from date-parts ([year], [year,month], or [year,month,day]).
+# Priority issued > published-online > published-print: 'issued' is CrossRef's already-resolved
+# publication date (earliest of print/online, most consistently populated); online is preferred
+# over print as second choice since online-first typically precedes print.
+# created/indexed deliberately excluded — deposit/indexing timestamps, not publication dates.
+# Independent of _synthesize's key order — that function's snippet output must not change.
+def _extract_date(item: dict) -> str | None:
+    for field_name in ("issued", "published-online", "published-print"):
+        date_field = item.get(field_name) or {}
+        parts_list = date_field.get("date-parts", [])
+        if not parts_list or not parts_list[0] or parts_list[0][0] is None:
+            continue
+        parts = [p for p in parts_list[0] if p is not None]
+        if len(parts) == 1:
+            return f"{parts[0]:04d}"
+        elif len(parts) == 2:
+            return f"{parts[0]:04d}-{parts[1]:02d}"
+        return f"{parts[0]:04d}-{parts[1]:02d}-{parts[2]:02d}"
+    return None
 
 
 # Return JATS-stripped abstract if present, else synthesize author+year+container string

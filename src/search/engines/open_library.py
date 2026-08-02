@@ -61,6 +61,7 @@ def _parse_results(docs: list[dict]) -> list[SearchResult]:
             snippet=snippet,
             engine="open_library",
             position=i + 1,
+            date=_extract_date(doc),
         ))
     return results
 
@@ -79,3 +80,9 @@ def _build_snippet(doc: dict) -> str:
     elif year:
         return f"({year}) — {editions} eds, ebook: {ebook}"
     return f"{editions} eds, ebook: {ebook}"
+
+
+# first_publish_year is year-only precision
+def _extract_date(doc: dict) -> str | None:
+    year = doc.get("first_publish_year")
+    return str(year) if year else None
