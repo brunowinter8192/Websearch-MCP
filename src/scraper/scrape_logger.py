@@ -28,7 +28,8 @@ DEFAULT_LOG_PATH = Path(__file__).parent.parent.parent / "src" / "logs" / "scrap
 #   "truncated": bool,
 #   "consent_stripped": bool,
 #   "garbage_type": str | null,
-#   "content_path": str | null            # relative path under log dir, e.g. "scrape_content/<file>.md"
+#   "content_path": str | null,           # relative path under log dir, e.g. "scrape_content/<file>.md"
+#   "published_date": str | null          # ISO day precision (YYYY-MM-DD), htmldate-extracted, only on "ok" outcome
 # }
 #
 # Log path: WEBSEARCH_SCRAPE_LOG_PATH env var → DEFAULT_LOG_PATH fallback.

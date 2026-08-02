@@ -1,4 +1,5 @@
 # INFRASTRUCTURE
+import asyncio
 import logging
 import re
 import time
@@ -9,12 +10,18 @@ from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 from crawl4ai.async_crawler_strategy import AsyncPlaywrightCrawlerStrategy
 from crawl4ai.content_filter_strategy import PruningContentFilter
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
+from htmldate import find_date
 
 from mcp.types import TextContent
 # From scrape_logger.py: per-URL JSONL log + sidecar content file
 from src.scraper.scrape_logger import log_scrape, write_sidecar
 
 logger = logging.getLogger(__name__)
+
+# Bound on htmldate's synchronous parse — dateparser (one of htmldate's own dependencies) is
+# flagged as slow in htmldate's own source; without a hard cap a single pathological page could
+# stall the extraction. Runs off the event loop via asyncio.to_thread regardless.
+HTMLDATE_TIMEOUT_S = 5.0
 
 _LINK_LINE_RE = re.compile(r'^\[.+\]\(.+\)$')
 
@@ -88,6 +95,7 @@ async def scrape_url_workflow(url: str, max_content_length: int = DEFAULT_MAX_CO
     logger.info("Scrape complete: %s (%d chars)", url, len(content))
     final = truncate_content(content, max_content_length)
     content_path = write_sidecar(url, ts, final, "ok", "filtered")
+    published_date = meta.get("date")
     log_scrape({
         "ts": ts, "url": url, "domain": domain, "mode": "filtered", "outcome": "ok",
         "timings_ms": {"total_wall": total_wall},
@@ -99,8 +107,12 @@ async def scrape_url_workflow(url: str, max_content_length: int = DEFAULT_MAX_CO
         "consent_stripped": meta.get("consent_stripped", False),
         "garbage_type": None,
         "content_path": content_path,
+        "published_date": published_date,
     })
-    return [TextContent(type="text", text=f"# Content from: {url}\n\n{final}")]
+    header = f"# Content from: {url}"
+    if published_date:
+        header += f"\nPublished: {published_date}"
+    return [TextContent(type="text", text=f"{header}\n\n{final}")]
 
 
 # FUNCTIONS
@@ -108,7 +120,8 @@ async def scrape_url_workflow(url: str, max_content_length: int = DEFAULT_MAX_CO
 # Single-call crawl4ai scrape with native anti-bot baseline; return (content, meta)
 # meta keys: garbage_type, status_code, content_type, fallback_to_raw, consent_stripped,
 #            garbage_content (content that triggered garbage detection, for sidecar logging),
-#            raw_markdown_bytes (raw_markdown length before filter/fallback)
+#            raw_markdown_bytes (raw_markdown length before filter/fallback),
+#            date (original publication date, ISO day precision, or None)
 async def try_scrape(url: str) -> tuple[str, dict]:
     browser_config = BrowserConfig(headless=True, verbose=False, enable_stealth=True)
     adapter = UndetectedAdapter()
@@ -129,7 +142,7 @@ async def try_scrape(url: str) -> tuple[str, dict]:
     _empty_meta: dict = {
         "garbage_type": None, "status_code": None, "content_type": None,
         "fallback_to_raw": False, "consent_stripped": False,
-        "garbage_content": None, "raw_markdown_bytes": 0,
+        "garbage_content": None, "raw_markdown_bytes": 0, "date": None,
     }
     try:
         async with AsyncWebCrawler(config=browser_config, crawler_strategy=crawler_strategy) as crawler:
@@ -146,6 +159,9 @@ async def try_scrape(url: str) -> tuple[str, dict]:
             return "", meta
         raw_md = result.markdown.raw_markdown or ""
         meta["raw_markdown_bytes"] = len(raw_md.encode("utf-8"))
+        # Extracted from raw HTML BEFORE cookie-wall/garbage handling — a consent-walled markdown
+        # extract can still sit on top of HTML carrying real JSON-LD/meta-tag date information.
+        meta["date"] = await extract_date(result.html or "", url)
         content = result.markdown.fit_markdown or ""
         fallback_to_raw = False
         if len(content) < MIN_CONTENT_THRESHOLD and raw_md:
@@ -168,6 +184,24 @@ async def try_scrape(url: str) -> tuple[str, dict]:
             return "", {**_empty_meta, "garbage_type": "browser_missing"}
         logger.warning("Failed to scrape %s: %s", url, e)
         return "", dict(_empty_meta)
+
+
+# Original publication date (day precision) from raw HTML via htmldate — extensive_search (higher
+# recall, parse cost is negligible next to this scraper's browser fetch) + original_date=True
+# (REQUIRED: default htmldate behavior returns last-modified, not publication, date). Runs off the
+# event loop with a hard timeout so a slow/pathological page can never stall the scrape; any
+# exception, timeout, or absence degrades to None — never a guessed value.
+async def extract_date(html: str, url: str) -> str | None:
+    if not html:
+        return None
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(find_date, html, extensive_search=True, original_date=True, url=url),
+            timeout=HTMLDATE_TIMEOUT_S,
+        )
+    except Exception as e:
+        logger.debug("htmldate extraction failed for %s: %s", url, e)
+        return None
 
 
 # Detect browser-launch/executable-missing failure (environment defect) vs. an ordinary per-URL error
