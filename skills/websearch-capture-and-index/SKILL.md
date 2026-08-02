@@ -13,6 +13,9 @@ Every file this pipeline produces under `/tmp` — URL lists, discovery scripts,
 
 Pipeline: Discovery → URL Selection (pre-scrape) → Scrape (raw) → Cleanup (incl. post-scrape drop) → Index.
 
+**Multiple domains = phase-by-phase across ALL of them, never domain-by-domain.**
+Given N seed domains, run every phase to completion for all N before entering the next phase: discover all → select all → ONE Phase-1b stop covering all → scrape all → clean all → index once at the end. `rag-cli index` operates on the whole collection directory, not on single files — indexing after domain 1 sweeps up domain 2's raw, uncleaned files and indexes them as garbage. Index is therefore the LAST action of the entire run and runs exactly once.
+
 **Scraper posture — best-effort, not guaranteed.** `src/crawler/pipe_scraper.py` is a GENERAL scraper; do NOT assume the scrape worked. Coverage verification is a first-class duty: every discovered URL that survives the cull must actually yield real content. On ANY systemic, diagnosable problem — a patterned coverage gap, a repeating block-type, a dominant error class (NOT scattered legit 404s) — STOP, do not push a half-broken capture into indexing, and report the IDENTIFIED problem to Opus: what fails, the evidence, your read of the cause. Iterate from there (different wait strategy, per-URL isolation, stealth, a per-site discover tweak — then re-run). The `>50%` / dozens-of-blocks thresholds below are hard floors, not the bar — a clearly-diagnosed problem warrants a STOP even under them.
 
 #### Phase 0 — Discovery
@@ -214,7 +217,7 @@ For each detected shape, write ONE small script in `/tmp/clean_<shape>_<COLLECTI
 
 ### Index — Final Phase (web-md)
 
-One script call. `rag-cli index` is incremental (hash-based skip) — re-running only embeds new/changed files.
+One script call, once per run. `rag-cli index` is incremental (hash-based skip) — re-running only embeds new/changed files. It indexes the ENTIRE collection directory, so every file in it must be cleaned before this runs — with multiple domains that means all domains scraped AND cleaned first.
 
 **Important — OUTPUT_DIR must be the collection dir.** Set `OUTPUT_DIR` to the rag-cli collection directory:
 
