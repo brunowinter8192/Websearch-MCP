@@ -237,6 +237,14 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 **Called by:** CLI only.
 **Calls out:** `httpx`.
 
+### 31_date_availability_probe.py (527 LOC)
+
+**Purpose:** Measurement-only probe (no wiring) — for the 8 DOM-scraped web engines (google, duckduckgo, mojeek, startpage, brave, bing, yandex, lobsters), does the live result page carry a date, and how: dedicated element (`<time>`/class-matched), snippet-text-only, nowhere, or unmeasurable (block/CAPTCHA/empty)? Self-contained (no `src/` import, matches 25/26/28/29/30_*_probe.py) — inline copy of the current `src/search/browser.py` session shape + each engine's current navigation/wait/diagnose logic, so the probe keeps measuring even if `src/` changes later. One JS pass per container captures `<time>` elements, class/id tokens matching a WORD-BOUNDARY regex (`date|time|age|publish(ed)?|when|ago` — deliberately not a substring match, which would false-positive on `update`/`candidate`/`validate`), full container text, and an HTML head — covers the dedicated-element and snippet-text cases in one pass. 3 queries per engine (2 EN news-shaped + 1 DE reference/timeless, to avoid an English-news-only bias), self-imposed (not rate-limiter-derived, since this script never goes through `src/search/rate_limiter.py`) 20s gap between same-engine queries, MINUTES-scale (180s) cooldown before a one-shot retry only when an engine is non-OK on all 3 primaries — a short gap can't distinguish a probe-induced block from a pre-existing cooldown. `google`/`duckduckgo`/`brave` pre-flagged as having returned 0 results in an earlier unrelated session run, so a repeat non-OK is annotated rather than presented as fresh.
+**Reads:** none (live run against production google/duckduckgo/mojeek/startpage/brave/bing/yandex/lobsters).
+**Writes:** `md/date_availability_probe_<ts>.md` (raw per-engine evidence + hand-written classification section).
+**Called by:** CLI only.
+**Calls out:** `pydoll` (Chrome, ChromiumOptions, TargetCommands, NetworkCommands) — inline copy of the `src/search/browser.py` session-setup shape, not a shared import.
+
 ### _capture_sorry.py (231 LOC)
 
 **Purpose:** Captures Google `/sorry/` block page — helper script, not a numbered experiment. Navigates to a search URL, checks if redirected to `/sorry/`, saves HTML + screenshot + MD summary.

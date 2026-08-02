@@ -2,6 +2,7 @@
 import asyncio
 import json
 import logging
+import re
 from urllib.parse import quote_plus
 
 from src.search.browser import new_tab, kill_tab
@@ -25,8 +26,14 @@ for (var _i = 0; _i < _cs.length; _i++) {
     var _li = _cs[_i];
     var _a = _li.querySelector('a.u-url');
     var _dom = _li.querySelector('a.domain');
+    var _time = _li.querySelector('time');
     if (!_a || !_a.href) continue;
-    _out.push({url: _a.href, title: _a.textContent.trim(), snippet: _dom ? _dom.textContent.trim() : ''});
+    _out.push({
+        url: _a.href,
+        title: _a.textContent.trim(),
+        snippet: _dom ? _dom.textContent.trim() : '',
+        date_raw: _time ? (_time.getAttribute('datetime') || '') : ''
+    });
 }
 return JSON.stringify(_out);
 """
@@ -114,8 +121,18 @@ async def _parse_results(tab, max_results: int) -> list[SearchResult]:
             snippet=item.get("snippet", ""),
             engine="lobsters",
             position=i + 1,
+            date=_extract_date(item.get("date_raw", "")),
         ))
     return results
+
+
+# Day-precision ISO date from the <time datetime="YYYY-MM-DD HH:MM:SS"> attribute — no time component
+def _extract_date(datetime_attr: str) -> str | None:
+    text = (datetime_attr or "").strip()
+    date_part = text[:10]
+    if re.match(r'^\d{4}-\d{2}-\d{2}$', date_part):
+        return date_part
+    return None
 
 
 # Diagnose why Lobsters returned empty after _wait_for_results failed; tab is still open

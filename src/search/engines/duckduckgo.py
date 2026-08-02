@@ -2,6 +2,7 @@
 import asyncio
 import json
 import logging
+import re
 from urllib.parse import quote_plus, urlparse, parse_qs
 
 from src.search.browser import new_tab, kill_tab
@@ -28,8 +29,15 @@ for (var _i = 0; _i < _cs.length; _i++) {
     var _c = _cs[_i];
     var _a = _c.querySelector('h2 a');
     var _snip = _c.querySelector('a.result__snippet');
+    var _extras = _c.querySelector('.result__extras__url');
+    var _dateSpan = _extras ? _extras.querySelector('span:not(.result__icon)') : null;
     if (!_a) continue;
-    _out.push({href: _a.href, title: _a.textContent.trim(), snippet: _snip ? _snip.textContent.trim() : ''});
+    _out.push({
+        href: _a.href,
+        title: _a.textContent.trim(),
+        snippet: _snip ? _snip.textContent.trim() : '',
+        date_raw: _dateSpan ? _dateSpan.textContent.trim() : ''
+    });
 }
 return JSON.stringify(_out);
 """
@@ -139,8 +147,19 @@ async def _parse_results(tab, max_results: int) -> list[SearchResult]:
             snippet=item.get("snippet", ""),
             engine="duckduckgo",
             position=i + 1,
+            date=_extract_date(item.get("date_raw", "")),
         ))
     return results
+
+
+# Day-precision ISO date from the bare '.result__extras__url' date span (e.g. '2026-07-29T18:00:00.0000000')
+# — truncates to YYYY-MM-DD, no invented/kept time component (consistent with lobsters/bing precision)
+def _extract_date(date_raw: str) -> str | None:
+    text = (date_raw or "").replace("\xa0", " ").strip()
+    date_part = text[:10]
+    if re.match(r'^\d{4}-\d{2}-\d{2}$', date_part):
+        return date_part
+    return None
 
 
 # Diagnose why DDG returned empty after _wait_for_results failed; tab is still open
