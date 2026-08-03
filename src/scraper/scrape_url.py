@@ -160,6 +160,18 @@ async def try_scrape(url: str) -> tuple[str, dict]:
             content_filter=PruningContentFilter(threshold=0.48, preserve_tags=["pre", "code"])
         ),
         excluded_selector=COOKIE_CONSENT_SELECTOR,
+        # Click-based CMP dismissal (OneTrust/Cookiebot/CookieYes/~100 others), runs on the live
+        # page BEFORE page.content() capture — a second layer alongside excluded_selector (which
+        # runs later, on the captured HTML string), not a replacement. Real recovered content on
+        # azubiyo.de (excluded_selector alone lets ~3400 consent-banner chars through).
+        # Fixed, UNCONDITIONAL cost on every page regardless of whether a popup exists — two
+        # separate 500ms sleeps: one inside crawl4ai's own remove_consent_popups.js (line 332,
+        # "wait for CMP animations/transitions", fires whether or not anything was clicked/removed)
+        # and one on the Python side after the JS eval returns (async_crawler_strategy.py:1581,
+        # page.wait_for_timeout(500)). Measured end-to-end on a page with no consent layer
+        # (rfc-editor.org): +0.96s wall time (1.93s -> 2.89s). Relevant to future determinism work:
+        # this switch spends ~1s on every scrape to help only the subset with a consent layer.
+        remove_consent_popups=True,
         verbose=False,
     )
     config_stamp = extract_config_stamp(browser_config, adapter, crawler_strategy, run_config)
@@ -236,6 +248,7 @@ def extract_config_stamp(browser_config, adapter, crawler_strategy, run_config) 
         "content_filter_threshold": content_filter.threshold,
         "content_filter_preserve_tags": sorted(content_filter.preserve_tags),
         "excluded_selector_hash": hashlib.sha256(run_config.excluded_selector.encode()).hexdigest()[:8],
+        "remove_consent_popups": run_config.remove_consent_popups,
     }
 
 
