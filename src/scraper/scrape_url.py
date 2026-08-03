@@ -1,5 +1,7 @@
 # INFRASTRUCTURE
 import asyncio
+import hashlib
+import json
 import logging
 import re
 import time
@@ -72,6 +74,8 @@ async def scrape_url_workflow(url: str, max_content_length: int = DEFAULT_MAX_CO
 
     content, meta = await try_scrape(url)
     total_wall = round((time.perf_counter() - t_total) * 1000)
+    config = build_config_record(meta.get("config", {}), max_content_length)
+    config_hash = hash_config(config)
 
     if not content:
         outcome = meta.get("garbage_type") or "empty"
@@ -89,6 +93,7 @@ async def scrape_url_workflow(url: str, max_content_length: int = DEFAULT_MAX_CO
             "crawl4ai_attempts": meta.get("crawl4ai_attempts"),
             "crawl4ai_resolved_by": meta.get("crawl4ai_resolved_by"),
             "crawl4ai_fallback_fetch_used": meta.get("crawl4ai_fallback_fetch_used"),
+            "config_hash": config_hash, "config": config,
         })
         hint = get_plugin_hint(url)
         reason = _GARBAGE_MESSAGES.get(outcome, "No content extracted")
@@ -118,6 +123,7 @@ async def scrape_url_workflow(url: str, max_content_length: int = DEFAULT_MAX_CO
         "crawl4ai_attempts": meta.get("crawl4ai_attempts"),
         "crawl4ai_resolved_by": meta.get("crawl4ai_resolved_by"),
         "crawl4ai_fallback_fetch_used": meta.get("crawl4ai_fallback_fetch_used"),
+        "config_hash": config_hash, "config": config,
     })
     header = f"# Content from: {url}"
     if published_date:
@@ -135,6 +141,8 @@ async def scrape_url_workflow(url: str, max_content_length: int = DEFAULT_MAX_CO
 #            crawl4ai_success, crawl4ai_error_message, crawl4ai_attempts,
 #            crawl4ai_resolved_by, crawl4ai_fallback_fetch_used
 #            (crawl4ai's own anti-bot diagnosis, recorded verbatim — not acted on; see Gotchas)
+#            config (scrape-side config stamp — browser/run/content-filter settings actually used;
+#            caller merges in the post-processing settings it alone knows via build_config_record)
 async def try_scrape(url: str) -> tuple[str, dict]:
     browser_config = BrowserConfig(headless=True, verbose=False, enable_stealth=True)
     adapter = UndetectedAdapter()
@@ -152,6 +160,7 @@ async def try_scrape(url: str) -> tuple[str, dict]:
         excluded_selector=COOKIE_CONSENT_SELECTOR,
         verbose=False,
     )
+    config_stamp = extract_config_stamp(browser_config, adapter, crawler_strategy, run_config)
     _empty_meta: dict = {
         "garbage_type": None, "status_code": None, "content_type": None,
         "fallback_to_raw": False, "consent_stripped": False,
@@ -159,6 +168,7 @@ async def try_scrape(url: str) -> tuple[str, dict]:
         "crawl4ai_success": None, "crawl4ai_error_message": None,
         "crawl4ai_attempts": None, "crawl4ai_resolved_by": None,
         "crawl4ai_fallback_fetch_used": None,
+        "config": config_stamp,
     }
     try:
         async with AsyncWebCrawler(config=browser_config, crawler_strategy=crawler_strategy) as crawler:
@@ -201,6 +211,47 @@ async def try_scrape(url: str) -> tuple[str, dict]:
             return "", {**_empty_meta, "garbage_type": "browser_missing"}
         logger.warning("Failed to scrape %s: %s", url, e)
         return "", dict(_empty_meta)
+
+
+# Read the scrape-governing config back off the actual constructed objects — never re-declare
+# their values here, so the stamp cannot drift from what the call above it actually used. Limited
+# to the kwargs this module explicitly tunes (the ones that shape scrape behavior), not the full
+# ~130-key BrowserConfig/CrawlerRunConfig surface (mostly untouched library defaults, no signal).
+# excluded_selector is recorded as a hash, not verbatim (426 chars, rarely changes, source-visible).
+def extract_config_stamp(browser_config, adapter, crawler_strategy, run_config) -> dict:
+    content_filter = run_config.markdown_generator.content_filter
+    return {
+        "headless": browser_config.headless,
+        "enable_stealth": browser_config.enable_stealth,
+        "adapter": type(adapter).__name__,
+        "crawler_strategy": type(crawler_strategy).__name__,
+        "magic": run_config.magic,
+        "wait_until": run_config.wait_until,
+        "page_timeout_ms": run_config.page_timeout,
+        "max_retries": run_config.max_retries,
+        "cache_mode": run_config.cache_mode.value,
+        "content_filter": type(content_filter).__name__,
+        "content_filter_threshold": content_filter.threshold,
+        "excluded_selector_hash": hashlib.sha256(run_config.excluded_selector.encode()).hexdigest()[:8],
+    }
+
+
+# Merge the scrape-side config stamp with the post-processing params only the caller knows
+# (max_content_length is a per-call argument; MIN_CONTENT_THRESHOLD a module constant) — same
+# "read the real value, don't re-declare it" rule as extract_config_stamp
+def build_config_record(scrape_config: dict, max_content_length: int) -> dict:
+    return {
+        **scrape_config,
+        "max_content_length": max_content_length,
+        "min_content_threshold": MIN_CONTENT_THRESHOLD,
+    }
+
+
+# Stable short hash over the config record — cheap "same config" grouping key for a later reader;
+# the full config dict alongside it (see build_config_record) is what makes the value inspectable
+def hash_config(config: dict) -> str:
+    blob = json.dumps(config, sort_keys=True, default=str)
+    return hashlib.sha256(blob.encode()).hexdigest()[:10]
 
 
 # Read crawl4ai's own anti-bot diagnosis off the result object, verbatim — recorded for

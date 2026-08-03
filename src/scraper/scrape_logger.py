@@ -34,7 +34,15 @@ DEFAULT_LOG_PATH = Path(__file__).parent.parent.parent / "src" / "logs" / "scrap
 #   "crawl4ai_error_message": str | null, # crawl4ai's own result.error_message verbatim (e.g. "Blocked by anti-bot protection: <reason>"); NOT a verdict — the library's own detector has documented false positives, informational only
 #   "crawl4ai_attempts": int | null,      # result.crawl_stats["attempts"] — total browser attempts across proxies/retries
 #   "crawl4ai_resolved_by": str | null,   # result.crawl_stats["resolved_by"]: "direct" | "proxy" | "fallback_fetch" | null
-#   "crawl4ai_fallback_fetch_used": bool | null  # result.crawl_stats["fallback_fetch_used"]
+#   "crawl4ai_fallback_fetch_used": bool | null,  # result.crawl_stats["fallback_fetch_used"]
+#   "config_hash": str,                    # first 10 hex chars of sha256(sort_keys JSON of "config") — cheap "same config" grouping key
+#   "config": {                            # scrape config actually in effect for this call, read off the real config objects (never hand-duplicated)
+#     "headless": bool, "enable_stealth": bool, "adapter": str, "crawler_strategy": str,
+#     "magic": bool, "wait_until": str, "page_timeout_ms": int, "max_retries": int,
+#     "cache_mode": str, "content_filter": str, "content_filter_threshold": float,
+#     "excluded_selector_hash": str,       # first 8 hex chars of sha256(excluded_selector) — the 426-char selector itself is source-visible, not worth repeating per record
+#     "max_content_length": int, "min_content_threshold": int
+#   }
 # }
 #
 # Log path: WEBSEARCH_SCRAPE_LOG_PATH env var → DEFAULT_LOG_PATH fallback.
