@@ -5,6 +5,7 @@ Self-contained: does NOT import src/ (dev-script isolation) — profile-dir cons
 `open -g` process_creator mechanism are duplicated from src/search/browser.py's shape and
 dev/search_pipeline/27_brave_headed_lane_probe.py's proven launch technique, not shared imports.
 """
+import asyncio
 import http.server
 import json
 import logging
@@ -16,6 +17,7 @@ from pathlib import Path
 from pydoll.browser import Chrome
 from pydoll.browser.options import ChromiumOptions
 from pydoll.browser.managers import BrowserProcessManager
+from pydoll.commands import PageCommands
 
 logger = logging.getLogger(__name__)
 
@@ -56,13 +58,28 @@ window.__ticks = [];
 </body></html>
 """
 
+# System-color artifact test page (Milestone 2): a plain, unstyled link as contrast, plus elements
+# with explicit CSS system-color declarations. The patch in src/search/browser.py targets CSS
+# ActiveText specifically (a link in its ACTIVE state) — NOT a resting link's default color, which
+# is just the ordinary link color in headless and headed alike. LinkText/VisitedText are included
+# to tell an ActiveText-specific divergence apart from a broader system-color divergence.
+ARTIFACT_HTML = """<!doctype html>
+<html><head><title>artifact-test</title></head>
+<body>
+<a id="plain-link" href="#">link</a>
+<div id="active-text" style="color: ActiveText">x</div>
+<div id="link-text" style="color: LinkText">x</div>
+<div id="visited-text" style="color: VisitedText">x</div>
+</body></html>
+"""
+
 
 # FUNCTIONS
 
-# Serve PROBE_HTML for any GET request; used as a neutral, deterministic, zero-anti-bot local target
+# Serve PROBE_HTML at "/" (timer-drift harness) or ARTIFACT_HTML at "/artifact" (system-color test)
 class _ProbeHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        body = PROBE_HTML.encode("utf-8")
+        body = (ARTIFACT_HTML if self.path.startswith("/artifact") else PROBE_HTML).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html")
         self.send_header("Content-Length", str(len(body)))
@@ -212,6 +229,70 @@ def stats_ms(values: list[float]) -> dict:
         return {"n": 0, "min": None, "median": None, "max": None}
     median = ms[n // 2] if n % 2 else (ms[n // 2 - 1] + ms[n // 2]) // 2
     return {"n": n, "min": ms[0], "median": median, "max": ms[-1]}
+
+
+# Inject a script to run on every future top-level navigation in this tab, BEFORE first navigation
+# — same CDP call as src/search/browser.py's apply_fingerprint_patches (add_script_to_evaluate_on_
+# new_document, run_immediately=True). No-op for an empty/falsy source (the "no patches" variant).
+async def inject_before_navigation(tab, source: str) -> None:
+    if not source:
+        return
+    await tab._execute_command(
+        PageCommands.add_script_to_evaluate_on_new_document(source=source, run_immediately=True)
+    )
+
+
+# Read computed color for a plain link (contrast datapoint) and the three CSS system colors used
+# by src/search/browser.py's getComputedStyle patch target (ActiveText) plus two more (LinkText,
+# VisitedText) to tell an ActiveText-specific divergence apart from a broader one
+async def read_system_colors(tab) -> dict:
+    raw = await tab.execute_script(
+        "return JSON.stringify({"
+        "plainLink: getComputedStyle(document.getElementById('plain-link')).color,"
+        "activeText: getComputedStyle(document.getElementById('active-text')).color,"
+        "linkText: getComputedStyle(document.getElementById('link-text')).color,"
+        "visitedText: getComputedStyle(document.getElementById('visited-text')).color"
+        "})"
+    )
+    value = extract_value(raw)
+    return json.loads(value) if value else {}
+
+
+# Read the real screen/window properties src/search/browser.py's screen-override patch hardcodes
+async def read_screen_window_props(tab) -> dict:
+    raw = await tab.execute_script(
+        "return JSON.stringify({"
+        "screenWidth: screen.width, screenHeight: screen.height,"
+        "availWidth: screen.availWidth, availHeight: screen.availHeight,"
+        "colorDepth: screen.colorDepth, pixelDepth: screen.pixelDepth,"
+        "devicePixelRatio: window.devicePixelRatio,"
+        "innerWidth: window.innerWidth, innerHeight: window.innerHeight,"
+        "outerWidth: window.outerWidth, outerHeight: window.outerHeight"
+        "})"
+    )
+    value = extract_value(raw)
+    return json.loads(value) if value else {}
+
+
+# Poll a JS expression until two consecutive reads match (settled) or max_wait elapses; returns
+# (last_value, settled). Used for heavy client-side pages (CreepJS) where a fixed sleep risks
+# reading a half-rendered result.
+async def wait_for_stable_content(tab, js_expr: str, interval: float = 2.0, max_wait: float = 25.0, stable_reads: int = 2) -> tuple:
+    start = time.monotonic()
+    prev = None
+    stable_count = 0
+    while time.monotonic() - start < max_wait:
+        raw = await tab.execute_script(f"return {js_expr}")
+        cur = extract_value(raw)
+        if cur == prev:
+            stable_count += 1
+            if stable_count >= stable_reads:
+                return cur, True
+        else:
+            stable_count = 0
+        prev = cur
+        await asyncio.sleep(interval)
+    return prev, False
 
 
 # Frontmost macOS application name (focus-steal check)

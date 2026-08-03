@@ -4,20 +4,24 @@
 Milestone probes backing the headed-vs-headless browser posture decision (`src/search/browser.py`
 switch from headless to headed-backgrounded). Milestone 1: launch/navigation latency and the
 Playwright-default backgrounding-flag effect, plus the everyday parallel-user-Chrome collision case.
-Does NOT measure block/CAPTCHA rates — see `process-docs/engine_expansion/` for why that axis was
-rejected as a same-IP same-day confound. Backs `process-docs/browser_posture/`.
+Milestone 2: whether `src/search/browser.py`'s existing JS fingerprint patches (written for headless)
+still make sense under headed. Does NOT measure block/CAPTCHA rates — see
+`process-docs/engine_expansion/` for why that axis was rejected as a same-IP same-day confound.
+Backs `process-docs/browser_posture/`.
 
 ## Modules
 
-### _lib.py (226 LOC)
+### _lib.py (307 LOC)
 
-**Purpose:** Shared launch/teardown/measurement primitives for both probe scripts — isolated probe
+**Purpose:** Shared launch/teardown/measurement primitives for all probe scripts — isolated probe
 profile dirs, the proven `open -g` headed-backgrounded process_creator, a throwaway local HTTP
-server serving a timer-harness page, tick-drift and latency-stats helpers.
+server (timer-harness page at `/`, system-color artifact page at `/artifact`), tick-drift/latency-
+stats helpers, CDP script injection (`inject_before_navigation`, mirrors `apply_fingerprint_patches`),
+system-color/screen-window property readers, and a settle-poll helper for heavy client-side pages.
 **Reads:** nothing (pure infra + subprocess/CDP calls it makes itself).
 **Writes:** nothing directly — returns data to callers; spawns/kills Chrome processes as a side effect.
-**Called by:** `01_launch_latency_probe.py`, `02_parallel_chrome_probe.py`.
-**Calls out:** `pydoll` (Chrome, ChromiumOptions, BrowserProcessManager).
+**Called by:** `01_launch_latency_probe.py`, `02_parallel_chrome_probe.py`, `03_fingerprint_patch_probe.py`.
+**Calls out:** `pydoll` (Chrome, ChromiumOptions, BrowserProcessManager, PageCommands).
 
 ---
 
@@ -46,6 +50,22 @@ the already-running Chrome via a throwaway profile (never touches the user's rea
 
 ---
 
+### 03_fingerprint_patch_probe.py (439 LOC)
+
+**Purpose:** Per-block KEEP/DROP evidence for `src/search/browser.py`'s `JS_FINGERPRINT_PATCHES`
+under headed. 4 variants (full patch set / screen-window-overrides-only / getComputedStyle-Proxy-only
+/ none) + 1 headless reference (artifact test only), each against: the local system-color artifact
+page (`ActiveText`/`LinkText`/`VisitedText`, not a resting `<a>`), real screen/window properties,
+bot.sannysoft.com, and CreepJS (settle-polled, not fixed-sleep).
+**Reads:** nothing (self-contained; serves its own local artifact page via `_lib`).
+**Writes:** MD report to `md/03_fingerprint_patch_probe_<ts>.md`. Progress to stderr.
+**Called by:** CLI only. Run: `./venv/bin/python dev/browser_posture/03_fingerprint_patch_probe.py`.
+**Calls out:** `pydoll` (via `_lib`); live HTTP to `bot.sannysoft.com` and
+`abrahamjuliot.github.io/creepjs` — these are detection test pages, the intended target of this probe,
+not production engines.
+
+---
+
 ## Gotchas
 
 - Both scripts open real, visible Chrome windows on macOS (headed configs) — not safe to run on a
@@ -62,3 +82,11 @@ the already-running Chrome via a throwaway profile (never touches the user's rea
 - All probe profile dirs live under `~/.websearch/browser-posture-probe/` — isolated from
   `src/search/browser.py`'s shared `SESSION_DIR`, EXCEPT `02_parallel_chrome_probe.py`, which
   deliberately targets the real `SESSION_DIR` (that's the scenario under test).
+- `03`'s CreepJS extraction does NOT look for "Trust Score"/"N lies" text — the live build (checked
+  directly, not assumed from memory of another version) renders no such summary at all; every
+  "trust"/"lie" substring in the page is a false positive (e.g. "CLIENT" contains "lie"). The real
+  signal extracted is the "Headless" section's three percentages plus "confidence: &lt;level&gt;"
+  notes. Re-verify this against the live page before reusing the extraction if CreepJS's UI changes.
+- `03`'s getComputedStyle artifact test is `color: ActiveText` on a dedicated element, NOT a resting
+  `<a>` — a plain link computes to the ordinary link color in every mode and never exercises what the
+  patch targets (CSS ActiveText, the link's ACTIVE-state system color).
