@@ -87,7 +87,7 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 **Called by:** `search_web.py`.
 **Calls out:** `src/log_janitor.py` (maybe_prune_jsonl).
 
-### browser.py (151 LOC)
+### browser.py (156 LOC)
 
 **Purpose:** pydoll Chrome lifecycle. One shared Chrome, headed by default and launched BACKGROUNDED via macOS `open -g -n` (never steals focus — `_open_background_process_creator` swapped onto `_browser_process_manager` after `Chrome(options)`, before `await browser.start()`; `WEBSEARCH_HEADLESS` env var forces headless instead, for debugging or a no-display machine — direct launch, no `open -g` needed). A new tab per engine for isolation (`new_tab()` — CDP-level, no new OS process). `BACKGROUNDING_FLAGS` (Playwright's own Chromium defaults) applied unconditionally; evidentiary status of their effect is honestly uncertain — see the code comment. No JS fingerprint patches, no UA override, no explicit `--window-size` — `process-docs/browser_posture/` (Milestones 1-2) found the prior JS screen/getComputedStyle patches and the hardcoded UA/window-size all contradicted observable reality under headed and removed them; Chrome now reports its own real values throughout. Cleanup paths: `kill_tab(tab)` (browser-level `Target.closeTarget`, 5s cap), `close_browser()` (in-loop shutdown for dev), `kill_stale_chrome()` (nuclear `pkill` fallback — the actual teardown for the backgrounded launch, since `open -g`'s Popen is a short-lived wrapper, not Chrome itself).
 **Reads:** `WEBSEARCH_HEADLESS` env var (singleton browser on first access).
