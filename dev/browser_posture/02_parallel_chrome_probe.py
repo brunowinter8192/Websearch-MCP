@@ -6,13 +6,16 @@ attempted against the REAL production shared profile (src/search/browser.py's SE
 the user's own Chrome is already running. This is an everyday situation for this user and must not
 first surface in production.
 
-Safety: the "already-running user Chrome" is SIMULATED via a throwaway profile, foregrounded — NOT
-the user's actual default-profile Chrome. macOS Chrome's singleton/`open -a` behavior is a property
-of the APP BUNDLE, not of the profile, so a foreground Chrome on any profile reproduces the exact
-same collision surface without opening the user's real windows, touching their session, or risking
-a session-restore prompt. Only the TARGET profile for our own launch attempt is the real SESSION_DIR
-(the one dev-script duplication of a src/ constant deliberately made here, precisely because the
-real path is the thing under test).
+Safety: the "already-running user Chrome" is SIMULATED via a throwaway profile — NOT the user's
+actual default-profile Chrome, and NEVER foregrounded (`spawn_plain_chrome` in `_lib.py` uses `open
+-g`, same as the production launch mechanism itself) — this runs on a shared machine with concurrent
+real sessions, and a dev probe has no license to steal focus from anything, real user Chrome or not.
+macOS Chrome's singleton/`open -a` behavior is a property of the APP BUNDLE, not of the profile, so a
+backgrounded Chrome on any profile reproduces the exact same collision surface without opening the
+user's real windows, touching their session, risking a session-restore prompt, or stealing focus.
+Only the TARGET profile for our own launch attempt is the real SESSION_DIR (the one dev-script
+duplication of a src/ constant deliberately made here, precisely because the real path is the thing
+under test).
 """
 
 # INFRASTRUCTURE
@@ -48,19 +51,11 @@ async def run_probe() -> None:
         record["baseline_chrome_running"] = any_chrome_running()
         record["frontmost_before_sim"] = get_frontmost_app()
 
-        print("Spawning simulated already-running user Chrome (throwaway profile)...", file=sys.stderr)
+        print("Spawning simulated already-running user Chrome (throwaway profile, backgrounded)...", file=sys.stderr)
         spawn_plain_chrome(SIMULATED_USER_PROFILE)
         await asyncio.sleep(2.0)
         record["sim_user_chrome_processes"] = count_processes_for(SIMULATED_USER_PROFILE)
         record["frontmost_after_sim"] = get_frontmost_app()
-
-        # Re-focus a non-Chrome app: sim-user Chrome is itself foregrounded on spawn, so without
-        # this step "frontmost" is already Chrome BEFORE our attempt and a same-app-bundle steal
-        # would be undetectable. Matches the realistic case too: user has Chrome open somewhere
-        # but is actively working in another app when a background search runs.
-        activate_app("Terminal")
-        await asyncio.sleep(0.5)
-        record["frontmost_before_attempt"] = get_frontmost_app()
 
         print("Attempting production-shape backgrounded launch against the REAL SESSION_DIR...", file=sys.stderr)
         record.update(await attempt_backgrounded_launch())
@@ -78,11 +73,6 @@ async def run_probe() -> None:
 
 
 # FUNCTIONS
-
-# Bring a non-Chrome app to the foreground, establishing a clean pre-launch focus baseline
-def activate_app(name: str) -> None:
-    subprocess.run(["osascript", "-e", f'tell application "{name}" to activate'], capture_output=True)
-
 
 # True if any Google Chrome process (any profile) is currently running
 def any_chrome_running() -> bool:
@@ -126,12 +116,13 @@ def write_report(record: dict) -> Path:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     path = REPORT_DIR / f"02_parallel_chrome_probe_{ts}.md"
 
-    # Focus-steal read: baseline is frontmost_before_attempt (explicitly re-focused to a non-Chrome
-    # app right before our launch) — did frontmost change to Chrome as a RESULT of our attempt
-    focus_stolen = (
-        record.get("frontmost_before_attempt") != "Google Chrome"
-        and record.get("frontmost_after_attempt") == "Google Chrome"
-    )
+    # Focus-steal read: baseline is frontmost_before_sim, captured before either spawn — both the
+    # simulated user Chrome AND our own launch attempt use `-g`, so neither should ever move
+    # frontmost to Google Chrome relative to this baseline
+    baseline = record.get("frontmost_before_sim")
+    sim_focus_stolen = baseline != "Google Chrome" and record.get("frontmost_after_sim") == "Google Chrome"
+    launch_focus_stolen = baseline != "Google Chrome" and record.get("frontmost_after_attempt") == "Google Chrome"
+    focus_stolen = sim_focus_stolen or launch_focus_stolen
 
     clean_teardown = (
         record.get("session_dir_processes_after_teardown", 1) == 0
@@ -141,18 +132,19 @@ def write_report(record: dict) -> Path:
     lines = [
         f"# Parallel-Chrome Collision Probe — {ts}",
         "",
-        "Simulated already-running user Chrome (throwaway profile, foregrounded) + a production-shape "
-        "headed-backgrounded launch attempt against the REAL production SESSION_DIR "
-        "(`~/.websearch/browser-session`), while the simulated user Chrome is running.",
+        "Simulated already-running user Chrome (throwaway profile, `-g` backgrounded, never "
+        "foregrounded) + a production-shape headed-backgrounded launch attempt against the REAL "
+        "production SESSION_DIR (`~/.websearch/browser-session`), while the simulated user Chrome is "
+        "running.",
         "",
         "## Result",
         "",
+        f"- **Frontmost app before either spawn (baseline):** {record.get('frontmost_before_sim')}",
         f"- **Baseline Chrome running before probe:** {record.get('baseline_chrome_running')} "
         "(any profile, any purpose — this machine may run unrelated headless automation under its "
         "own profile; that alone is not evidence of the user's own foreground browsing session)",
         f"- **Simulated user Chrome processes (its own profile) after spawn:** {record.get('sim_user_chrome_processes')}",
         f"- **Frontmost app after simulated user Chrome spawn:** {record.get('frontmost_after_sim')}",
-        f"- **Frontmost app right before our launch attempt (re-focused to Terminal):** {record.get('frontmost_before_attempt')}",
         f"- **Our backgrounded launch succeeded (CDP connected + tab drivable):** {record.get('launch_success')}",
         f"- **Connect latency (ms):** {record.get('connect_ms')}",
         f"- **Drivable latency (ms):** {record.get('drivable_ms')}",
@@ -188,16 +180,19 @@ def write_report(record: dict) -> Path:
         )
     if not focus_stolen:
         lines.append(
-            "- No focus steal observed: frontmost app did not change to Google Chrome because of our "
-            "launch. Instrumentation verified functional this run (a Finder-activation control changed "
-            "frontmost as expected). Caveat: this session runs in an agent-driven execution context, not "
-            "a fully interactive login session — the OS-level signal is real and verified working, but a "
-            "human visual spot-check is the stronger confirmation for the visual/attention-stealing claim "
-            "specifically (Verification Levels: rendered/visual correctness is the one thing self-checks "
-            "cannot fully replace)."
+            "- No focus steal observed from either spawn: frontmost app never became Google Chrome, "
+            "neither from the simulated-user-Chrome spawn nor from our own launch attempt, both `-g` "
+            "backgrounded. Caveat: this session runs in an agent-driven execution context, not a fully "
+            "interactive login session — the OS-level frontmost-app signal is the level of proof reached "
+            "here; a human visual spot-check remains the stronger confirmation for the visual/"
+            "attention-stealing claim specifically (Verification Levels: rendered/visual correctness is "
+            "the one thing self-checks cannot fully replace)."
         )
     else:
-        lines.append("- Focus WAS stolen: frontmost app became Google Chrome as a result of our launch attempt.")
+        lines.append(
+            f"- Focus WAS stolen: frontmost app became Google Chrome "
+            f"(sim-spawn steal={sim_focus_stolen}, our-launch steal={launch_focus_stolen})."
+        )
 
     path.write_text("\n".join(lines), encoding="utf-8")
     return path

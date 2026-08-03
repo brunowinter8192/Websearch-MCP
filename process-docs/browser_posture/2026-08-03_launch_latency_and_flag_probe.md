@@ -45,8 +45,8 @@ third-party page has nothing running to throttle, so the probe instead served a 
 documented background-page throttling clamps to roughly once per second, so a throttled run would show
 ~4-5 ticks in that window instead of ~40 — an order-of-magnitude, unambiguous signal when present.
 
-To exercise "occluded" rather than merely "unfocused," a second, identically-positioned, foregrounded
-Chrome window (throwaway profile, no CDP) was spawned on top of the automation window right after
+To exercise "occluded" rather than merely "unfocused," a second, identically-positioned Chrome window
+(throwaway profile, `-g` backgrounded, no CDP) was spawned on top of the automation window right after
 navigation. All four configs showed 40/40 ticks, ~100ms mean interval, no observable drift — but
 `document.visibilityState` on the automation tab stayed `"visible"` throughout, even with the coverer
 window at matching `--window-position`/`--window-size`. Diagnosed live: this machine runs multiple
@@ -77,20 +77,31 @@ Production uses a SHARED profile (`~/.websearch/browser-session`) for the 9 DOM 
 whether `open -g -n -a "Google Chrome" --args ... --user-data-dir=<that real shared dir>` reaches a
 genuinely new, correctly-argumented instance when a Chrome process is already running (macOS `open`
 is known to sometimes address an existing instance and silently drop `--args`). The already-running
-Chrome was SIMULATED via a throwaway profile, foregrounded — never the user's real default profile,
-so no real session/window was touched.
+Chrome was SIMULATED via a throwaway profile — never the user's real default profile, so no real
+session/window was touched. First draft of the simulation spawned it via plain `open -n -a "Google
+Chrome"` (no `-g`), which does foreground — an actual focus-stealing defect in the probe itself,
+caught and fixed after an initial report wrongly read "no focus steal" without the code guaranteeing
+it. Fixed: `spawn_plain_chrome` (`_lib.py`) now always launches via `open -g`, same mechanism as the
+production launch — used identically for the simulated user Chrome here and for the timer-drift
+occluder window in the latency probe. Re-verified with a continuous frontmost-app poll (0.5s
+interval, `osascript`/System Events) running for the full duration of both probe scripts, not just
+before/after snapshots: across ~240 samples spanning both runs, frontmost was only ever `CotEditor`
+or `ghostty` (the apps in real use on this machine at the time) — `Google Chrome` never appeared once.
 
 Result: the backgrounded launch against the real shared profile connected over CDP in ~1.0-1.15s and
 the tab was immediately drivable, while the simulated already-running instance kept running
 undisturbed under its own profile — `-n` plus a distinct `--user-data-dir` reliably forced a separate
 process rather than `open` silently addressing the existing one and dropping `--args`. No focus steal
-was observed (frontmost app stayed on the app already in use, both before spawning the simulated
-Chrome and after the backgrounded launch attempt), though that specific read carries a caveat: this
-session runs in an agent-driven execution context rather than a fully interactive human login, so the
-OS-level frontmost-app signal (verified functional via a Finder-activation control during the session)
-is the level of proof reached — a human visual spot-check would be the stronger confirmation for the
-visual/attention-stealing claim specifically. Teardown was clean both runs: zero processes pinned to
-either profile dir after each run (`pgrep -f user-data-dir=...`).
+was observed from either spawn, confirmed both by per-step frontmost snapshots in the script's own
+report and by the independent continuous poll above. Caveat that still stands: this session runs in
+an agent-driven execution context rather than a fully interactive human login — the OS-level
+frontmost-app signal is the level of proof reached here; a human visual spot-check remains the
+stronger confirmation for the visual/attention-stealing claim specifically. Teardown was clean both
+runs: zero processes pinned to either profile dir after each run (`pgrep -f user-data-dir=...`).
+
+Noted for the record, not built on now: macOS `open` also has a `--hide` option (launches the app
+hidden rather than merely non-activated) — a possible future lever if `-g` alone ever proves
+insufficient, out of scope for this milestone.
 
 ## Net read for the headed-default decision
 

@@ -23,9 +23,12 @@ Occlusion for the drift measurement (configs 2/3 only): `--disable-backgrounding
 governs OCCLUDED windows specifically (covered by another window), not merely unfocused ones — a
 window opened via `open -g` is typically still fully visible on screen, just not frontmost, which
 is a weaker condition than occlusion. To actually exercise what the flag governs, a second,
-identically-positioned, foregrounded Chrome window (throwaway profile, no CDP) is spawned on top of
-the automation window immediately after navigation, guaranteeing real occlusion for the duration of
-the timer harness. Headless configs (1/4) have no window to occlude — the harness runs unmodified.
+identically-positioned Chrome window (throwaway profile, `-g` backgrounded, no CDP, never
+foregrounded — see `spawn_plain_chrome` in `_lib.py`) is spawned on top of the automation window
+immediately after navigation, intended to occlude it for the duration of the timer harness. Headless
+configs (1/4) have no window to occlude — the harness runs unmodified. This occlusion attempt was
+NOT confirmed to work in this environment (see the report's occlusion-confirmed column and caveat) —
+read the drift numbers accordingly.
 
 NOT measured (deliberately excluded, out of scope for this milestone):
 --disable-new-content-rendering-timeout — governs blanking of stale COMPOSITOR/visual output after
@@ -212,7 +215,7 @@ def write_report(results: dict, orphans: list[str]) -> Path:
         lines += [
             "",
             "**Occlusion NOT confirmed for configs 2/3.** `document.visibilityState` stayed `visible` "
-            "throughout, despite spawning a same-geometry foregrounded coverer window on top of the "
+            "throughout, despite spawning a same-geometry, `-g`-backgrounded coverer window on top of the "
             "automation window. This machine has multiple concurrent real login sessions (`who` showed "
             "an active console session plus many tty sessions); the coverer and/or automation window "
             "may be placed in a different macOS Space than assumed, so true screen-occlusion could not "

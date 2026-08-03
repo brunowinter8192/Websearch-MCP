@@ -51,9 +51,9 @@ the already-running Chrome via a throwaway profile (never touches the user's rea
 - Both scripts open real, visible Chrome windows on macOS (headed configs) — not safe to run on a
   headless CI runner; developed and verified interactively on the target Mac.
 - `01`'s timer-drift measurement could NOT confirm real window occlusion in this environment
-  (`document.visibilityState` stayed `visible` even with a same-geometry foregrounded coverer window
-  on top) — the machine runs multiple concurrent real login sessions, so window-stacking assumptions
-  don't hold. The drift numbers in the report are labeled "occlusion unconfirmed"; do not read a "no
+  (`document.visibilityState` stayed `visible` even with a same-geometry, `-g`-backgrounded coverer
+  window on top) — the machine runs multiple concurrent real login sessions, so window-stacking
+  assumptions don't hold. The drift numbers in the report are labeled "occlusion unconfirmed"; do not read a "no
   drift" result as proof the three flags make no difference under genuine occlusion.
 - Full-screen `screencapture` was used once during development to debug the occlusion gap above and
   incidentally captured live, unrelated session content on this shared machine — deleted immediately,

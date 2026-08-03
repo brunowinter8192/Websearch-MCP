@@ -158,12 +158,14 @@ async def stop_chrome(browser, profile: str) -> None:
     kill_by_profile(profile)
 
 
-# Spawn a plain, foregrounded Chrome window on a throwaway profile — used both as the timer-drift
-# occluder (configs 2/3) and as the simulated already-running user Chrome (02_parallel_chrome_probe.py)
+# Spawn a plain, BACKGROUNDED (`-g`, no focus steal) Chrome window on a throwaway profile — used
+# both as the timer-drift occluder (configs 2/3) and as the simulated already-running user Chrome
+# (02_parallel_chrome_probe.py). Never forgrounds: this runs on a shared machine with concurrent
+# real sessions, and a dev probe has no license to steal focus regardless of what it simulates.
 def spawn_plain_chrome(profile: str, window_args: list[str] | None = None) -> None:
     kill_by_profile(profile)
     time.sleep(0.3)
-    args = ["open", "-n", "-a", "Google Chrome", "--args", f"--user-data-dir={profile}"]
+    args = ["open", "-g", "-n", "-a", "Google Chrome", "--args", f"--user-data-dir={profile}"]
     if window_args:
         args += window_args
     subprocess.run(args)
