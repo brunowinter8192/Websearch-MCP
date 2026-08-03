@@ -28,6 +28,11 @@ BACKGROUNDING_FLAGS = [
     "--disable-renderer-backgrounding",
 ]
 
+# Obvious falsy spellings for WEBSEARCH_HEADLESS — unset, "", "0", "false", "no", "off" (any case)
+# all mean "off"; anything else means "on". A bare bool(os.environ.get(...)) would treat
+# WEBSEARCH_HEADLESS=0 as truthy (forces headless) — the opposite of what "0" means to whoever set it.
+_FALSY_ENV_VALUES = {"", "0", "false", "no", "off"}
+
 _browser = None
 _tab = None
 _init_lock = asyncio.Lock()
@@ -52,7 +57,7 @@ def build_options() -> ChromiumOptions:
     options = ChromiumOptions()
     # WEBSEARCH_HEADLESS forces headless (debugging, or a machine with no display) — headed,
     # backgrounded is the default (see get_tab()).
-    options.headless = bool(os.environ.get("WEBSEARCH_HEADLESS"))
+    options.headless = os.environ.get("WEBSEARCH_HEADLESS", "").strip().lower() not in _FALSY_ENV_VALUES
     options.add_argument(f"--user-data-dir={SESSION_DIR}")
     options.block_popups = True
     options.block_notifications = True
