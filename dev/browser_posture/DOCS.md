@@ -9,7 +9,7 @@ rejected as a same-IP same-day confound. Backs `process-docs/browser_posture/`.
 
 ## Modules
 
-### _lib.py (224 LOC)
+### _lib.py (226 LOC)
 
 **Purpose:** Shared launch/teardown/measurement primitives for both probe scripts — isolated probe
 profile dirs, the proven `open -g` headed-backgrounded process_creator, a throwaway local HTTP
@@ -21,7 +21,7 @@ server serving a timer-harness page, tick-drift and latency-stats helpers.
 
 ---
 
-### 01_launch_latency_probe.py (267 LOC)
+### 01_launch_latency_probe.py (270 LOC)
 
 **Purpose:** Measures 4 configs (headless-direct / headed-backgrounded-no-flags / headed-backgrounded
 +3-flags / headless+3-flags control) x N=5 for start-to-drivable-tab + one-navigation latency, and
@@ -33,7 +33,7 @@ x N=3 for background-timer-throttling drift (setInterval(100ms) actual-vs-expect
 
 ---
 
-### 02_parallel_chrome_probe.py (207 LOC)
+### 02_parallel_chrome_probe.py (202 LOC)
 
 **Purpose:** Determines what happens when a headed-backgrounded launch (`open -g -n -a "Google
 Chrome"`) targets the REAL production shared profile (`src/search/browser.py` SESSION_DIR) while a
