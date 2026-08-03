@@ -156,7 +156,9 @@ async def try_scrape(url: str) -> tuple[str, dict]:
         page_timeout=60000,
         max_retries=0,
         cache_mode=CacheMode.BYPASS,
-        markdown_generator=DefaultMarkdownGenerator(content_filter=PruningContentFilter(threshold=0.48)),
+        markdown_generator=DefaultMarkdownGenerator(
+            content_filter=PruningContentFilter(threshold=0.48, preserve_tags=["pre", "code"])
+        ),
         excluded_selector=COOKIE_CONSENT_SELECTOR,
         verbose=False,
     )
@@ -232,6 +234,7 @@ def extract_config_stamp(browser_config, adapter, crawler_strategy, run_config) 
         "cache_mode": run_config.cache_mode.value,
         "content_filter": type(content_filter).__name__,
         "content_filter_threshold": content_filter.threshold,
+        "content_filter_preserve_tags": sorted(content_filter.preserve_tags),
         "excluded_selector_hash": hashlib.sha256(run_config.excluded_selector.encode()).hexdigest()[:8],
     }
 

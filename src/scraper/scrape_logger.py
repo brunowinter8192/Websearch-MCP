@@ -40,6 +40,7 @@ DEFAULT_LOG_PATH = Path(__file__).parent.parent.parent / "src" / "logs" / "scrap
 #     "headless": bool, "enable_stealth": bool, "adapter": str, "crawler_strategy": str,
 #     "magic": bool, "wait_until": str, "page_timeout_ms": int, "max_retries": int,
 #     "cache_mode": str, "content_filter": str, "content_filter_threshold": float,
+#     "content_filter_preserve_tags": list[str],  # HTML tags exempted from pruning recursion — e.g. ["code", "pre"] guards syntax-highlighted code from whitespace-span decomposition (crawl4ai issue #2110)
 #     "excluded_selector_hash": str,       # first 8 hex chars of sha256(excluded_selector) — the 426-char selector itself is source-visible, not worth repeating per record
 #     "max_content_length": int, "min_content_threshold": int
 #     # OR, only if try_scrape's config invariant ever breaks: {"config_incomplete": true, "max_content_length": int, "min_content_threshold": int}
