@@ -87,13 +87,13 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 **Called by:** `search_web.py`.
 **Calls out:** `src/log_janitor.py` (maybe_prune_jsonl).
 
-### browser.py (166 LOC)
+### browser.py (151 LOC)
 
-**Purpose:** pydoll Chrome lifecycle. One shared Chrome, a new tab per engine for isolation, fingerprint patches (WebGL, canvas, permissions) at launch. Cleanup paths: `kill_tab(tab)` (browser-level `Target.closeTarget`, 5s cap), `close_browser()` (in-loop shutdown for dev), `kill_stale_chrome()` (nuclear `pkill` fallback).
-**Reads:** none (singleton on first access).
+**Purpose:** pydoll Chrome lifecycle. One shared Chrome, headed by default and launched BACKGROUNDED via macOS `open -g -n` (never steals focus — `_open_background_process_creator` swapped onto `_browser_process_manager` after `Chrome(options)`, before `await browser.start()`; `WEBSEARCH_HEADLESS` env var forces headless instead, for debugging or a no-display machine — direct launch, no `open -g` needed). A new tab per engine for isolation (`new_tab()` — CDP-level, no new OS process). `BACKGROUNDING_FLAGS` (Playwright's own Chromium defaults) applied unconditionally; evidentiary status of their effect is honestly uncertain — see the code comment. No JS fingerprint patches, no UA override, no explicit `--window-size` — `process-docs/browser_posture/` (Milestones 1-2) found the prior JS screen/getComputedStyle patches and the hardcoded UA/window-size all contradicted observable reality under headed and removed them; Chrome now reports its own real values throughout. Cleanup paths: `kill_tab(tab)` (browser-level `Target.closeTarget`, 5s cap), `close_browser()` (in-loop shutdown for dev), `kill_stale_chrome()` (nuclear `pkill` fallback — the actual teardown for the backgrounded launch, since `open -g`'s Popen is a short-lived wrapper, not Chrome itself).
+**Reads:** `WEBSEARCH_HEADLESS` env var (singleton browser on first access).
 **Writes:** Chrome session dir under the user-data-dir.
 **Called by:** `cli.py` (kill_stale_chrome, atexit); `engines/` (new_tab, kill_tab — google, duckduckgo, lobsters, semantic_scholar, scholar).
-**Calls out:** `pydoll` (Chrome, ChromiumOptions, PageCommands, TargetCommands).
+**Calls out:** `pydoll` (Chrome, ChromiumOptions, BrowserProcessManager, TargetCommands); `open`/`pkill` (macOS process control).
 
 ### rate_limiter.py (48 LOC)
 
@@ -124,6 +124,7 @@ Two module-owned states. `rate_limiter._limiters` — the per-engine token-bucke
 - Two-call architecture: `search_web` returns counts only (no URLs); URLs come from `search_engine_drilldown` reading the cache. The drilldown query + filter flags MUST match the prior `search_web` call or the cache key misses.
 - Post-dedup pool cap keys off Google's pool size — if Google was CAPTCHA'd or excluded, K falls back to 10.
 - All engines fire on every query regardless of filter flag — the flags add a query modifier + post-fanout URL filter, they do NOT restrict the engine set.
-- Stealth config is hardcoded in `browser.py` (JS patches, UA, window size, Chrome options) + per-engine files (SOCS cookie for Google) — no config file.
+- Stealth config lives in `browser.py` (headed-backgrounded launch, `--disable-blink-features=AutomationControlled`, `BACKGROUNDING_FLAGS`, browser preferences) + per-engine files (SOCS cookie for Google) — no config file, no JS fingerprint patches or UA override (removed — see `browser.py`'s module history via `process-docs/browser_posture/`).
+- `WEBSEARCH_HEADLESS` env var forces headless (debugging, or a machine with no display) — unset means headed, backgrounded, the default. Documented in `.env.example`.
 - pydoll tab cleanup uses `kill_tab` (browser-level close), NOT `tab.close()` — the latter hung 65s on non-cooperative renderers.
 - CLI dispatch hardcodes `language="en"`, `time_range=None`, `engines=None`; the full `search_web_workflow` signature is retained only for dev-script callers.
