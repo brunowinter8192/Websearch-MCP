@@ -84,6 +84,11 @@ async def scrape_url_workflow(url: str, max_content_length: int = DEFAULT_MAX_CO
             "fallback_to_raw": False, "truncated": False,
             "consent_stripped": False, "garbage_type": meta.get("garbage_type"),
             "content_path": content_path,
+            "crawl4ai_success": meta.get("crawl4ai_success"),
+            "crawl4ai_error_message": meta.get("crawl4ai_error_message"),
+            "crawl4ai_attempts": meta.get("crawl4ai_attempts"),
+            "crawl4ai_resolved_by": meta.get("crawl4ai_resolved_by"),
+            "crawl4ai_fallback_fetch_used": meta.get("crawl4ai_fallback_fetch_used"),
         })
         hint = get_plugin_hint(url)
         reason = _GARBAGE_MESSAGES.get(outcome, "No content extracted")
@@ -108,6 +113,11 @@ async def scrape_url_workflow(url: str, max_content_length: int = DEFAULT_MAX_CO
         "garbage_type": None,
         "content_path": content_path,
         "published_date": published_date,
+        "crawl4ai_success": meta.get("crawl4ai_success"),
+        "crawl4ai_error_message": meta.get("crawl4ai_error_message"),
+        "crawl4ai_attempts": meta.get("crawl4ai_attempts"),
+        "crawl4ai_resolved_by": meta.get("crawl4ai_resolved_by"),
+        "crawl4ai_fallback_fetch_used": meta.get("crawl4ai_fallback_fetch_used"),
     })
     header = f"# Content from: {url}"
     if published_date:
@@ -121,7 +131,10 @@ async def scrape_url_workflow(url: str, max_content_length: int = DEFAULT_MAX_CO
 # meta keys: garbage_type, status_code, content_type, fallback_to_raw, consent_stripped,
 #            garbage_content (content that triggered garbage detection, for sidecar logging),
 #            raw_markdown_bytes (raw_markdown length before filter/fallback),
-#            date (original publication date, ISO day precision, or None)
+#            date (original publication date, ISO day precision, or None),
+#            crawl4ai_success, crawl4ai_error_message, crawl4ai_attempts,
+#            crawl4ai_resolved_by, crawl4ai_fallback_fetch_used
+#            (crawl4ai's own anti-bot diagnosis, recorded verbatim — not acted on; see Gotchas)
 async def try_scrape(url: str) -> tuple[str, dict]:
     browser_config = BrowserConfig(headless=True, verbose=False, enable_stealth=True)
     adapter = UndetectedAdapter()
@@ -143,6 +156,9 @@ async def try_scrape(url: str) -> tuple[str, dict]:
         "garbage_type": None, "status_code": None, "content_type": None,
         "fallback_to_raw": False, "consent_stripped": False,
         "garbage_content": None, "raw_markdown_bytes": 0, "date": None,
+        "crawl4ai_success": None, "crawl4ai_error_message": None,
+        "crawl4ai_attempts": None, "crawl4ai_resolved_by": None,
+        "crawl4ai_fallback_fetch_used": None,
     }
     try:
         async with AsyncWebCrawler(config=browser_config, crawler_strategy=crawler_strategy) as crawler:
@@ -152,6 +168,7 @@ async def try_scrape(url: str) -> tuple[str, dict]:
         if hasattr(result, "headers") and result.headers:
             ct = result.headers.get("content-type") or result.headers.get("Content-Type")
         meta: dict = {**_empty_meta, "status_code": status_code, "content_type": ct}
+        meta.update(extract_crawl4ai_diagnosis(result))
         if status_code and status_code >= 400:
             logger.warning("HTTP %d detected: %s", status_code, url)
             return "", {**meta, "garbage_type": "http_error"}
@@ -184,6 +201,19 @@ async def try_scrape(url: str) -> tuple[str, dict]:
             return "", {**_empty_meta, "garbage_type": "browser_missing"}
         logger.warning("Failed to scrape %s: %s", url, e)
         return "", dict(_empty_meta)
+
+
+# Read crawl4ai's own anti-bot diagnosis off the result object, verbatim — recorded for
+# the scrape log only, never used to alter this function's own outcome/garbage_type verdict
+def extract_crawl4ai_diagnosis(result) -> dict:
+    stats = getattr(result, "crawl_stats", None) or {}
+    return {
+        "crawl4ai_success": getattr(result, "success", None),
+        "crawl4ai_error_message": getattr(result, "error_message", None) or None,
+        "crawl4ai_attempts": stats.get("attempts"),
+        "crawl4ai_resolved_by": stats.get("resolved_by"),
+        "crawl4ai_fallback_fetch_used": stats.get("fallback_fetch_used"),
+    }
 
 
 # Original publication date (day precision) from raw HTML via htmldate — extensive_search (higher

@@ -29,7 +29,12 @@ DEFAULT_LOG_PATH = Path(__file__).parent.parent.parent / "src" / "logs" / "scrap
 #   "consent_stripped": bool,
 #   "garbage_type": str | null,
 #   "content_path": str | null,           # relative path under log dir, e.g. "scrape_content/<file>.md"
-#   "published_date": str | null          # ISO day precision (YYYY-MM-DD), htmldate-extracted, only on "ok" outcome
+#   "published_date": str | null,         # ISO day precision (YYYY-MM-DD), htmldate-extracted, only on "ok" outcome
+#   "crawl4ai_success": bool | null,      # crawl4ai's own result.success; null only when the call raised before a result existed
+#   "crawl4ai_error_message": str | null, # crawl4ai's own result.error_message verbatim (e.g. "Blocked by anti-bot protection: <reason>"); NOT a verdict — the library's own detector has documented false positives, informational only
+#   "crawl4ai_attempts": int | null,      # result.crawl_stats["attempts"] — total browser attempts across proxies/retries
+#   "crawl4ai_resolved_by": str | null,   # result.crawl_stats["resolved_by"]: "direct" | "proxy" | "fallback_fetch" | null
+#   "crawl4ai_fallback_fetch_used": bool | null  # result.crawl_stats["fallback_fetch_used"]
 # }
 #
 # Log path: WEBSEARCH_SCRAPE_LOG_PATH env var → DEFAULT_LOG_PATH fallback.
