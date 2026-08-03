@@ -74,7 +74,7 @@ async def scrape_url_workflow(url: str, max_content_length: int = DEFAULT_MAX_CO
 
     content, meta = await try_scrape(url)
     total_wall = round((time.perf_counter() - t_total) * 1000)
-    config = build_config_record(meta.get("config", {}), max_content_length)
+    config = build_config_record(meta.get("config"), max_content_length)
     config_hash = hash_config(config)
 
     if not content:
@@ -238,8 +238,18 @@ def extract_config_stamp(browser_config, adapter, crawler_strategy, run_config) 
 
 # Merge the scrape-side config stamp with the post-processing params only the caller knows
 # (max_content_length is a per-call argument; MIN_CONTENT_THRESHOLD a module constant) — same
-# "read the real value, don't re-declare it" rule as extract_config_stamp
-def build_config_record(scrape_config: dict, max_content_length: int) -> dict:
+# "read the real value, don't re-declare it" rule as extract_config_stamp.
+# try_scrape always populates meta["config"] (set into _empty_meta before its try block, so every
+# return path carries it) — scrape_config missing here means that invariant broke. Surfaced as an
+# explicit "config_incomplete" marker rather than silently hashing a near-empty dict, which would
+# otherwise look like a legitimate, if sparse, config group to a later reader.
+def build_config_record(scrape_config: dict | None, max_content_length: int) -> dict:
+    if not scrape_config:
+        return {
+            "config_incomplete": True,
+            "max_content_length": max_content_length,
+            "min_content_threshold": MIN_CONTENT_THRESHOLD,
+        }
     return {
         **scrape_config,
         "max_content_length": max_content_length,
