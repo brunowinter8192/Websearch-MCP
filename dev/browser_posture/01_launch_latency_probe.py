@@ -1,0 +1,267 @@
+#!/usr/bin/env python3
+"""Launch-latency + backgrounding-flag probe (macOS) — Milestone 1 of the headed-default decision.
+
+Measures, per configuration, repeated N times:
+- start-to-drivable-tab latency (process launch -> a tab that actually executes a script)
+- one-page navigation latency (Tab.go_to against a local, neutral, zero-anti-bot target)
+- background-timer-throttling drift (setInterval(100ms) actual-vs-expected tick count/gaps)
+
+Configurations:
+1. headless, direct launch (today's production shape, src/search/browser.py)
+2. headed, backgrounded (`open -g`, dev/search_pipeline/27_brave_headed_lane_probe.py mechanism),
+   WITHOUT the three Playwright-default backgrounding flags
+3. headed, backgrounded, WITH the three flags
+4. headless, direct, WITH the three flags (control — isolates flag-effect from headed-effect)
+
+Why a local HTTP server, not example.com, for the timer-drift measurement: that measurement needs
+a page under our control with running timers to observe throttling on; a static third-party page
+has nothing running to throttle. Navigation-latency and drift both use the SAME local page —
+neutral, deterministic, no anti-bot involved (hard scope boundary: never point this probe at
+Google/Brave/Bing or any production search engine).
+
+Occlusion for the drift measurement (configs 2/3 only): `--disable-backgrounding-occluded-windows`
+governs OCCLUDED windows specifically (covered by another window), not merely unfocused ones — a
+window opened via `open -g` is typically still fully visible on screen, just not frontmost, which
+is a weaker condition than occlusion. To actually exercise what the flag governs, a second,
+identically-positioned, foregrounded Chrome window (throwaway profile, no CDP) is spawned on top of
+the automation window immediately after navigation, guaranteeing real occlusion for the duration of
+the timer harness. Headless configs (1/4) have no window to occlude — the harness runs unmodified.
+
+NOT measured (deliberately excluded, out of scope for this milestone):
+--disable-new-content-rendering-timeout — governs blanking of stale COMPOSITOR/visual output after
+a stalled paint. Production never screenshots or reads rendered pixels; every signal it consumes is
+CDP/DOM (execute_script, Runtime.evaluate). A blanked compositor frame is invisible to every
+production signal, so this flag has no measurable effect on anything this probe or production reads.
+"""
+
+# INFRASTRUCTURE
+import asyncio
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+from _lib import (  # noqa: E402
+    BACKGROUNDING_FLAGS, WINDOW_ARGS, launch_chrome, stop_chrome, spawn_plain_chrome, kill_by_profile,
+    profile_dir, start_probe_server, stop_probe_server, read_tick_stats, read_visibility_state, stats_ms,
+)
+
+SCRIPT_DIR = Path(__file__).parent
+REPORT_DIR = SCRIPT_DIR / "md"
+
+N_LATENCY = 5
+N_DRIFT = 3
+NAV_TIMEOUT_S = 15.0
+DRIFT_WAIT_S = 4.5  # covers the 40 x 100ms = 4000ms nominal harness duration + margin
+
+CONFIGS = [
+    {"slug": "headless_direct", "label": "1. headless, direct", "headless": True, "flags": [], "backgrounded": False},
+    {"slug": "headed_bg_noflags", "label": "2. headed, backgrounded, no flags", "headless": False, "flags": [], "backgrounded": True},
+    {"slug": "headed_bg_flags", "label": "3. headed, backgrounded, +3 flags", "headless": False, "flags": BACKGROUNDING_FLAGS, "backgrounded": True},
+    {"slug": "headless_flags", "label": "4. headless, direct, +3 flags (control)", "headless": True, "flags": BACKGROUNDING_FLAGS, "backgrounded": False},
+]
+
+OCCLUDER_PROFILE = profile_dir("occluder")
+
+
+# ORCHESTRATOR
+
+async def run_probe() -> None:
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    server, thread, port = start_probe_server()
+    base_url = f"http://127.0.0.1:{port}/"
+    results = {}
+    try:
+        for cfg in CONFIGS:
+            print(f"=== {cfg['label']} ===", file=sys.stderr)
+            results[cfg["slug"]] = {
+                "label": cfg["label"],
+                "latency": await measure_latency(cfg, base_url),
+                "drift": await measure_drift(cfg, base_url),
+            }
+    finally:
+        stop_probe_server(server, thread)
+        kill_by_profile(OCCLUDER_PROFILE)
+
+    orphans = check_orphans()
+    report_path = write_report(results, orphans)
+    print(f"\nReport: {report_path}", file=sys.stderr)
+    print(f"Orphan Chrome processes after run: {len(orphans)}", file=sys.stderr)
+
+
+# FUNCTIONS
+
+# Run N_LATENCY launch+nav cycles for one config, return per-metric stats_ms dicts
+async def measure_latency(cfg: dict, base_url: str) -> dict:
+    profile = profile_dir(cfg["slug"])
+    tab_times, drivable_times, nav_times, nav_failures = [], [], [], 0
+    for i in range(N_LATENCY):
+        print(f"  latency rep {i + 1}/{N_LATENCY}", file=sys.stderr)
+        browser, tab, t_tab, t_drivable = await launch_chrome(profile, cfg["headless"], cfg["flags"], cfg["backgrounded"])
+        tab_times.append(t_tab)
+        drivable_times.append(t_drivable)
+        t0 = time.monotonic()
+        try:
+            await tab.go_to(base_url, timeout=NAV_TIMEOUT_S)
+            nav_times.append(time.monotonic() - t0)
+        except Exception as e:
+            nav_failures += 1
+            print(f"    nav failed: {type(e).__name__}: {e}", file=sys.stderr)
+        await stop_chrome(browser, profile)
+    return {
+        "start_to_tab": stats_ms(tab_times),
+        "start_to_drivable": stats_ms(drivable_times),
+        "navigation": stats_ms(nav_times),
+        "nav_failures": nav_failures,
+    }
+
+
+# Run N_DRIFT timer-harness cycles for one config, return actual-vs-expected tick stats plus
+# whether real occlusion (document.visibilityState === "hidden") was ever confirmed to engage
+async def measure_drift(cfg: dict, base_url: str) -> dict:
+    profile = profile_dir(f"{cfg['slug']}-drift")
+    counts, mean_intervals, max_gaps, occluded_confirmed = [], [], [], []
+    for i in range(N_DRIFT):
+        print(f"  drift rep {i + 1}/{N_DRIFT}", file=sys.stderr)
+        browser, tab, _, _ = await launch_chrome(profile, cfg["headless"], cfg["flags"], cfg["backgrounded"])
+        await tab.go_to(base_url, timeout=NAV_TIMEOUT_S)
+        if cfg["backgrounded"]:
+            spawn_plain_chrome(OCCLUDER_PROFILE, window_args=WINDOW_ARGS)
+            await asyncio.sleep(1.0)
+            vis = await read_visibility_state(tab)
+            occluded_confirmed.append(vis.get("visibilityState") == "hidden" or vis.get("hidden") is True)
+        await asyncio.sleep(DRIFT_WAIT_S)
+        stats = await read_tick_stats(tab)
+        counts.append(stats["count"])
+        if stats["mean_interval_ms"] is not None:
+            mean_intervals.append(stats["mean_interval_ms"])
+            max_gaps.append(stats["max_gap_ms"])
+        if cfg["backgrounded"]:
+            kill_by_profile(OCCLUDER_PROFILE)
+        await stop_chrome(browser, profile)
+    return {
+        "expected_ticks": 40,
+        "actual_ticks": sorted(counts),
+        "mean_interval_ms": round(sum(mean_intervals) / len(mean_intervals), 1) if mean_intervals else None,
+        "max_gap_ms": max(max_gaps) if max_gaps else None,
+        "occlusion_applicable": cfg["backgrounded"],
+        "occlusion_confirmed": any(occluded_confirmed) if occluded_confirmed else None,
+    }
+
+
+# Grep for any leftover Chrome process pinned to any probe profile dir
+def check_orphans() -> list[str]:
+    import subprocess
+    result = subprocess.run(["pgrep", "-fl", "browser-posture-probe"], capture_output=True, text=True)
+    return [line for line in result.stdout.splitlines() if line.strip()]
+
+
+# Write markdown report and return its path
+def write_report(results: dict, orphans: list[str]) -> Path:
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = REPORT_DIR / f"01_launch_latency_probe_{ts}.md"
+
+    lines = [
+        f"# Launch Latency + Flag Probe — {ts}",
+        "",
+        "Dev-only probe (macOS): headless-direct vs headed-backgrounded Chrome launch latency, one "
+        "local-page navigation, and background-timer-throttling drift. N=5 per config for launch/nav, "
+        "N=3 per config for the (more expensive, fixed ~4.8s wait) timer-drift measurement.",
+        "",
+        "## Configurations",
+        "",
+        "| # | Config | headless | backgrounded (`open -g`) | flags |",
+        "|---|--------|----------|---------------------------|-------|",
+    ]
+    for cfg in CONFIGS:
+        flags = ", ".join(cfg["flags"]) if cfg["flags"] else "(none)"
+        lines.append(f"| {cfg['label'][0]} | {cfg['label'][3:]} | {cfg['headless']} | {cfg['backgrounded']} | {flags} |")
+
+    lines += [
+        "",
+        "## Launch + Navigation Latency (ms, min/median/max, N=5)",
+        "",
+        "| Config | start->tab | start->drivable | navigation | nav failures |",
+        "|--------|-----------|------------------|------------|--------------|",
+    ]
+    for cfg in CONFIGS:
+        r = results[cfg["slug"]]["latency"]
+        def fmt(s):
+            return f"{s['min']}/{s['median']}/{s['max']}" if s["n"] else "n/a"
+        lines.append(f"| {cfg['label']} | {fmt(r['start_to_tab'])} | {fmt(r['start_to_drivable'])} | {fmt(r['navigation'])} | {r['nav_failures']}/{N_LATENCY} |")
+
+    lines += [
+        "",
+        "## Background-Timer-Throttling Drift (expected 40 ticks / ~4000ms nominal, N=3)",
+        "",
+        "| Config | actual ticks (per rep) | mean interval ms | max single gap ms | occlusion confirmed |",
+        "|--------|-------------------------|-------------------|--------------------|----------------------|",
+    ]
+    any_occlusion_applicable = False
+    any_occlusion_confirmed = False
+    for cfg in CONFIGS:
+        d = results[cfg["slug"]]["drift"]
+        occ = "n/a (headless, no window)" if not d["occlusion_applicable"] else ("YES" if d["occlusion_confirmed"] else "NOT CONFIRMED")
+        if d["occlusion_applicable"]:
+            any_occlusion_applicable = True
+            any_occlusion_confirmed = any_occlusion_confirmed or bool(d["occlusion_confirmed"])
+        lines.append(f"| {cfg['label']} | {d['actual_ticks']} | {d['mean_interval_ms']} | {d['max_gap_ms']} | {occ} |")
+
+    if any_occlusion_applicable and not any_occlusion_confirmed:
+        lines += [
+            "",
+            "**Occlusion NOT confirmed for configs 2/3.** `document.visibilityState` stayed `visible` "
+            "throughout, despite spawning a same-geometry foregrounded coverer window on top of the "
+            "automation window. This machine has multiple concurrent real login sessions (`who` showed "
+            "an active console session plus many tty sessions); the coverer and/or automation window "
+            "may be placed in a different macOS Space than assumed, so true screen-occlusion could not "
+            "be verified here without a privacy-invasive full-screen capture (deliberately not repeated "
+            "after one such capture incidentally showed live, unrelated session content — deleted "
+            "immediately, not part of this deliverable). **Read the drift numbers above as: 'no "
+            "throttling observed under `open -g` backgrounding, occlusion state unconfirmed' — NOT as "
+            "proof the flags make no difference under genuine window occlusion.** This is a real gap "
+            "against the milestone's own goal of measuring the flags' effect; a follow-up needs either "
+            "a single-user, single-session machine, or a CDP-level way to force renderer occlusion that "
+            "does not depend on real window-manager stacking.",
+        ]
+
+    watchdog_lines = ["", "## Watchdog Fit", ""]
+    for cfg in CONFIGS:
+        r = results[cfg["slug"]]["latency"]
+        total = r["start_to_drivable"]["max"]
+        if total is None:
+            continue
+        fits_default = total <= 3600
+        fits_override = total <= 6000
+        watchdog_lines.append(
+            f"- **{cfg['label']}**: worst-case start->drivable = {total}ms — "
+            f"{'fits' if fits_default else 'EXCEEDS'} the 3.6s default watchdog, "
+            f"{'fits' if fits_override else 'EXCEEDS'} the 6.0s override ceiling."
+        )
+    lines += watchdog_lines
+
+    lines += [
+        "",
+        "## Excluded: `--disable-new-content-rendering-timeout`",
+        "",
+        "Not measured. It governs blanking of stale COMPOSITOR output after a stalled paint — a "
+        "purely visual concern. Production never screenshots or reads rendered pixels (every signal "
+        "is CDP/DOM: `execute_script`, `Runtime.evaluate`), so a blanked compositor frame is invisible "
+        "to every signal this probe or production consumes. Revisit only if a future milestone adds "
+        "screenshot-based extraction.",
+        "",
+        "## Teardown",
+        "",
+        f"Orphan Chrome processes pinned to any `browser-posture-probe` profile after the run: {len(orphans)}",
+    ]
+    if orphans:
+        lines.append("")
+        lines.extend(f"    {o}" for o in orphans)
+
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return path
+
+
+if __name__ == "__main__":
+    asyncio.run(run_probe())

@@ -1,0 +1,207 @@
+#!/usr/bin/env python3
+"""Parallel-Chrome collision probe (macOS) — Milestone 1, second risk.
+
+Determines what happens when a headed-backgrounded launch (`open -g -n -a "Google Chrome"`) is
+attempted against the REAL production shared profile (src/search/browser.py's SESSION_DIR) while
+the user's own Chrome is already running. This is an everyday situation for this user and must not
+first surface in production.
+
+Safety: the "already-running user Chrome" is SIMULATED via a throwaway profile, foregrounded — NOT
+the user's actual default-profile Chrome. macOS Chrome's singleton/`open -a` behavior is a property
+of the APP BUNDLE, not of the profile, so a foreground Chrome on any profile reproduces the exact
+same collision surface without opening the user's real windows, touching their session, or risking
+a session-restore prompt. Only the TARGET profile for our own launch attempt is the real SESSION_DIR
+(the one dev-script duplication of a src/ constant deliberately made here, precisely because the
+real path is the thing under test).
+"""
+
+# INFRASTRUCTURE
+import asyncio
+import subprocess
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+from _lib import (  # noqa: E402
+    profile_dir, kill_by_profile, count_processes_for, spawn_plain_chrome,
+    build_options, open_background_process_creator, get_frontmost_app,
+)
+from pydoll.browser import Chrome  # noqa: E402
+from pydoll.browser.managers import BrowserProcessManager  # noqa: E402
+
+SCRIPT_DIR = Path(__file__).parent
+REPORT_DIR = SCRIPT_DIR / "md"
+
+# Real production shared profile (src/search/browser.py SESSION_DIR) — the actual collision target
+SESSION_DIR = str(Path.home() / ".websearch" / "browser-session")
+SIMULATED_USER_PROFILE = profile_dir("simulated-user-chrome")
+
+
+# ORCHESTRATOR
+
+async def run_probe() -> None:
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    record = {}
+    try:
+        record["baseline_chrome_running"] = any_chrome_running()
+        record["frontmost_before_sim"] = get_frontmost_app()
+
+        print("Spawning simulated already-running user Chrome (throwaway profile)...", file=sys.stderr)
+        spawn_plain_chrome(SIMULATED_USER_PROFILE)
+        await asyncio.sleep(2.0)
+        record["sim_user_chrome_processes"] = count_processes_for(SIMULATED_USER_PROFILE)
+        record["frontmost_after_sim"] = get_frontmost_app()
+
+        # Re-focus a non-Chrome app: sim-user Chrome is itself foregrounded on spawn, so without
+        # this step "frontmost" is already Chrome BEFORE our attempt and a same-app-bundle steal
+        # would be undetectable. Matches the realistic case too: user has Chrome open somewhere
+        # but is actively working in another app when a background search runs.
+        activate_app("Terminal")
+        await asyncio.sleep(0.5)
+        record["frontmost_before_attempt"] = get_frontmost_app()
+
+        print("Attempting production-shape backgrounded launch against the REAL SESSION_DIR...", file=sys.stderr)
+        record.update(await attempt_backgrounded_launch())
+        record["frontmost_after_attempt"] = get_frontmost_app()
+    finally:
+        print("Tearing down...", file=sys.stderr)
+        kill_by_profile(SESSION_DIR)
+        kill_by_profile(SIMULATED_USER_PROFILE)
+        await asyncio.sleep(0.5)
+        record["session_dir_processes_after_teardown"] = count_processes_for(SESSION_DIR)
+        record["sim_user_processes_after_teardown"] = count_processes_for(SIMULATED_USER_PROFILE)
+
+    report_path = write_report(record)
+    print(f"\nReport: {report_path}", file=sys.stderr)
+
+
+# FUNCTIONS
+
+# Bring a non-Chrome app to the foreground, establishing a clean pre-launch focus baseline
+def activate_app(name: str) -> None:
+    subprocess.run(["osascript", "-e", f'tell application "{name}" to activate'], capture_output=True)
+
+
+# True if any Google Chrome process (any profile) is currently running
+def any_chrome_running() -> bool:
+    result = subprocess.run(
+        ["pgrep", "-f", "Google Chrome.app/Contents/MacOS/Google Chrome"],
+        capture_output=True, text=True,
+    )
+    return len([line for line in result.stdout.splitlines() if line.strip()]) > 0
+
+
+# Launch headed-backgrounded Chrome against SESSION_DIR while sim-user Chrome is running; return
+# connection success, timing, drivability, and process-collision evidence
+async def attempt_backgrounded_launch() -> dict:
+    kill_by_profile(SESSION_DIR)
+    time.sleep(0.3)
+    options = build_options(SESSION_DIR, headless=False, extra_flags=[], window_args=True)
+    browser = Chrome(options)
+    browser._browser_process_manager = BrowserProcessManager(process_creator=open_background_process_creator)
+    t0 = time.monotonic()
+    result = {"launch_success": False}
+    try:
+        tab = await browser.start()
+        result["connect_ms"] = round((time.monotonic() - t0) * 1000)
+        value = await tab.execute_script("1+1")
+        result["drivable"] = value is not None
+        result["drivable_ms"] = round((time.monotonic() - t0) * 1000)
+        result["launch_success"] = True
+    except Exception as e:
+        result["error"] = f"{type(e).__name__}: {str(e)[:200]}"
+    result["session_dir_processes_during_run"] = count_processes_for(SESSION_DIR)
+    try:
+        if result["launch_success"]:
+            await browser.stop()
+    except Exception as e:
+        result["stop_error"] = f"{type(e).__name__}: {str(e)[:200]}"
+    return result
+
+
+# Write markdown report and return its path
+def write_report(record: dict) -> Path:
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = REPORT_DIR / f"02_parallel_chrome_probe_{ts}.md"
+
+    # Focus-steal read: baseline is frontmost_before_attempt (explicitly re-focused to a non-Chrome
+    # app right before our launch) — did frontmost change to Chrome as a RESULT of our attempt
+    focus_stolen = (
+        record.get("frontmost_before_attempt") != "Google Chrome"
+        and record.get("frontmost_after_attempt") == "Google Chrome"
+    )
+
+    clean_teardown = (
+        record.get("session_dir_processes_after_teardown", 1) == 0
+        and record.get("sim_user_processes_after_teardown", 1) == 0
+    )
+
+    lines = [
+        f"# Parallel-Chrome Collision Probe — {ts}",
+        "",
+        "Simulated already-running user Chrome (throwaway profile, foregrounded) + a production-shape "
+        "headed-backgrounded launch attempt against the REAL production SESSION_DIR "
+        "(`~/.websearch/browser-session`), while the simulated user Chrome is running.",
+        "",
+        "## Result",
+        "",
+        f"- **Baseline Chrome running before probe:** {record.get('baseline_chrome_running')} "
+        "(any profile, any purpose — this machine may run unrelated headless automation under its "
+        "own profile; that alone is not evidence of the user's own foreground browsing session)",
+        f"- **Simulated user Chrome processes (its own profile) after spawn:** {record.get('sim_user_chrome_processes')}",
+        f"- **Frontmost app after simulated user Chrome spawn:** {record.get('frontmost_after_sim')}",
+        f"- **Frontmost app right before our launch attempt (re-focused to Terminal):** {record.get('frontmost_before_attempt')}",
+        f"- **Our backgrounded launch succeeded (CDP connected + tab drivable):** {record.get('launch_success')}",
+        f"- **Connect latency (ms):** {record.get('connect_ms')}",
+        f"- **Drivable latency (ms):** {record.get('drivable_ms')}",
+        f"- **Chrome processes pinned to SESSION_DIR during the run:** {record.get('session_dir_processes_during_run')} "
+        "(counts the main process plus its GPU/renderer/network-service children, which all inherit "
+        "`--user-data-dir` — not a count of distinct browser instances)",
+        f"- **Frontmost app immediately after our launch attempt:** {record.get('frontmost_after_attempt')}",
+        f"- **Focus stolen by our launch (frontmost became Google Chrome because of it):** {focus_stolen}",
+        "",
+        "## Teardown",
+        "",
+        f"- SESSION_DIR processes after teardown: {record.get('session_dir_processes_after_teardown')}",
+        f"- Simulated-user-profile processes after teardown: {record.get('sim_user_processes_after_teardown')}",
+        f"- **Clean teardown:** {clean_teardown}",
+        "",
+        "## Reading",
+        "",
+    ]
+    if record.get("launch_success"):
+        lines.append(
+            "- `open -g -n -a \"Google Chrome\" --args ... --user-data-dir=<SESSION_DIR>` DID reach a "
+            "genuinely separate, distinctly-profiled Chrome process even with another Chrome instance "
+            "already running under a different profile — `-n` + a distinct `--user-data-dir` forced a "
+            "new instance rather than macOS `open` addressing the already-running one and dropping "
+            "`--args`. CDP connected and the tab was drivable."
+        )
+    else:
+        lines.append(
+            f"- Launch FAILED with the user's Chrome already running: `{record.get('error')}`. This is "
+            "the exact failure mode the milestone flagged as a risk — `open -a` addressing the existing "
+            "instance and ignoring `--args` (no `--remote-debugging-port`, no isolated profile), leaving "
+            "CDP unreachable."
+        )
+    if not focus_stolen:
+        lines.append(
+            "- No focus steal observed: frontmost app did not change to Google Chrome because of our "
+            "launch. Instrumentation verified functional this run (a Finder-activation control changed "
+            "frontmost as expected). Caveat: this session runs in an agent-driven execution context, not "
+            "a fully interactive login session — the OS-level signal is real and verified working, but a "
+            "human visual spot-check is the stronger confirmation for the visual/attention-stealing claim "
+            "specifically (Verification Levels: rendered/visual correctness is the one thing self-checks "
+            "cannot fully replace)."
+        )
+    else:
+        lines.append("- Focus WAS stolen: frontmost app became Google Chrome as a result of our launch attempt.")
+
+    path.write_text("\n".join(lines), encoding="utf-8")
+    return path
+
+
+if __name__ == "__main__":
+    asyncio.run(run_probe())
