@@ -26,12 +26,15 @@ logger = logging.getLogger(__name__)
 HTMLDATE_TIMEOUT_S = 5.0
 
 # Hard wall-clock budget for the entire ad-hoc scrape acquisition — the only outer guard on this
-# path (page_timeout=60000 only bounds Playwright's page.goto; everything after a successful
+# path (page_timeout=30000 only bounds Playwright's page.goto; everything after a successful
 # goto — crawl4ai's own two internal, non-configurable 30s render waits, consent handling, date
-# extraction — is otherwise unbounded from our side). Composed of: browser cold start +
-# navigation cap + render wait + consent handling + date extraction. Unbounded synchronous work
-# such as markdown generation gets no reserved share of its own — it is simply covered by this
-# same outer guard.
+# extraction — is otherwise unbounded from our side). Composed of: browser cold start 1.1s +
+# navigation cap 30s (page_timeout) + render wait 2.0s (delay_before_return_html) + consent
+# handling 1.3s (remove_consent_popups, worst case: one unconditional 500ms sleep in
+# remove_consent_popups.js + 500ms Python-side + at most one 300ms post-click sleep, the rest
+# mutually exclusive behind break/return) + date extraction 5.0s (HTMLDATE_TIMEOUT_S) = 39.4.
+# Unbounded synchronous work such as markdown generation gets no reserved share of its own — it
+# is simply covered by this same outer guard.
 # Two honesty caveats on what this guard does NOT do:
 #  - asyncio.wait_for only cancels at await points. Markdown generation + PruningContentFilter
 #    run as synchronous CPU work inside crawl4ai's arun() — a pathological synchronous parse can
