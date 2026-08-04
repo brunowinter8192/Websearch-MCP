@@ -18,7 +18,9 @@ DEFAULT_LOG_PATH = Path(__file__).parent.parent.parent / "src" / "logs" / "scrap
 #   "url": str,
 #   "domain": str,
 #   "mode": "filtered",
-#   "outcome": "ok" | "garbage" | "empty" | "timeout" | "error",
+#   "outcome": "ok" | "empty" | <garbage_type> (e.g. "http_error", "cookie_wall",
+#              "budget_exhausted", "browser_missing", ...) — mirrors try_scrape's
+#              meta["garbage_type"] when set, "empty" otherwise,
 #   "timings_ms": {"total_wall": int},
 #   "http_status": int | null,
 #   "content_type": str | null,
@@ -43,6 +45,7 @@ DEFAULT_LOG_PATH = Path(__file__).parent.parent.parent / "src" / "logs" / "scrap
 #     "content_filter_preserve_tags": list[str],  # HTML tags exempted from pruning recursion — e.g. ["code", "pre"] guards syntax-highlighted code from whitespace-span decomposition (crawl4ai issue #2110)
 #     "excluded_selector_hash": str,       # first 8 hex chars of sha256(excluded_selector) — the 426-char selector itself is source-visible, not worth repeating per record
 #     "remove_consent_popups": bool,       # crawl4ai's own CMP click-dismissal, alongside (not instead of) excluded_selector; unconditional ~1s cost per scrape, see scrape_url.py comment at its CrawlerRunConfig construction
+#     "total_budget_s": float,             # TOTAL_SCRAPE_BUDGET_S — outer wall-clock guard around try_scrape's acquisition (browser call + date extraction + classification); bounds network/browser hangs only, NOT synchronous CPU inside crawl4ai (markdown gen) — see constant's comment in scrape_url.py
 #     "max_content_length": int, "min_content_threshold": int
 #     # OR, only if try_scrape's config invariant ever breaks: {"config_incomplete": true, "max_content_length": int, "min_content_threshold": int}
 #   }
