@@ -4,7 +4,9 @@ it carries.
 Runs without a browser: _scrape_all's AsyncWebCrawler is patched with a fake crawler returning
 synthetic results, isolating the logging path from the real network/browser call.
 """
+import asyncio
 import json
+import time as time_module
 from datetime import datetime, timezone
 
 import pytest
@@ -60,6 +62,18 @@ def test_extract_pipe_config_stamp_reads_anti_bot_fields_off_real_objects():
     assert stamp["remove_consent_popups"] is True
 
 
+def test_extract_pipe_config_stamp_reads_fallback_armed_off_real_object():
+    """fallback_armed reflects whether CrawlerRunConfig.fallback_fetch_function is actually set —
+    read off the real object, not a re-declared literal."""
+    browser_cfg = pipe_scraper.BrowserConfig(headless=True, verbose=False)
+    armed_cfg = pipe_scraper.CrawlerRunConfig(fallback_fetch_function=pipe_scraper._fallback_fetch)
+    unarmed_cfg = pipe_scraper.CrawlerRunConfig()
+    armed_stamp = pipe_scraper._extract_pipe_config_stamp(browser_cfg, armed_cfg, 1.0, 8)
+    unarmed_stamp = pipe_scraper._extract_pipe_config_stamp(browser_cfg, unarmed_cfg, 1.0, 8)
+    assert armed_stamp["fallback_armed"] is True
+    assert unarmed_stamp["fallback_armed"] is False
+
+
 # ---------------------------------------------------------------------------
 # _build_configs: the fixed anti-bot posture this milestone sets
 # ---------------------------------------------------------------------------
@@ -78,6 +92,15 @@ def test_build_configs_sets_fixed_anti_bot_posture():
     assert run_cfg.page_timeout == pipe_scraper.PAGE_TIMEOUT_MS
     assert run_cfg.delay_before_return_html == pipe_scraper.DELAY_BEFORE_RETURN_HTML
     assert run_cfg.markdown_generator.content_filter is None
+
+
+def test_build_configs_wires_fallback_fetch_function():
+    """Wiring test, not a dict comparison: the real CrawlerRunConfig object carries OUR actual
+    _fallback_fetch callable (identity check), so crawl4ai's own internal invocation
+    (async_webcrawler.py: getattr(config, 'fallback_fetch_function', None)) resolves to it —
+    proving path (a) is actually armed, not just that some truthy value was set."""
+    _, run_cfg = pipe_scraper._build_configs()
+    assert run_cfg.fallback_fetch_function is pipe_scraper._fallback_fetch
 
 
 @pytest.mark.asyncio
@@ -266,3 +289,234 @@ async def test_scrape_all_records_carry_config_hash_and_config(tmp_path, monkeyp
     assert records[0]["config"]["override_navigator"] is True
     assert records[0]["config"]["magic"] is False
     assert records[0]["config"]["remove_consent_popups"] is True
+    assert records[0]["config"]["fallback_armed"] is True
+
+
+# ---------------------------------------------------------------------------
+# is_blocked (real crawl4ai function, no network) — establishes which branch the crossref-shaped
+# failure actually takes, the thing that determines whether a fallback fires at all for it
+# ---------------------------------------------------------------------------
+
+def test_is_blocked_flags_crossref_shaped_failures():
+    """Two shapes: the brief's framing (HTTP 200 + near-empty body) and the ACTUAL recorded
+    crossref signature ('no HTTP status recorded' — status_code=None, empty html). They take
+    DIFFERENT is_blocked branches — this is the finding that determines whether crawl4ai's own
+    fallback_fetch_function (path a) would even see this case, versus needing pipe_scraper's own
+    except-block rescue (path b, which _scrape_one reaches regardless of is_blocked's verdict,
+    since the browser raised before any result/status ever existed)."""
+    from crawl4ai.antibot_detector import is_blocked
+
+    # Shape 1: HTTP 200 + near-empty body — requires status_code == 200 to take this branch.
+    blocked, reason = is_blocked(200, "<html></html>")
+    assert blocked is True
+    assert "200" in reason
+
+    # Shape 2: the ACTUAL crossref signature — status_code is None (no HTTP status was ever
+    # recorded), not 200, so shape 1's branch does NOT fire. Falls through to Tier 3 structural
+    # integrity (Signal 1: no <body> tag), which needs no status code at all.
+    blocked, reason = is_blocked(None, "")
+    assert blocked is True
+    assert "body" in reason.lower()
+
+
+# ---------------------------------------------------------------------------
+# _fallback_fetch: the curl_cffi primitive shared by path (a) and path (b) — success, non-200,
+# exception, and timeout, all with AsyncSession faked (no network dependency in this unit test)
+# ---------------------------------------------------------------------------
+
+class _FakeCurlResponse:
+    def __init__(self, status_code, text):
+        self.status_code = status_code
+        self.text = text
+
+
+class _FakeCurlSession:
+    def __init__(self, response=None, exc=None, delay=0):
+        self._response = response
+        self._exc = exc
+        self._delay = delay
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def get(self, url, timeout=None):
+        if self._delay:
+            await asyncio.sleep(self._delay)
+        if self._exc:
+            raise self._exc
+        return self._response
+
+
+def test_fallback_fetch_returns_html_on_success(monkeypatch):
+    monkeypatch.setattr(pipe_scraper, "AsyncSession",
+                         lambda **kw: _FakeCurlSession(response=_FakeCurlResponse(200, "<html>real content</html>")))
+    html = asyncio.run(pipe_scraper._fallback_fetch("https://x.test"))
+    assert html == "<html>real content</html>"
+
+
+def test_fallback_fetch_returns_none_on_non_200(monkeypatch):
+    """A curl-side block (403/429/etc, possibly with a block-page body) must NOT be returned as
+    if it were a rescue — crawl4ai forces status_code=200 on any non-empty fallback return, so
+    passing through a block page here would fake a success."""
+    monkeypatch.setattr(pipe_scraper, "AsyncSession",
+                         lambda **kw: _FakeCurlSession(response=_FakeCurlResponse(403, "<html>blocked</html>")))
+    html = asyncio.run(pipe_scraper._fallback_fetch("https://x.test"))
+    assert html is None
+
+
+def test_fallback_fetch_returns_none_on_exception(monkeypatch):
+    """Fail-soft: a connection error must not propagate — degrades to None."""
+    monkeypatch.setattr(pipe_scraper, "AsyncSession",
+                         lambda **kw: _FakeCurlSession(exc=ConnectionError("connection refused")))
+    html = asyncio.run(pipe_scraper._fallback_fetch("https://x.test"))
+    assert html is None
+
+
+def test_fallback_fetch_respects_timeout(monkeypatch):
+    """A hanging fetch is cut off by the outer asyncio.wait_for bound, not left to run indefinitely."""
+    monkeypatch.setattr(pipe_scraper, "FALLBACK_FETCH_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(pipe_scraper, "AsyncSession",
+                         lambda **kw: _FakeCurlSession(response=_FakeCurlResponse(200, "x"), delay=5))
+    t0 = time_module.monotonic()
+    html = asyncio.run(pipe_scraper._fallback_fetch("https://x.test"))
+    elapsed = time_module.monotonic() - t0
+    assert html is None
+    assert elapsed < 1.0, f"fallback fetch took {elapsed}s — timeout bound did not fire"
+
+
+# ---------------------------------------------------------------------------
+# _own_fallback_rescue (path b) — exercised through the REAL _scrape_one except block via
+# _scrape_all, not called directly, so the test proves the except handler actually reaches it
+# ---------------------------------------------------------------------------
+
+class _FakeHardFailureCrawler:
+    """Raises on the real URL (simulating a hard browser failure — e.g. navigation timeout, the
+    crossref signature); succeeds on raw:// (simulating crawl4ai's own raw-HTML-to-markdown
+    pipeline, separately verified for real against installed crawl4ai)."""
+    def __init__(self, *a, **kw):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def arun(self, url, config=None):
+        if url.startswith("raw://"):
+            return _FakeResult(raw_markdown="rescued content via pipe_scraper's own curl_cffi "
+                                             "fallback, deliberately padded well past the "
+                                             "100-byte empty threshold so this classifies as ok "
+                                             "rather than empty in the assertions below")
+        raise Exception("simulated hard browser failure (e.g. navigation timeout)")
+
+
+@pytest.mark.asyncio
+async def test_own_fallback_rescue_fires_from_scrape_one_except_block(tmp_path, monkeypatch):
+    """Integration test through the REAL _scrape_one exception path — _scrape_all -> _scrape_one
+    -> except Exception -> _own_fallback_rescue, not a direct call to _own_fallback_rescue in
+    isolation. Proves the except block actually reaches the rescue, not just that the rescue
+    function works when called on its own."""
+    log_file = tmp_path / "pipe_scrape_log.jsonl"
+    monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
+    monkeypatch.setattr(pipe_scraper, "AsyncWebCrawler", _FakeHardFailureCrawler)
+
+    async def _fake_fetch(url):
+        return "<html><body>curl_cffi rescued this page — real content, long enough to pass the empty threshold</body></html>"
+    monkeypatch.setattr(pipe_scraper, "_fallback_fetch", _fake_fetch)
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    results = await pipe_scraper._scrape_all(["https://x.test/a"], output_dir,
+                                              download_delay=0.01, concurrency_per_domain=8)
+
+    assert results[0]["outcome"] == "ok"
+    assert results[0]["status_code"] == 200
+    assert (output_dir / pipe_scraper._url_to_filename("https://x.test/a")).exists()
+
+    records = [json.loads(l) for l in log_file.read_text(encoding="utf-8").splitlines()]
+    assert len(records) == 1
+    r = records[0]
+    assert r["pipe_fallback_used"] is True
+    assert r["pipe_fallback_resolved"] is True
+    assert r["outcome"] == "ok"
+    assert r["http_status"] == 200
+    # No real crawl4ai diagnosis exists for a browser call that raised before producing a result —
+    # these must stay None, not be filled in from the unrelated raw:// conversion call's own stats
+    assert r["crawl4ai_success"] is None
+    assert r["crawl4ai_resolved_by"] is None
+    assert r["crawl4ai_fallback_fetch_used"] is None
+
+
+@pytest.mark.asyncio
+async def test_own_fallback_rescue_all_failed_when_curl_also_fails(tmp_path, monkeypatch):
+    """Third state: browser raised AND pipe_scraper's own fallback also failed. outcome stays
+    'error', http_status stays null (never a faked 200), pipe_fallback_used=True/resolved=False
+    distinguishes this from 'browser succeeded, path b never entered'."""
+    log_file = tmp_path / "pipe_scrape_log.jsonl"
+    monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
+    monkeypatch.setattr(pipe_scraper, "AsyncWebCrawler", _FakeHardFailureCrawler)
+
+    async def _fake_fetch_fails(url):
+        return None
+    monkeypatch.setattr(pipe_scraper, "_fallback_fetch", _fake_fetch_fails)
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    results = await pipe_scraper._scrape_all(["https://x.test/a"], output_dir,
+                                              download_delay=0.01, concurrency_per_domain=8)
+
+    assert results[0]["outcome"] == "error"
+    assert results[0]["status_code"] is None
+
+    records = [json.loads(l) for l in log_file.read_text(encoding="utf-8").splitlines()]
+    r = records[0]
+    assert r["pipe_fallback_used"] is True
+    assert r["pipe_fallback_resolved"] is False
+    assert r["http_status"] is None
+
+
+# ---------------------------------------------------------------------------
+# crawl4ai's own fallback (path a) surfacing in the log — via the EXISTING
+# extract_crawl4ai_diagnosis pass-through, no new code path, confirming resolved_by=fallback_fetch
+# reads through correctly and pipe_fallback_* stays False (path b never entered)
+# ---------------------------------------------------------------------------
+
+class _FakeCrawl4aiOwnFallbackCrawler:
+    def __init__(self, *a, **kw):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def arun(self, url, config=None):
+        result = _FakeResult(raw_markdown="rescued via crawl4ai's own fallback_fetch_function, "
+                                           "plenty of content here to clear the threshold")
+        result.crawl_stats = {"attempts": 1, "resolved_by": "fallback_fetch", "fallback_fetch_used": True}
+        return result
+
+
+@pytest.mark.asyncio
+async def test_crawl4ai_own_fallback_surfaces_in_log_distinctly_from_pipe_fallback(tmp_path, monkeypatch):
+    log_file = tmp_path / "pipe_scrape_log.jsonl"
+    monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
+    monkeypatch.setattr(pipe_scraper, "AsyncWebCrawler", _FakeCrawl4aiOwnFallbackCrawler)
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    await pipe_scraper._scrape_all(["https://x.test/a"], output_dir,
+                                    download_delay=0.01, concurrency_per_domain=8)
+
+    records = [json.loads(l) for l in log_file.read_text(encoding="utf-8").splitlines()]
+    r = records[0]
+    assert r["crawl4ai_resolved_by"] == "fallback_fetch"
+    assert r["crawl4ai_fallback_fetch_used"] is True
+    # This was a non-exception result — pipe_scraper's own except-block rescue never entered
+    assert r["pipe_fallback_used"] is False
+    assert r["pipe_fallback_resolved"] is False

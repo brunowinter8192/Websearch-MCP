@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
+from curl_cffi.requests import AsyncSession
 
 # From src/scraper/scrape_url.py: same config-hash algorithm + crawl4ai diagnosis extraction used
 # by the ad-hoc path's log (generic, not path-specific — reused rather than re-implemented)
@@ -23,6 +24,7 @@ CONCURRENCY_PER_DOMAIN = 8    # Scrapy per-domain in-flight cap
 PAGE_TIMEOUT_MS = 15000
 DELAY_BEFORE_RETURN_HTML = 0.5
 EMPTY_THRESHOLD_BYTES = 100
+FALLBACK_FETCH_TIMEOUT_S = 15.0   # symmetric with PAGE_TIMEOUT_MS — comparable worst-case cost per acquisition attempt
 
 # ORCHESTRATOR
 
@@ -90,15 +92,83 @@ def _extract_pipe_config_stamp(
         "override_navigator": run_cfg.override_navigator,
         "magic": run_cfg.magic,
         "remove_consent_popups": run_cfg.remove_consent_popups,
+        # crawl4ai's OWN fallback_fetch_function wiring only (path a) — pipe_scraper's own
+        # except-block rescue (path b, _own_fallback_rescue) is unconditional code, not a config
+        # object attribute, so it has no stamp field; see pipe_scrape_logger.py's schema comment.
+        "fallback_armed": run_cfg.fallback_fetch_function is not None,
         "download_delay_s": download_delay,
         "concurrency_per_domain": concurrency_per_domain,
         "empty_threshold_bytes": EMPTY_THRESHOLD_BYTES,
     }
 
+# Plain-HTTP-with-browser-TLS-fingerprint acquisition attempt for the case where the BROWSER is
+# the weaker client: a capture run took 0/23 on crossref.org, every URL empty at the ~15s
+# page-load ceiling with no HTTP status, while plain curl on the same URLs returned HTTP 200 /
+# 79274 bytes in 7.2s (process-docs/pipe_scraper_hardening/). curl_cffi impersonate="chrome"
+# carries a real browser TLS fingerprint, not just a UA string — an httpx/requests fallback would
+# be the weaker client again and defeat the purpose (process-docs/news_pipeline/: impersonate=
+# "chrome" got 80/425 proxies through Cloudflare with HTTP 200 where another client managed
+# 0/17202, the isolating variable being the TLS fingerprint alone). Used as BOTH: (a) wired
+# directly into CrawlerRunConfig.fallback_fetch_function — crawl4ai's own mechanism, invoked when
+# the browser returns a non-exception result that is_blocked() flags; (b) called directly from
+# _scrape_one's except block via _own_fallback_rescue — the browser-raised-an-exception case
+# crawl4ai's own mechanism cannot reach at max_retries=0 (verified: async_webcrawler.py re-raises
+# past the fallback block when len(proxy_list)<=1 and max_attempts<=1, pipe_scraper's exact
+# config). Bounded (curl_cffi's own timeout= plus an outer asyncio.wait_for) and fail-soft: any
+# exception — timeout, connection error, TLS handshake failure — returns None, degrading to
+# today's behavior; a failing fallback must never break the run. status_code != 200 gate is
+# deliberate: crawl4ai's own fallback wiring forces status_code=200 on ANY non-empty return value
+# regardless of what actually happened, so if curl_cffi itself got blocked (403/429) but still
+# returned an HTML block page, returning it anyway would make crawl4ai mark that a false success.
+async def _fallback_fetch(url: str) -> str | None:
+    try:
+        async with AsyncSession(impersonate="chrome") as session:
+            response = await asyncio.wait_for(
+                session.get(url, timeout=FALLBACK_FETCH_TIMEOUT_S), timeout=FALLBACK_FETCH_TIMEOUT_S,
+            )
+        if response.status_code != 200:
+            return None
+        return response.text
+    except Exception:
+        return None
+
+# pipe_scraper's OWN fallback rescue (path b) — called only from _scrape_one's except block, the
+# one place crawl4ai's own fallback_fetch_function cannot reach at max_retries=0 (browser call
+# raised outright, no crawl_result ever formed). Converts the fetched HTML to markdown via
+# crawl4ai's own raw:// pipeline (verified: raw:// URLs run through the same
+# DefaultMarkdownGenerator, are exempted from anti-bot/fallback machinery entirely — no recursion
+# risk from reusing run_cfg's fallback_fetch_function here) rather than hand-rolling HTML-to-markdown.
+# Returns (outcome, http_status, byte_count, pipe_fallback_used, pipe_fallback_resolved).
+# pipe_fallback_resolved describes the FETCH (curl_cffi returned a genuine 200 with a body) — it is
+# NOT about whether that body converted into usable markdown, which is what `outcome` describes.
+# The two can legitimately disagree: resolved=True with outcome="empty" means curl_cffi got a real
+# 200 but the raw://-pipeline conversion produced too little content to clear
+# EMPTY_THRESHOLD_BYTES — read that as "fetch worked, content didn't", not as a contradiction.
+# http_status is 200 ONLY when pipe_fallback_resolved is True (a real curl_cffi 200) — never faked,
+# unlike crawl4ai's own fallback wiring which forces 200 regardless of the real outcome.
+async def _own_fallback_rescue(
+    crawler: AsyncWebCrawler, url: str, run_cfg: CrawlerRunConfig, output_dir: Path,
+) -> tuple[str, int | None, int, bool, bool]:
+    html = await _fallback_fetch(url)
+    if not html:
+        return 'error', None, 0, True, False
+    try:
+        fb_result = await crawler.arun(url=f"raw://{html}", config=run_cfg)
+        raw_md = (fb_result.markdown.raw_markdown if fb_result.markdown else '') or ''
+    except Exception:
+        raw_md = ''
+    byte_count = len(raw_md.encode('utf-8'))
+    if raw_md:
+        fname = _url_to_filename(url)
+        (output_dir / fname).write_text(f"<!-- source: {url} -->\n\n{raw_md}", encoding='utf-8')
+    outcome = 'ok' if byte_count >= EMPTY_THRESHOLD_BYTES else 'empty'
+    return outcome, 200, byte_count, True, True
+
 # Assemble and write one JSONL record for a single URL's outcome — fail-soft via log_pipe_scrape
 def _log_pipe_record(
     run_ctx: dict, ts: str, url: str, domain: str, outcome: str,
     status: int | None, byte_count: int, wall_ms: int, diagnosis: dict,
+    pipe_fallback_used: bool = False, pipe_fallback_resolved: bool = False,
 ) -> None:
     log_pipe_scrape({
         "ts": ts, "run_id": run_ctx["run_id"], "url": url, "domain": domain,
@@ -108,6 +178,7 @@ def _log_pipe_record(
         "crawl4ai_attempts": diagnosis.get("crawl4ai_attempts"),
         "crawl4ai_resolved_by": diagnosis.get("crawl4ai_resolved_by"),
         "crawl4ai_fallback_fetch_used": diagnosis.get("crawl4ai_fallback_fetch_used"),
+        "pipe_fallback_used": pipe_fallback_used, "pipe_fallback_resolved": pipe_fallback_resolved,
         "config_hash": run_ctx["config_hash"], "config": run_ctx["config"],
     })
 
@@ -134,10 +205,19 @@ async def _scrape_one(
         try:
             result = await crawler.arun(url=url, config=run_cfg)
         except Exception:
+            # crawl4ai's own fallback_fetch_function cannot reach this failure mode at
+            # max_retries=0 (verified: the browser exception re-raises past that block entirely
+            # for a single-implicit-proxy/no-retry config — this except clause is the only place
+            # that failure mode is ever seen). wall_ms below deliberately includes this rescue
+            # attempt's full cost on top of the failed browser attempt — see pipe_scrape_logger.py's
+            # wall_ms schema note.
+            outcome, status, byte_count, fb_used, fb_resolved = await _own_fallback_rescue(
+                crawler, url, run_cfg, output_dir)
             wall_ms = int((time.time() - t0) * 1000)
-            _log_pipe_record(run_ctx, ts, url, domain, 'error', None, 0, wall_ms, {})
-            return {'url': url, 'wall_ms': wall_ms,
-                    'bytes': 0, 'status_code': None, 'outcome': 'error'}
+            _log_pipe_record(run_ctx, ts, url, domain, outcome, status, byte_count, wall_ms, {},
+                              pipe_fallback_used=fb_used, pipe_fallback_resolved=fb_resolved)
+            return {'url': url, 'wall_ms': wall_ms, 'bytes': byte_count,
+                    'status_code': status, 'outcome': outcome}
         wall_ms = int((time.time() - t0) * 1000)
 
     raw_md = (result.markdown.raw_markdown if result.markdown else '') or ''
@@ -235,6 +315,16 @@ def _build_configs() -> tuple[BrowserConfig, CrawlerRunConfig]:
         # six wait sites (five 300ms, one 500ms) + the Python-side sleep
         # (process-docs/time_budget/2026-08-04_config_rules_and_the_promised_maximum.md).
         remove_consent_popups=True,
+        # crawl4ai's OWN fallback mechanism (path a) — invoked internally when the browser returns
+        # a non-exception result that is_blocked() flags (e.g. HTTP 403/503 block page, HTTP 200 +
+        # near-empty body). Confirmed working at max_retries=0 (this module's default — never
+        # raised, see _own_fallback_rescue's comment for why) via a local synthetic-server test: a
+        # near-empty HTTP 200 response correctly triggered is_blocked()'s "HTTP 200 + near-empty
+        # content" branch and the fallback fired. Costs nothing when nothing is blocked. Does NOT
+        # cover the browser-raised-an-exception case — that is _own_fallback_rescue, called
+        # directly from _scrape_one's except block, a separate mechanism (see that function's
+        # comment for why max_retries was deliberately NOT raised to reach this case here instead).
+        fallback_fetch_function=_fallback_fetch,
         verbose=False,
     )
     return browser_cfg, run_cfg
