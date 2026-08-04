@@ -76,10 +76,10 @@ matching the gate's pacing, not collapsed.
 `run_id`, correct config stamp, but all `ts` values within ~2ms of each other (the defect, not yet caught
 at that point). Same smoke pattern re-run after the fix (6 URLs): real, spread timestamps as above.
 
-Full test suite before this milestone's changes: `9 failed, 105 passed, 0 errors` (established at
-milestone 1). After adding the logger + 7 initial tests: `9 failed, 112 passed, 0 errors`. After the ts
-fix + 1 additional regression test: `9 failed, 113 passed, 0 errors`. Diffed the `FAILED` line list
-against the milestone-1 baseline at every stage — identical, no drift. The 9 pre-existing failures
+Full test suite before this work: `9 failed, 105 passed, 0 errors` (the baseline established once
+`curl_cffi` was declared). After adding the logger + 7 initial tests: `9 failed, 112 passed, 0 errors`.
+After the ts fix + 1 additional regression test: `9 failed, 113 passed, 0 errors`. Diffed the `FAILED`
+line list against that baseline at every stage — identical, no drift. The 9 pre-existing failures
 (`tests/test_query_logger.py`, `tests/test_proxy_pool.py`) are unrelated to this work and were confirmed
 unchanged throughout.
 

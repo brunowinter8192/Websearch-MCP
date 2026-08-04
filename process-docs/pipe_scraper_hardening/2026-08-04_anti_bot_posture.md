@@ -1,8 +1,8 @@
-# Milestone 4 — fixed anti-bot posture for pipe_scraper
+# Fixed anti-bot posture for pipe_scraper (2026-08-04)
 
-2026-08-04. Fourth milestone of the `pipe_scraper_hardening` effort on `src/crawler/pipe_scraper.py`.
+Part of the `pipe_scraper_hardening` effort on `src/crawler/pipe_scraper.py`.
 Gave the path its first anti-bot configuration — previously `BrowserConfig(headless=True,
-verbose=False)`, nothing else. Preceded by milestone 3 (persistent JSONL log) deliberately: the
+verbose=False)`, nothing else. Preceded by the persistent JSONL log deliberately: the
 project's calibration method derives config values from external sources only, never from this
 project's own domain sweeps, so the operational log has to exist BEFORE a config change to have
 anything to compare later runs against.
@@ -30,7 +30,7 @@ transfers with a different justification on each path in one case (see `remove_c
   `use_undetected = isinstance(self.adapter, UndetectedAdapter)` (`async_crawler_strategy.py:117`)
   resolves False with the default `PlaywrightAdapter`. Measured to hold at
   `CONCURRENCY_PER_DOMAIN=8` on the 316-URL reference set with 0 crashes
-  (milestone 2, `2026-08-04_stealth_concurrency_probe.md`, same area). Second effect worth naming:
+  (measured earlier in this same area). Second effect worth naming:
   crawl4ai only appends `--disable-gpu`/`--disable-gpu-compositing`/`--disable-software-rasterizer`
   when `enable_stealth` is FALSE — its own comment says those flags disable WebGL, itself a headless
   signal anti-bot sensors read; confirmed post-implementation that these flags are genuinely absent
@@ -96,8 +96,8 @@ playwright_stealth.Stealth)`. Proved the test has teeth (not just a pass-through
 `StealthAdapter()` directly — `_stealth_available` flips to `False`, `_stealth` to `None`, exactly what
 would fail these assertions.
 
-316-URL regression run (`dev/explore_pipeline/06_discovered_urls.txt`, the same set milestone 2's
-concurrency probe used): `316/316 ok, 0 errors in 317s` — unchanged from the pre-hardening baseline,
+316-URL regression run (`dev/explore_pipeline/06_discovered_urls.txt`, the same set the concurrency
+probe used): `316/316 ok, 0 errors in 317s` — unchanged from the pre-hardening baseline,
 confirming the new posture didn't break the validated path. Explicitly not read as evidence the
 hardening WORKS (this domain already passed unhardened) — only as a "did we break it" check, per the
 project's own calibration rule against tuning on sampled domains.

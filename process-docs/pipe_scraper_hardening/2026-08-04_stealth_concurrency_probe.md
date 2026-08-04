@@ -1,9 +1,9 @@
-# Milestone 2 — measuring enable_stealth at CONCURRENCY_PER_DOMAIN=8
+# Measuring enable_stealth at CONCURRENCY_PER_DOMAIN=8 (2026-08-04)
 
-2026-08-04. Second milestone of the `pipe_scraper_hardening` effort on `src/crawler/pipe_scraper.py`
-(the mass-capture scrape path). Its browser config today is `BrowserConfig(headless=True, verbose=False)`
-— no anti-bot posture. A later milestone considers adding `enable_stealth=True`; this milestone measures
-the one blocking risk before that decision, without touching production source.
+Part of the `pipe_scraper_hardening` effort on `src/crawler/pipe_scraper.py` (the mass-capture scrape
+path). Its browser config at the time of this measurement was `BrowserConfig(headless=True,
+verbose=False)` — no anti-bot posture. Adding `enable_stealth=True` was under consideration; this
+measures the one blocking risk before that decision, without touching production source.
 
 ## Why this, not UndetectedAdapter
 
