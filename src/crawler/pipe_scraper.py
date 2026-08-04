@@ -4,11 +4,19 @@ import asyncio
 import random
 import re
 import time
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
+
+# From src/scraper/scrape_url.py: same config-hash algorithm + crawl4ai diagnosis extraction used
+# by the ad-hoc path's log (generic, not path-specific — reused rather than re-implemented)
+from src.scraper.scrape_url import hash_config, extract_crawl4ai_diagnosis
+# From src/crawler/pipe_scrape_logger.py: per-URL JSONL log with run/config stamp
+from src.crawler.pipe_scrape_logger import log_pipe_scrape
 
 DOWNLOAD_DELAY = 1.0          # Scrapy per-domain base delay (s); jitter = uniform(0.5×, 1.5×)
 CONCURRENCY_PER_DOMAIN = 8    # Scrapy per-domain in-flight cap
@@ -62,6 +70,43 @@ async def _gate_domain(state: dict, download_delay: float) -> None:
             await asyncio.sleep(jitter - gap)
         state['lastseen'] = time.time()
 
+# Read the pacing/browser config actually in effect off the real constructed objects + this
+# module's own pacing constants — never re-declare values here, so the stamp can't drift from
+# what actually ran (same rule as scrape_url.extract_config_stamp).
+def _extract_pipe_config_stamp(
+    browser_cfg: BrowserConfig,
+    run_cfg: CrawlerRunConfig,
+    download_delay: float,
+    concurrency_per_domain: int,
+) -> dict:
+    return {
+        "headless": browser_cfg.headless,
+        "enable_stealth": browser_cfg.enable_stealth,
+        "wait_until": run_cfg.wait_until,
+        "page_timeout_ms": run_cfg.page_timeout,
+        "delay_before_return_html_s": run_cfg.delay_before_return_html,
+        "cache_mode": run_cfg.cache_mode.value,
+        "download_delay_s": download_delay,
+        "concurrency_per_domain": concurrency_per_domain,
+        "empty_threshold_bytes": EMPTY_THRESHOLD_BYTES,
+    }
+
+# Assemble and write one JSONL record for a single URL's outcome — fail-soft via log_pipe_scrape
+def _log_pipe_record(
+    run_ctx: dict, ts: str, url: str, domain: str, outcome: str,
+    status: int | None, byte_count: int, wall_ms: int, diagnosis: dict,
+) -> None:
+    log_pipe_scrape({
+        "ts": ts, "run_id": run_ctx["run_id"], "url": url, "domain": domain,
+        "outcome": outcome, "http_status": status, "bytes": byte_count, "wall_ms": wall_ms,
+        "crawl4ai_success": diagnosis.get("crawl4ai_success"),
+        "crawl4ai_error_message": diagnosis.get("crawl4ai_error_message"),
+        "crawl4ai_attempts": diagnosis.get("crawl4ai_attempts"),
+        "crawl4ai_resolved_by": diagnosis.get("crawl4ai_resolved_by"),
+        "crawl4ai_fallback_fetch_used": diagnosis.get("crawl4ai_fallback_fetch_used"),
+        "config_hash": run_ctx["config_hash"], "config": run_ctx["config"],
+    })
+
 # Scrape one URL: acquire domain semaphore cap, gate on per-domain delay, then run crawler.
 async def _scrape_one(
     crawler: AsyncWebCrawler,
@@ -71,16 +116,20 @@ async def _scrape_one(
     download_delay: float,
     concurrency_per_domain: int,
     output_dir: Path,
+    run_ctx: dict,
 ) -> dict:
     domain = urlparse(url).netloc
     state = _ensure_domain_state(domain_states, domain, concurrency_per_domain)
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
     async with state['sem']:
         await _gate_domain(state, download_delay)
         t0 = time.time()
         try:
             result = await crawler.arun(url=url, config=run_cfg)
         except Exception:
-            return {'url': url, 'wall_ms': int((time.time() - t0) * 1000),
+            wall_ms = int((time.time() - t0) * 1000)
+            _log_pipe_record(run_ctx, ts, url, domain, 'error', None, 0, wall_ms, {})
+            return {'url': url, 'wall_ms': wall_ms,
                     'bytes': 0, 'status_code': None, 'outcome': 'error'}
         wall_ms = int((time.time() - t0) * 1000)
 
@@ -101,6 +150,9 @@ async def _scrape_one(
         fname = _url_to_filename(url)
         (output_dir / fname).write_text(f"<!-- source: {url} -->\n\n{raw_md}", encoding='utf-8')
 
+    diagnosis = extract_crawl4ai_diagnosis(result)
+    _log_pipe_record(run_ctx, ts, url, domain, outcome, status, byte_count, wall_ms, diagnosis)
+
     return {'url': url, 'wall_ms': wall_ms, 'bytes': byte_count,
             'status_code': status, 'outcome': outcome}
 
@@ -120,11 +172,17 @@ async def _scrape_all(
         markdown_generator=DefaultMarkdownGenerator(),
         verbose=False,
     )
+    config_stamp = _extract_pipe_config_stamp(browser_cfg, run_cfg, download_delay, concurrency_per_domain)
+    run_ctx = {
+        "run_id": str(uuid.uuid4()),
+        "config_hash": hash_config(config_stamp),
+        "config": config_stamp,
+    }
     domain_states: dict = {}
     async with AsyncWebCrawler(config=browser_cfg) as crawler:
         raw = await asyncio.gather(
             *[_scrape_one(crawler, url, run_cfg, domain_states,
-                          download_delay, concurrency_per_domain, output_dir)
+                          download_delay, concurrency_per_domain, output_dir, run_ctx)
               for url in urls],
             return_exceptions=True,
         )
