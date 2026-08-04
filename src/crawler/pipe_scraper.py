@@ -86,6 +86,10 @@ def _extract_pipe_config_stamp(
         "page_timeout_ms": run_cfg.page_timeout,
         "delay_before_return_html_s": run_cfg.delay_before_return_html,
         "cache_mode": run_cfg.cache_mode.value,
+        "simulate_user": run_cfg.simulate_user,
+        "override_navigator": run_cfg.override_navigator,
+        "magic": run_cfg.magic,
+        "remove_consent_popups": run_cfg.remove_consent_popups,
         "download_delay_s": download_delay,
         "concurrency_per_domain": concurrency_per_domain,
         "empty_threshold_bytes": EMPTY_THRESHOLD_BYTES,
@@ -159,6 +163,82 @@ async def _scrape_one(
     return {'url': url, 'wall_ms': wall_ms, 'bytes': byte_count,
             'status_code': status, 'outcome': outcome}
 
+# Construct the browser/run config actually used for a scrape run — factored out (not inlined in
+# _scrape_all) so a test can exercise the SAME real objects crawl4ai wires against, not a
+# re-declared copy. Anti-bot posture only; no extraction-side settings (no content filter, no
+# preserve_tags) — this path optimizes for getting through, not extraction quality (the capture
+# skill's Phase 3 LLM step does all cleanup afterwards).
+def _build_configs(download_delay: float, concurrency_per_domain: int) -> tuple[BrowserConfig, CrawlerRunConfig]:
+    browser_cfg = BrowserConfig(
+        headless=True,
+        verbose=False,
+        # Verified working on the installed stack, not assumed: crawl4ai 0.9.2's StealthAdapter
+        # (browser_adapter.py) imports playwright_stealth's `Stealth` class; playwright-stealth
+        # 2.0.3 provides it. The older `stealth_async` ImportError recorded against crawl4ai 0.8.6
+        # + playwright-stealth 2.0.2 (process-docs/scrape_pipeline/crawl4ai_stealth_stack_2026-05-31.md)
+        # no longer applies on this stack — confirmed live and by
+        # tests/test_pipe_scraper.py's wiring test, which asserts against crawl4ai's own
+        # BrowserManager/StealthAdapter objects rather than trusting this flag alone (StealthAdapter
+        # silently degrades to a no-op on ImportError with no error raised anywhere — a flag-only
+        # check would not have caught the 2026-05-31 break).
+        # Reachable here specifically because pipe_scraper passes no crawler_strategy/adapter to
+        # AsyncWebCrawler: browser_manager.py only builds the StealthAdapter when
+        # `enable_stealth and not use_undetected`, and use_undetected resolves from
+        # `isinstance(self.adapter, UndetectedAdapter)` (async_crawler_strategy.py:117) — default
+        # adapter here is PlaywrightAdapter, so that condition holds. The moment anyone passes a
+        # custom crawler_strategy/adapter to this module, re-check that this still resolves True.
+        # Measured to hold at CONCURRENCY_PER_DOMAIN=8 on the 316-URL reference set, 0 crashes
+        # (process-docs/pipe_scraper_hardening/2026-08-04_stealth_concurrency_probe.md). Second
+        # effect worth naming: crawl4ai only appends --disable-gpu/--disable-gpu-compositing/
+        # --disable-software-rasterizer when enable_stealth is FALSE (browser_manager.py) — its
+        # own comment says those flags disable WebGL, which anti-bot sensors read as headless.
+        # UndetectedAdapter (the OTHER stealth mechanism, used by src/scraper/scrape_url.py) is
+        # NOT used here: crawl4ai issue #1500 documents crashes above concurrency 1 ("Target
+        # page/context/browser has been closed"), incompatible by construction with this path's
+        # CONCURRENCY_PER_DOMAIN=8 on a pacing model validated at that concurrency.
+        enable_stealth=True,
+    )
+    run_cfg = CrawlerRunConfig(
+        cache_mode=CacheMode.BYPASS,
+        wait_until="domcontentloaded",
+        delay_before_return_html=DELAY_BEFORE_RETURN_HTML,
+        page_timeout=PAGE_TIMEOUT_MS,
+        markdown_generator=DefaultMarkdownGenerator(),
+        # Mouse-move + scroll signals anti-bot systems look for. async_crawler_strategy.py gates
+        # this on `config.simulate_user or config.magic` (~line 978) — available without magic's
+        # other, unwanted effect (see magic=False below).
+        simulate_user=True,
+        # navigator_overrider init script. Same file gates it on
+        # `config.override_navigator or config.simulate_user or config.magic` (~line 598) — also
+        # available without magic.
+        override_navigator=True,
+        # Explicitly False, not left at the implicit default — likely to look like a missed
+        # improvement to a later reader, so the full reasoning, not a summary: magic bundles
+        # simulate_user + override_navigator (both already taken individually above, same effect)
+        # PLUS a random user-agent via ValidUAGenerator, triggered by
+        # `config.magic or config.user_agent_mode == "random"` (async_crawler_strategy.py:553-554).
+        # At CONCURRENCY_PER_DOMAIN=8 that means eight different generated UAs from one IP hitting
+        # one domain at once — a signal in itself. A generated UA also has no knowledge of which
+        # Chromium build is actually running in this browser instance; a UA/browser-version
+        # mismatch is a documented anti-bot flagging signal in scraper-practitioner reports. Net:
+        # take the two useful magic effects individually (above), leave the user-agent alone (the
+        # real installed browser's own UA).
+        magic=False,
+        # The capture skill DELETES a confirmed block page outright rather than cleaning it
+        # (skills/websearch-capture-and-index/SKILL.md Phase 3: "A confirmed block page is
+        # garbage -> DELETE it") — so on THIS path an un-dismissed consent wall is a LOST page, a
+        # reachability problem, not a cosmetic one. This is the opposite framing from
+        # src/scraper/scrape_url.py, where the same switch is a content-quality measure (an
+        # un-dismissed consent wall there degrades one answer, doesn't delete a page outright) —
+        # that asymmetry is why the setting transfers to this path at all, not just because it
+        # worked well there. Bounded cost: 1.3s worst case, counted from remove_consent_popups.js's
+        # six wait sites (five 300ms, one 500ms) + the Python-side sleep
+        # (process-docs/time_budget/2026-08-04_config_rules_and_the_promised_maximum.md).
+        remove_consent_popups=True,
+        verbose=False,
+    )
+    return browser_cfg, run_cfg
+
 # Scrape all URLs under a single crawler with per-domain Scrapy-style pacing.
 async def _scrape_all(
     urls: list[str],
@@ -166,15 +246,7 @@ async def _scrape_all(
     download_delay: float,
     concurrency_per_domain: int,
 ) -> list[dict]:
-    browser_cfg = BrowserConfig(headless=True, verbose=False)
-    run_cfg = CrawlerRunConfig(
-        cache_mode=CacheMode.BYPASS,
-        wait_until="domcontentloaded",
-        delay_before_return_html=DELAY_BEFORE_RETURN_HTML,
-        page_timeout=PAGE_TIMEOUT_MS,
-        markdown_generator=DefaultMarkdownGenerator(),
-        verbose=False,
-    )
+    browser_cfg, run_cfg = _build_configs(download_delay, concurrency_per_domain)
     config_stamp = _extract_pipe_config_stamp(browser_cfg, run_cfg, download_delay, concurrency_per_domain)
     run_ctx = {
         "run_id": str(uuid.uuid4()),

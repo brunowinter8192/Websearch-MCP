@@ -53,6 +53,8 @@ DEFAULT_LOG_PATH = Path(__file__).parent.parent.parent / "src" / "logs" / "pipe_
 #     "headless": bool, "enable_stealth": bool,
 #     "wait_until": str, "page_timeout_ms": int, "delay_before_return_html_s": float,
 #     "cache_mode": str,
+#     "simulate_user": bool, "override_navigator": bool, "magic": bool,
+#     "remove_consent_popups": bool,
 #     "download_delay_s": float, "concurrency_per_domain": int, "empty_threshold_bytes": int,
 #   }
 # }
