@@ -16,7 +16,9 @@ Pipeline: Discovery → URL Selection (pre-scrape) → Scrape (raw) → Cleanup 
 **Multiple domains = phase-by-phase across ALL of them, never domain-by-domain.**
 Given N seed domains, run every phase to completion for all N before entering the next phase: discover all → select all → ONE Phase-1b stop covering all → scrape all → clean all → index once at the end. `rag-cli index` operates on the whole collection directory, not on single files — indexing after domain 1 sweeps up domain 2's raw, uncleaned files and indexes them as garbage. Index is therefore the LAST action of the entire run and runs exactly once.
 
-**Scraper posture — best-effort, not guaranteed.** `src/crawler/pipe_scraper.py` is a GENERAL scraper; do NOT assume the scrape worked. Coverage verification is a first-class duty: every discovered URL that survives the cull must actually yield real content. On ANY systemic, diagnosable problem — a patterned coverage gap, a repeating block-type, a dominant error class (NOT scattered legit 404s) — STOP, do not push a half-broken capture into indexing, and report the IDENTIFIED problem to Opus: what fails, the evidence, your read of the cause. Iterate from there (different wait strategy, per-URL isolation, stealth, a per-site discover tweak — then re-run). The `>50%` / dozens-of-blocks thresholds below are hard floors, not the bar — a clearly-diagnosed problem warrants a STOP even under them.
+**Scraper posture — best-effort, not guaranteed.** `src/crawler/pipe_scraper.py` is a GENERAL scraper; do NOT assume the scrape worked. Coverage verification is a first-class duty: every discovered URL that survives the cull must actually yield real content.
+
+**A reachability problem is DIAGNOSED and REPORTED, never acted on.** The scraper runs ONE fixed calibration; it exposes no stealth, wait-strategy or per-domain lever, and none is coming — tuning happens in a separate session against the repo and its logs, never mid-capture. So on ANY systemic, diagnosable problem — a patterned coverage gap, a repeating block-type, a dominant error class (NOT scattered legit 404s) — do NOT stop, do NOT re-run, do NOT vary the config. Capture what does come through, carry it to Index, and put the diagnosis in the Completion Report: what failed, the evidence (block text / coverage delta / error breakdown), your read of the cause. A partial capture that is honestly reported beats a halted one.
 
 #### Phase 0 — Discovery
 
@@ -127,7 +129,9 @@ The scraper's own output is short: a console line with **success count, error co
 
 Take from that console line for the Completion Report: scraped N, errors K, **duration T**. The error breakdown (429 / timeout / http_error) is already itemized in the scrape report md.
 
-**Coverage gate — verify, don't assume.** Compare the scrape outcome against the cull-survived URL list — every URL should have yielded a usable body. `>50%` failed → STOP, report to Opus, do not proceed. STOP below that threshold too when the shortfall is SYSTEMIC and diagnosable: one block-type or error class hitting a coherent slice of URLs (e.g. all article pages regwalled while index pages pass). Report the identified problem to Opus — what failed, the evidence (block text / coverage delta / error breakdown), the suspected cause — and iterate; do NOT carry a patterned gap into Cleanup/Index. Scattered legit 404s / thin pages are NOT a stop — those flow to the post-scrape drop.
+**Coverage gate — verify, don't assume, keep going.** Compare the scrape outcome against the cull-survived URL list — every URL should have yielded a usable body. Where it did not, classify the shortfall: SYSTEMIC (one block-type or error class hitting a coherent slice — e.g. all article pages regwalled while index pages pass) vs scattered legit 404s / thin pages, which are ordinary and flow to the post-scrape drop.
+
+A systemic gap is a REPORT line, not a stop — record it under `systemic gap` in the Completion Report and continue to Cleanup → Index with what you have. State the failed count, the affected URL slice, the evidence, and your suspected cause. Whatever passed still gets cleaned and indexed.
 
 #### Phase 3 — Cleanup
 
@@ -261,10 +265,13 @@ URLs scraped:                       N − K
 Scrape:                             M ok, E errors   ·   duration: T   (errors itemized in /tmp scrape report md)
 md dropped (post-scrape, thin):     D
 blocks detected (cookie/paywall):   B    — confirmed real-block MDs + example URLs (NOT auto-stripped)
+systemic gap:                       none | <failed count + affected URL slice + evidence + suspected cause>
 Final md indexed:                   M − D
 Collection:                         <COLLECTION>
 ```
 
 Keep the two drop reasons separate: scrape errors **E** come from the scraper, thin/noise **D** comes from the cleanup check.
+
+`systemic gap` is `none` unless the coverage gate classified one. It is a diagnosis handed upward, never something you resolved — Opus routes it to the user.
 
 End with this report. STOP. No commit needed (output is data files, not code).

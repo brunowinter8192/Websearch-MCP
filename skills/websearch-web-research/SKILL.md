@@ -105,6 +105,10 @@ worker-cli spawn capture-<collection_lower> /tmp/spawn-<name>.md <current_projec
 
 **YOU edit the `/tmp` URL-list file itself — never send the worker patterns to apply.** Strip the unwanted URLs from the file, then tell the worker the resulting line count and give it go. The worker re-reads the same path and scrapes whatever is in it; it never rewrites the list. Rationale: the culled file on disk IS the verifiable state — its line count says exactly what will be scraped. Handing over patterns instead defers the cull into the worker and makes it visible only after the scrape has already run.
 
-**5.** When the worker reports the funnel, check `blocks detected` — non-zero means it found cookie/paywall MDs (not auto-stripped). Decide from the reported patterns whether a `src/` strip-script is warranted.
+**5.** When the worker reports the funnel, check two lines.
+
+`blocks detected` — non-zero means it found cookie/paywall MDs (not auto-stripped). Decide from the reported patterns whether a `src/` strip-script is warranted.
+
+`systemic gap` — anything other than `none` means a domain class did not come through. **Flag it to the user and keep rolling.** The capture is already indexed with whatever passed; there is nothing to re-run. The scraper carries one fixed calibration and exposes no per-domain lever, so this is NOT a value to adjust here — it is input for a separate tuning session against this repo and `src/logs/pipe_scrape_log.jsonl`. Report to the user: the domain, the failure pattern, the count, the worker's evidence and suspected cause, and that resolving it needs its own session. Then continue whatever the user actually asked for.
 
 **Between step 4 and step 5, the worker owns Scrape → Cleanup → Index end-to-end.** Opus intervenes at exactly TWO points: (a) hand the worker the culled `/tmp` URL list + go (step 4), and (b) receive the final funnel report (step 5).
