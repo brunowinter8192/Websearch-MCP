@@ -176,7 +176,26 @@ async def try_scrape(url: str) -> tuple[str, dict]:
     run_config = CrawlerRunConfig(
         magic=True,
         wait_until="load",
-        page_timeout=60000,
+        # 60000 was not a derived figure — crawl4ai's own CHANGELOG lists replacing a previously
+        # hardcoded 30s timeout, justified only as "better handling for slow-loading pages", no
+        # measurement behind the raise. Rule applied: a phase cap is not raised above the default
+        # of the layer that actually executes it without evidence for the raise. patchright
+        # 1.61.2 (DEFAULT_PLAYWRIGHT_TIMEOUT_IN_MILLISECONDS, _impl/_helper.py) — the library that
+        # actually runs this timeout — defaults to 30000; crawl4ai's own docs/examples scatter
+        # across 10000/30000/60000/80000/120000/200000, no consistent evidence either way. No
+        # evidence for the raise -> falls back to the executing layer's own default.
+        page_timeout=30000,
+        # Explicit, not the library's 0.1s default. crawl4ai issue #1665: third-party measurement
+        # on a JS-heavy page — 0s -> 12,376 chars (partial), 3s -> 33,874 chars (full), 5s and 20s
+        # -> identical 33,874 (saturation knee at 3s, flat above it across ~an order of magnitude
+        # of extra wait, so going higher only costs). Set to 2.0, not 3.0, because
+        # remove_consent_popups below already spends ~1s of render wait on every page before HTML
+        # capture (two unconditional 500ms sleeps, see its comment) — this project already
+        # reproduced that as a render-wait effect, not a consent-removal effect (identical 126-byte
+        # raw_markdown diff on rfc-editor.org from delay_before_return_html=1.1 ALONE, with
+        # remove_consent_popups=False). The two windows are counted against each other, not added:
+        # ~1s consent-forced wait + 2.0s here = ~3s effective render window, matching the knee.
+        delay_before_return_html=2.0,
         max_retries=0,
         cache_mode=CacheMode.BYPASS,
         markdown_generator=DefaultMarkdownGenerator(
@@ -277,6 +296,7 @@ def extract_config_stamp(browser_config, adapter, crawler_strategy, run_config) 
         "magic": run_config.magic,
         "wait_until": run_config.wait_until,
         "page_timeout_ms": run_config.page_timeout,
+        "delay_before_return_html_s": run_config.delay_before_return_html,
         "max_retries": run_config.max_retries,
         "cache_mode": run_config.cache_mode.value,
         "content_filter": type(content_filter).__name__,
