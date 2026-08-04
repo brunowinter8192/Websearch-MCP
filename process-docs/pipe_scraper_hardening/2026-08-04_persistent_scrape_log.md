@@ -1,6 +1,6 @@
-# Milestone 3 — persistent per-URL JSONL log with config stamp
+# Persistent per-URL JSONL log with config stamp (2026-08-04)
 
-2026-08-04. Third milestone of the `pipe_scraper_hardening` effort on `src/crawler/pipe_scraper.py`
+Part of the `pipe_scraper_hardening` effort on `src/crawler/pipe_scraper.py`
 (the mass-capture scrape path). Precedes any config change (stealth, fallback fetch, pacing tuning) by
 design: this project's calibration method derives config values from external sources only (vendor
 docs/source/issue trackers), never from its own domain sweeps — a sweep's result holds for the sampled
