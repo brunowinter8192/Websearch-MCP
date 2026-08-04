@@ -1,0 +1,2220 @@
+{
+  "label": "baseline",
+  "enable_stealth": false,
+  "wall_s": 317.275582075119,
+  "crash_log": [],
+  "results": [
+    {
+      "url": "https://docs.github.com/de/enterprise-cloud@latest/rest",
+      "wall_ms": 1133,
+      "bytes": 32587,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/enterprise-server@3.16/rest",
+      "wall_ms": 1023,
+      "bytes": 14553,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/enterprise-server@3.17/rest",
+      "wall_ms": 846,
+      "bytes": 25625,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/enterprise-server@3.18/rest",
+      "wall_ms": 886,
+      "bytes": 25301,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/enterprise-server@3.19/rest",
+      "wall_ms": 802,
+      "bytes": 26158,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/enterprise-server@3.20/rest",
+      "wall_ms": 821,
+      "bytes": 27067,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/enterprise-server@3.21/rest",
+      "wall_ms": 819,
+      "bytes": 27297,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest",
+      "wall_ms": 937,
+      "bytes": 23210,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/about-the-rest-api",
+      "wall_ms": 853,
+      "bytes": 20266,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/about-the-rest-api/about-the-openapi-description-for-the-rest-api",
+      "wall_ms": 798,
+      "bytes": 23367,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/about-the-rest-api/about-the-rest-api",
+      "wall_ms": 906,
+      "bytes": 24312,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/about-the-rest-api/api-versions",
+      "wall_ms": 922,
+      "bytes": 27865,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/about-the-rest-api/breaking-changes",
+      "wall_ms": 861,
+      "bytes": 50917,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/about-the-rest-api/comparing-githubs-rest-api-and-graphql-api",
+      "wall_ms": 772,
+      "bytes": 24987,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/actions",
+      "wall_ms": 865,
+      "bytes": 54285,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/actions/artifacts",
+      "wall_ms": 958,
+      "bytes": 41188,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/actions/cache",
+      "wall_ms": 940,
+      "bytes": 84217,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/actions/concurrency-groups",
+      "wall_ms": 851,
+      "bytes": 38523,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/actions/hosted-runners",
+      "wall_ms": 915,
+      "bytes": 78534,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/actions/oidc",
+      "wall_ms": 908,
+      "bytes": 56079,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/actions/permissions",
+      "wall_ms": 1108,
+      "bytes": 169157,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/actions/secrets",
+      "wall_ms": 999,
+      "bytes": 98742,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/actions/self-hosted-runner-groups",
+      "wall_ms": 934,
+      "bytes": 93136,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/actions/self-hosted-runners",
+      "wall_ms": 1020,
+      "bytes": 118189,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/actions/variables",
+      "wall_ms": 966,
+      "bytes": 96260,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/actions/workflow-jobs",
+      "wall_ms": 837,
+      "bytes": 46219,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/actions/workflow-runs",
+      "wall_ms": 1006,
+      "bytes": 151142,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/actions/workflows",
+      "wall_ms": 1014,
+      "bytes": 43556,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/activity",
+      "wall_ms": 924,
+      "bytes": 24885,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/activity/events",
+      "wall_ms": 954,
+      "bytes": 64423,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/activity/feeds",
+      "wall_ms": 787,
+      "bytes": 24671,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/activity/notifications",
+      "wall_ms": 870,
+      "bytes": 70023,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/activity/starring",
+      "wall_ms": 869,
+      "bytes": 56550,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/activity/watching",
+      "wall_ms": 870,
+      "bytes": 52362,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/agent-tasks",
+      "wall_ms": 803,
+      "bytes": 20470,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/agent-tasks/agent-tasks",
+      "wall_ms": 864,
+      "bytes": 40918,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/agents",
+      "wall_ms": 788,
+      "bytes": 24153,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/agents/secrets",
+      "wall_ms": 922,
+      "bytes": 79566,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/agents/variables",
+      "wall_ms": 1050,
+      "bytes": 77902,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/announcement-banners",
+      "wall_ms": 842,
+      "bytes": 30443,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/announcement-banners/enterprises",
+      "wall_ms": 846,
+      "bytes": 37932,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/announcement-banners/organizations",
+      "wall_ms": 881,
+      "bytes": 40385,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/apps",
+      "wall_ms": 798,
+      "bytes": 25575,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/apps/apps",
+      "wall_ms": 976,
+      "bytes": 107161,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/apps/installations",
+      "wall_ms": 851,
+      "bytes": 55506,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/apps/marketplace",
+      "wall_ms": 889,
+      "bytes": 55817,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/apps/oauth-applications",
+      "wall_ms": 998,
+      "bytes": 34417,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/apps/webhooks",
+      "wall_ms": 1059,
+      "bytes": 35467,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/authentication",
+      "wall_ms": 1107,
+      "bytes": 21537,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/authentication/authenticating-to-the-rest-api",
+      "wall_ms": 847,
+      "bytes": 36701,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/authentication/endpoints-available-for-fine-grained-personal-access-tokens",
+      "wall_ms": 1500,
+      "bytes": 177341,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/authentication/endpoints-available-for-github-app-installation-access-tokens",
+      "wall_ms": 1604,
+      "bytes": 186484,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/authentication/endpoints-available-for-github-app-user-access-tokens",
+      "wall_ms": 1899,
+      "bytes": 201012,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/authentication/keeping-your-api-credentials-secure",
+      "wall_ms": 1101,
+      "bytes": 30828,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/authentication/permissions-required-for-fine-grained-personal-access-tokens",
+      "wall_ms": 1832,
+      "bytes": 314330,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/authentication/permissions-required-for-github-apps",
+      "wall_ms": 3421,
+      "bytes": 619576,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/billing",
+      "wall_ms": 986,
+      "bytes": 21968,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/billing/billing",
+      "wall_ms": 1373,
+      "bytes": 35326,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/billing/budgets",
+      "wall_ms": 1472,
+      "bytes": 43774,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/billing/cost-centers",
+      "wall_ms": 1926,
+      "bytes": 53789,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/billing/usage",
+      "wall_ms": 1227,
+      "bytes": 55958,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/billing/usage-reports",
+      "wall_ms": 1977,
+      "bytes": 41279,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/branches",
+      "wall_ms": 995,
+      "bytes": 25311,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/branches/branch-protection",
+      "wall_ms": 1424,
+      "bytes": 187429,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/branches/branches",
+      "wall_ms": 1074,
+      "bytes": 50690,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/campaigns",
+      "wall_ms": 984,
+      "bytes": 20579,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/campaigns/campaigns",
+      "wall_ms": 1151,
+      "bytes": 45087,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/checks",
+      "wall_ms": 1132,
+      "bytes": 22021,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/checks/runs",
+      "wall_ms": 1184,
+      "bytes": 69623,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/checks/suites",
+      "wall_ms": 1212,
+      "bytes": 91172,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/classroom",
+      "wall_ms": 1008,
+      "bytes": 20892,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/classroom/classroom",
+      "wall_ms": 880,
+      "bytes": 43242,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/code-quality",
+      "wall_ms": 2285,
+      "bytes": 20555,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/code-quality/code-quality",
+      "wall_ms": 1081,
+      "bytes": 37986,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/code-scanning",
+      "wall_ms": 1174,
+      "bytes": 23500,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/code-scanning/alert-dismissal-requests",
+      "wall_ms": 1254,
+      "bytes": 54187,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/code-scanning/code-scanning",
+      "wall_ms": 1331,
+      "bytes": 173136,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/code-security",
+      "wall_ms": 1008,
+      "bytes": 23771,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/code-security/configurations",
+      "wall_ms": 1367,
+      "bytes": 146251,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/codes-of-conduct",
+      "wall_ms": 1080,
+      "bytes": 20305,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/codes-of-conduct/codes-of-conduct",
+      "wall_ms": 1315,
+      "bytes": 28717,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/codespaces",
+      "wall_ms": 1083,
+      "bytes": 28347,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/codespaces/codespaces",
+      "wall_ms": 1784,
+      "bytes": 210404,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/codespaces/machines",
+      "wall_ms": 1107,
+      "bytes": 28503,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/codespaces/organization-secrets",
+      "wall_ms": 1339,
+      "bytes": 58830,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/codespaces/organizations",
+      "wall_ms": 1124,
+      "bytes": 106161,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/codespaces/repository-secrets",
+      "wall_ms": 1124,
+      "bytes": 38323,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/codespaces/secrets",
+      "wall_ms": 1197,
+      "bytes": 63749,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/collaborators",
+      "wall_ms": 1010,
+      "bytes": 21799,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/collaborators/collaborators",
+      "wall_ms": 1195,
+      "bytes": 52647,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/collaborators/invitations",
+      "wall_ms": 1357,
+      "bytes": 60460,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/commits",
+      "wall_ms": 1349,
+      "bytes": 21823,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/commits/comments",
+      "wall_ms": 1090,
+      "bytes": 51689,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/commits/commits",
+      "wall_ms": 1085,
+      "bytes": 96152,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/commits/statuses",
+      "wall_ms": 1072,
+      "bytes": 43496,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/copilot",
+      "wall_ms": 1097,
+      "bytes": 26651,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/copilot-spaces",
+      "wall_ms": 888,
+      "bytes": 24927,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/copilot-spaces/collaborators",
+      "wall_ms": 1114,
+      "bytes": 61533,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/copilot-spaces/copilot-spaces",
+      "wall_ms": 1221,
+      "bytes": 87181,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/copilot-spaces/resources",
+      "wall_ms": 1061,
+      "bytes": 54103,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/copilot/copilot-cloud-agent-management",
+      "wall_ms": 1023,
+      "bytes": 24303,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/copilot/copilot-coding-agent-management",
+      "wall_ms": 1109,
+      "bytes": 68196,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/copilot/copilot-content-exclusion-management",
+      "wall_ms": 1038,
+      "bytes": 28881,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/copilot/copilot-custom-agents",
+      "wall_ms": 1796,
+      "bytes": 46489,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/copilot/copilot-metrics",
+      "wall_ms": 1353,
+      "bytes": 73994,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/copilot/copilot-usage-metrics",
+      "wall_ms": 960,
+      "bytes": 73994,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/copilot/copilot-user-management",
+      "wall_ms": 1108,
+      "bytes": 59112,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/credentials",
+      "wall_ms": 964,
+      "bytes": 19875,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/credentials/revoke",
+      "wall_ms": 981,
+      "bytes": 22994,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/dependabot",
+      "wall_ms": 988,
+      "bytes": 24180,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/dependabot/alert-dismissal-requests",
+      "wall_ms": 1250,
+      "bytes": 63854,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/dependabot/alerts",
+      "wall_ms": 1279,
+      "bytes": 105960,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/dependabot/repository-access",
+      "wall_ms": 1044,
+      "bytes": 51825,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/dependabot/secrets",
+      "wall_ms": 1197,
+      "bytes": 75881,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/dependency-graph",
+      "wall_ms": 1055,
+      "bytes": 21384,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/dependency-graph/dependency-review",
+      "wall_ms": 987,
+      "bytes": 26188,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/dependency-graph/dependency-submission",
+      "wall_ms": 1057,
+      "bytes": 33418,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/dependency-graph/sboms",
+      "wall_ms": 1016,
+      "bytes": 33496,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/deploy-keys",
+      "wall_ms": 935,
+      "bytes": 20514,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/deploy-keys/deploy-keys",
+      "wall_ms": 832,
+      "bytes": 34746,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/deployments",
+      "wall_ms": 3504,
+      "bytes": 23377,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/deployments/branch-policies",
+      "wall_ms": 1118,
+      "bytes": 40842,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/deployments/deployments",
+      "wall_ms": 1181,
+      "bytes": 48108,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/deployments/environments",
+      "wall_ms": 1885,
+      "bytes": 45700,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/deployments/protection-rules",
+      "wall_ms": 1660,
+      "bytes": 42792,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/deployments/statuses",
+      "wall_ms": 1421,
+      "bytes": 38652,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/emojis",
+      "wall_ms": 1003,
+      "bytes": 20073,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/emojis/emojis",
+      "wall_ms": 1068,
+      "bytes": 195680,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin",
+      "wall_ms": 1062,
+      "bytes": 49724,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin/admin-stats",
+      "wall_ms": 1262,
+      "bytes": 35986,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin/announcement",
+      "wall_ms": 1117,
+      "bytes": 31743,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin/audit-log",
+      "wall_ms": 1295,
+      "bytes": 65205,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin/bypass-requests",
+      "wall_ms": 3736,
+      "bytes": 35580,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin/code-security-and-analysis",
+      "wall_ms": 1272,
+      "bytes": 43878,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin/credential-authorizations",
+      "wall_ms": 1263,
+      "bytes": 49836,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin/custom-properties",
+      "wall_ms": 1303,
+      "bytes": 54741,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin/custom-properties-for-orgs",
+      "wall_ms": 2169,
+      "bytes": 63577,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin/enterprise-roles",
+      "wall_ms": 1294,
+      "bytes": 72343,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin/enterprises",
+      "wall_ms": 1380,
+      "bytes": 34839,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin/global-webhooks",
+      "wall_ms": 1280,
+      "bytes": 43951,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin/ldap",
+      "wall_ms": 1157,
+      "bytes": 36971,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin/licensing",
+      "wall_ms": 1216,
+      "bytes": 55315,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin/manage-ghes",
+      "wall_ms": 2124,
+      "bytes": 75068,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin/network-configurations",
+      "wall_ms": 1412,
+      "bytes": 51096,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin/org-pre-receive-hooks",
+      "wall_ms": 1149,
+      "bytes": 41121,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin/organization-installations",
+      "wall_ms": 1302,
+      "bytes": 74959,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin/orgs",
+      "wall_ms": 1141,
+      "bytes": 29745,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin/pre-receive-environments",
+      "wall_ms": 1497,
+      "bytes": 48370,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin/pre-receive-hooks",
+      "wall_ms": 1203,
+      "bytes": 42428,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin/repo-pre-receive-hooks",
+      "wall_ms": 1242,
+      "bytes": 40571,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin/rules",
+      "wall_ms": 1638,
+      "bytes": 113658,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin/scim",
+      "wall_ms": 1646,
+      "bytes": 98803,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-admin/users",
+      "wall_ms": 1246,
+      "bytes": 59136,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-teams",
+      "wall_ms": 936,
+      "bytes": 22687,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-teams/enterprise-team-members",
+      "wall_ms": 2210,
+      "bytes": 43569,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-teams/enterprise-team-organizations",
+      "wall_ms": 1437,
+      "bytes": 41311,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/enterprise-teams/enterprise-teams",
+      "wall_ms": 1341,
+      "bytes": 39865,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/gists",
+      "wall_ms": 1003,
+      "bytes": 22122,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/gists/comments",
+      "wall_ms": 1050,
+      "bytes": 39496,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/gists/gists",
+      "wall_ms": 1230,
+      "bytes": 90563,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/git",
+      "wall_ms": 1091,
+      "bytes": 22237,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/git/blobs",
+      "wall_ms": 1032,
+      "bytes": 27556,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/git/commits",
+      "wall_ms": 1023,
+      "bytes": 36772,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/git/refs",
+      "wall_ms": 1130,
+      "bytes": 39152,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/git/tags",
+      "wall_ms": 1051,
+      "bytes": 33508,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/git/trees",
+      "wall_ms": 994,
+      "bytes": 30983,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/gitignore",
+      "wall_ms": 2029,
+      "bytes": 20169,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/gitignore/gitignore",
+      "wall_ms": 2845,
+      "bytes": 25981,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/guides",
+      "wall_ms": 960,
+      "bytes": 22766,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/guides/building-a-ci-server",
+      "wall_ms": 1105,
+      "bytes": 28099,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/guides/delivering-deployments",
+      "wall_ms": 1214,
+      "bytes": 29464,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/guides/discovering-resources-for-a-user",
+      "wall_ms": 1376,
+      "bytes": 27795,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/guides/encrypting-secrets-for-the-rest-api",
+      "wall_ms": 1291,
+      "bytes": 28435,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/guides/rendering-data-as-graphs",
+      "wall_ms": 1808,
+      "bytes": 33743,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/guides/scripting-with-the-rest-api-and-javascript",
+      "wall_ms": 1994,
+      "bytes": 51888,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/guides/scripting-with-the-rest-api-and-ruby",
+      "wall_ms": 2161,
+      "bytes": 48786,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/guides/using-the-rest-api-to-interact-with-checks",
+      "wall_ms": 1143,
+      "bytes": 32396,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/guides/using-the-rest-api-to-interact-with-your-git-database",
+      "wall_ms": 1148,
+      "bytes": 24941,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/guides/working-with-comments",
+      "wall_ms": 1025,
+      "bytes": 26047,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/interactions",
+      "wall_ms": 1077,
+      "bytes": 23551,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/interactions/orgs",
+      "wall_ms": 1035,
+      "bytes": 35413,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/interactions/repos",
+      "wall_ms": 1112,
+      "bytes": 51915,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/interactions/user",
+      "wall_ms": 990,
+      "bytes": 30274,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/issues",
+      "wall_ms": 1310,
+      "bytes": 27901,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/issues/assignees",
+      "wall_ms": 1672,
+      "bytes": 51134,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/issues/comments",
+      "wall_ms": 1185,
+      "bytes": 62340,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/issues/events",
+      "wall_ms": 1272,
+      "bytes": 50153,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/issues/issue-dependencies",
+      "wall_ms": 1169,
+      "bytes": 66370,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/issues/issue-field-values",
+      "wall_ms": 1041,
+      "bytes": 41983,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/issues/issues",
+      "wall_ms": 1238,
+      "bytes": 145337,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/issues/labels",
+      "wall_ms": 1148,
+      "bytes": 60450,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/issues/milestones",
+      "wall_ms": 1060,
+      "bytes": 42654,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/issues/sub-issues",
+      "wall_ms": 1132,
+      "bytes": 72524,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/issues/timeline",
+      "wall_ms": 1634,
+      "bytes": 32558,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/licenses",
+      "wall_ms": 1233,
+      "bytes": 20379,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/licenses/licenses",
+      "wall_ms": 1865,
+      "bytes": 38172,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/markdown",
+      "wall_ms": 1144,
+      "bytes": 20142,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/markdown/markdown",
+      "wall_ms": 1287,
+      "bytes": 25825,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/meta",
+      "wall_ms": 1010,
+      "bytes": 20475,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/meta/meta",
+      "wall_ms": 995,
+      "bytes": 35136,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/metrics",
+      "wall_ms": 804,
+      "bytes": 21464,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/metrics/community",
+      "wall_ms": 1006,
+      "bytes": 25348,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/metrics/statistics",
+      "wall_ms": 1064,
+      "bytes": 41428,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/metrics/traffic",
+      "wall_ms": 1040,
+      "bytes": 36862,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/migrations",
+      "wall_ms": 1027,
+      "bytes": 23036,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/migrations/orgs",
+      "wall_ms": 990,
+      "bytes": 63007,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/migrations/source-imports",
+      "wall_ms": 1179,
+      "bytes": 62194,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/migrations/users",
+      "wall_ms": 1117,
+      "bytes": 63018,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/models",
+      "wall_ms": 1014,
+      "bytes": 2611,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/models/catalog",
+      "wall_ms": 847,
+      "bytes": 2611,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/models/embeddings",
+      "wall_ms": 840,
+      "bytes": 2611,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/models/inference",
+      "wall_ms": 1069,
+      "bytes": 2611,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/oauth-authorizations",
+      "wall_ms": 2350,
+      "bytes": 25464,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/oauth-authorizations/oauth-authorizations",
+      "wall_ms": 1246,
+      "bytes": 71429,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/orgs",
+      "wall_ms": 1215,
+      "bytes": 40759,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/orgs/api-insights",
+      "wall_ms": 1087,
+      "bytes": 56650,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/orgs/artifact-metadata",
+      "wall_ms": 1164,
+      "bytes": 54108,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/orgs/attestations",
+      "wall_ms": 1039,
+      "bytes": 64954,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/orgs/blocking",
+      "wall_ms": 1436,
+      "bytes": 33241,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/orgs/bypass-requests",
+      "wall_ms": 1176,
+      "bytes": 36228,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/orgs/custom-properties",
+      "wall_ms": 1075,
+      "bytes": 51607,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/orgs/custom-properties-for-orgs",
+      "wall_ms": 1372,
+      "bytes": 37741,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/orgs/custom-roles",
+      "wall_ms": 1412,
+      "bytes": 86943,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/orgs/issue-fields",
+      "wall_ms": 1051,
+      "bytes": 38890,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/orgs/issue-types",
+      "wall_ms": 1047,
+      "bytes": 34470,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/orgs/members",
+      "wall_ms": 1303,
+      "bytes": 100571,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/orgs/network-configurations",
+      "wall_ms": 1117,
+      "bytes": 44405,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/orgs/organization-roles",
+      "wall_ms": 2623,
+      "bytes": 61465,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/orgs/orgs",
+      "wall_ms": 1448,
+      "bytes": 94517,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/orgs/outside-collaborators",
+      "wall_ms": 1324,
+      "bytes": 32974,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/orgs/personal-access-tokens",
+      "wall_ms": 1228,
+      "bytes": 68499,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/orgs/rule-suites",
+      "wall_ms": 1296,
+      "bytes": 30185,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/orgs/rules",
+      "wall_ms": 1340,
+      "bytes": 92462,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/orgs/security-managers",
+      "wall_ms": 1249,
+      "bytes": 29828,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/orgs/webhooks",
+      "wall_ms": 1957,
+      "bytes": 65846,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/packages",
+      "wall_ms": 995,
+      "bytes": 24234,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/packages/packages",
+      "wall_ms": 1433,
+      "bytes": 160563,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/pages",
+      "wall_ms": 1003,
+      "bytes": 21454,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/pages/pages",
+      "wall_ms": 1138,
+      "bytes": 69614,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/private-registries",
+      "wall_ms": 1078,
+      "bytes": 21101,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/private-registries/organization-configurations",
+      "wall_ms": 1156,
+      "bytes": 50087,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/projects",
+      "wall_ms": 1128,
+      "bytes": 23815,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/projects-classic",
+      "wall_ms": 907,
+      "bytes": 23815,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/projects-classic/cards",
+      "wall_ms": 932,
+      "bytes": 23815,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/projects-classic/collaborators",
+      "wall_ms": 953,
+      "bytes": 23815,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/projects-classic/columns",
+      "wall_ms": 890,
+      "bytes": 23815,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/projects-classic/projects",
+      "wall_ms": 906,
+      "bytes": 23815,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/projects/drafts",
+      "wall_ms": 1476,
+      "bytes": 24295,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/projects/fields",
+      "wall_ms": 1148,
+      "bytes": 51376,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/projects/items",
+      "wall_ms": 1585,
+      "bytes": 355786,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/projects/projects",
+      "wall_ms": 849,
+      "bytes": 46007,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/projects/views",
+      "wall_ms": 1038,
+      "bytes": 31035,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/pulls",
+      "wall_ms": 1273,
+      "bytes": 24973,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/pulls/comments",
+      "wall_ms": 1154,
+      "bytes": 68304,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/pulls/pulls",
+      "wall_ms": 1535,
+      "bytes": 181720,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/pulls/review-requests",
+      "wall_ms": 1168,
+      "bytes": 84687,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/pulls/reviews",
+      "wall_ms": 1148,
+      "bytes": 72787,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/quickstart",
+      "wall_ms": 1359,
+      "bytes": 44632,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/rate-limit",
+      "wall_ms": 970,
+      "bytes": 20199,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/rate-limit/rate-limit",
+      "wall_ms": 1058,
+      "bytes": 29776,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/reactions",
+      "wall_ms": 1029,
+      "bytes": 22065,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/reactions/reactions",
+      "wall_ms": 1299,
+      "bytes": 85806,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/releases",
+      "wall_ms": 1016,
+      "bytes": 21578,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/releases/assets",
+      "wall_ms": 1127,
+      "bytes": 42950,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/releases/releases",
+      "wall_ms": 1127,
+      "bytes": 74438,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/repos",
+      "wall_ms": 1159,
+      "bytes": 30457,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/repos/attestations",
+      "wall_ms": 1055,
+      "bytes": 39239,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/repos/autolinks",
+      "wall_ms": 1085,
+      "bytes": 34254,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/repos/bypass-requests",
+      "wall_ms": 1453,
+      "bytes": 40706,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/repos/contents",
+      "wall_ms": 1117,
+      "bytes": 57703,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/repos/custom-properties",
+      "wall_ms": 1750,
+      "bytes": 28811,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/repos/forks",
+      "wall_ms": 1034,
+      "bytes": 58574,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/repos/lfs",
+      "wall_ms": 1230,
+      "bytes": 36696,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/repos/repos",
+      "wall_ms": 1504,
+      "bytes": 320777,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/repos/rule-suites",
+      "wall_ms": 1144,
+      "bytes": 30357,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/repos/rules",
+      "wall_ms": 1291,
+      "bytes": 92465,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/repos/tags",
+      "wall_ms": 1178,
+      "bytes": 31227,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/repos/webhooks",
+      "wall_ms": 1377,
+      "bytes": 68881,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/scim",
+      "wall_ms": 1170,
+      "bytes": 30194,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/scim/scim",
+      "wall_ms": 1400,
+      "bytes": 66382,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/search",
+      "wall_ms": 1042,
+      "bytes": 20635,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/search/search",
+      "wall_ms": 1275,
+      "bytes": 96868,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/secret-scanning",
+      "wall_ms": 988,
+      "bytes": 23088,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/secret-scanning/alert-dismissal-requests",
+      "wall_ms": 1224,
+      "bytes": 61814,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/secret-scanning/delegated-bypass",
+      "wall_ms": 1203,
+      "bytes": 65023,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/secret-scanning/push-protection",
+      "wall_ms": 977,
+      "bytes": 28899,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/secret-scanning/secret-scanning",
+      "wall_ms": 1266,
+      "bytes": 84681,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/security-advisories",
+      "wall_ms": 1036,
+      "bytes": 21948,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/security-advisories/global-advisories",
+      "wall_ms": 1054,
+      "bytes": 36591,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/security-advisories/repository-advisories",
+      "wall_ms": 1353,
+      "bytes": 166670,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/teams",
+      "wall_ms": 1054,
+      "bytes": 23957,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/teams/external-groups",
+      "wall_ms": 2194,
+      "bytes": 52105,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/teams/members",
+      "wall_ms": 1138,
+      "bytes": 78518,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/teams/team-sync",
+      "wall_ms": 1218,
+      "bytes": 52438,
+      "status_code": 301,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/teams/teams",
+      "wall_ms": 1399,
+      "bytes": 127289,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/users",
+      "wall_ms": 1392,
+      "bytes": 27435,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/users/attestations",
+      "wall_ms": 1027,
+      "bytes": 60880,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/users/blocking",
+      "wall_ms": 1312,
+      "bytes": 32399,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/users/emails",
+      "wall_ms": 1219,
+      "bytes": 37186,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/users/followers",
+      "wall_ms": 1371,
+      "bytes": 46170,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/users/gpg-keys",
+      "wall_ms": 859,
+      "bytes": 45430,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/users/keys",
+      "wall_ms": 1031,
+      "bytes": 36755,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/users/social-accounts",
+      "wall_ms": 1528,
+      "bytes": 33364,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/users/ssh-signing-keys",
+      "wall_ms": 1020,
+      "bytes": 37623,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/users/users",
+      "wall_ms": 1335,
+      "bytes": 45973,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/using-the-rest-api",
+      "wall_ms": 1171,
+      "bytes": 22150,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/using-the-rest-api/best-practices-for-using-the-rest-api",
+      "wall_ms": 1190,
+      "bytes": 29978,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/using-the-rest-api/getting-started-with-the-rest-api",
+      "wall_ms": 985,
+      "bytes": 77617,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/using-the-rest-api/github-event-types",
+      "wall_ms": 1749,
+      "bytes": 47041,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/using-the-rest-api/issue-event-types",
+      "wall_ms": 2934,
+      "bytes": 88668,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/using-the-rest-api/libraries-for-the-rest-api",
+      "wall_ms": 2041,
+      "bytes": 27582,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/using-the-rest-api/rate-limits-for-the-rest-api",
+      "wall_ms": 1271,
+      "bytes": 36899,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/using-the-rest-api/timezones-and-the-rest-api",
+      "wall_ms": 1057,
+      "bytes": 24105,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/using-the-rest-api/troubleshooting-the-rest-api",
+      "wall_ms": 1839,
+      "bytes": 41948,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/using-the-rest-api/using-cors-and-jsonp-to-make-cross-origin-requests",
+      "wall_ms": 1046,
+      "bytes": 25118,
+      "status_code": 200,
+      "outcome": "ok"
+    },
+    {
+      "url": "https://docs.github.com/de/rest/using-the-rest-api/using-pagination-in-the-rest-api",
+      "wall_ms": 1239,
+      "bytes": 33455,
+      "status_code": 200,
+      "outcome": "ok"
+    }
+  ]
+}
