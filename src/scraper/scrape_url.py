@@ -25,6 +25,25 @@ logger = logging.getLogger(__name__)
 # stall the extraction. Runs off the event loop via asyncio.to_thread regardless.
 HTMLDATE_TIMEOUT_S = 5.0
 
+# Hard wall-clock budget for the entire ad-hoc scrape acquisition — the only outer guard on this
+# path (page_timeout=60000 only bounds Playwright's page.goto; everything after a successful
+# goto — crawl4ai's own two internal, non-configurable 30s render waits, consent handling, date
+# extraction — is otherwise unbounded from our side). Composed of: browser cold start +
+# navigation cap + render wait + consent handling + date extraction. Unbounded synchronous work
+# such as markdown generation gets no reserved share of its own — it is simply covered by this
+# same outer guard.
+# Two honesty caveats on what this guard does NOT do:
+#  - asyncio.wait_for only cancels at await points. Markdown generation + PruningContentFilter
+#    run as synchronous CPU work inside crawl4ai's arun() — a pathological synchronous parse can
+#    overrun this budget; the guard only fires once control returns to an await. Not fixed here
+#    (no thread offload, no executor) — this constant bounds network/browser hangs, not
+#    synchronous CPU inside crawl4ai.
+#  - This budget wraps ACQUISITION only (try_scrape's browser call + date extraction +
+#    classification) — post-acquisition local work (truncate_content, write_sidecar, log_scrape)
+#    sits outside the guarded span, so a budget-exhausted record is still writable. The logged
+#    total_wall in scrape_log.jsonl can therefore exceed this value by that post-processing cost.
+TOTAL_SCRAPE_BUDGET_S = 39.4
+
 _LINK_LINE_RE = re.compile(r'^\[.+\]\(.+\)$')
 
 DEFAULT_MAX_CONTENT_LENGTH = 15000
@@ -55,6 +74,7 @@ _GARBAGE_MESSAGES = {
     "nav_dump": "Navigation dump — page returned only links, no content",
     "crawl4ai_error": "Crawl4AI extraction error",
     "browser_missing": "Browser binary missing — run `./venv/bin/python -m patchright install chromium` to install it",
+    "budget_exhausted": f"Scrape exceeded the total time budget ({TOTAL_SCRAPE_BUDGET_S}s)",
 }
 
 # Substrings that mark an exception as a browser-launch/executable failure, not a per-URL scrape miss
@@ -143,6 +163,9 @@ async def scrape_url_workflow(url: str, max_content_length: int = DEFAULT_MAX_CO
 #            (crawl4ai's own anti-bot diagnosis, recorded verbatim — not acted on; see Gotchas)
 #            config (scrape-side config stamp — browser/run/content-filter settings actually used;
 #            caller merges in the post-processing settings it alone knows via build_config_record)
+# The whole acquisition (browser call + date extraction + classification) runs inside
+# asyncio.wait_for(TOTAL_SCRAPE_BUDGET_S) — see that constant's comment for the exact guarded
+# span and its two honesty caveats (sync CPU inside crawl4ai; post-acquisition work uncounted).
 async def try_scrape(url: str) -> tuple[str, dict]:
     browser_config = BrowserConfig(headless=True, verbose=False, enable_stealth=True)
     adapter = UndetectedAdapter()
@@ -184,7 +207,10 @@ async def try_scrape(url: str) -> tuple[str, dict]:
         "crawl4ai_fallback_fetch_used": None,
         "config": config_stamp,
     }
-    try:
+    # Guarded span: browser launch through classification. Excludes config construction above
+    # (instant, needed for _empty_meta/config stamp even on timeout) and post-acquisition local
+    # work in scrape_url_workflow (truncate/sidecar/log — must stay writable on timeout too).
+    async def _acquire() -> tuple[str, dict]:
         async with AsyncWebCrawler(config=browser_config, crawler_strategy=crawler_strategy) as crawler:
             result = await crawler.arun(url=url, config=run_config)
         status_code = result.status_code if hasattr(result, "status_code") else None
@@ -219,6 +245,12 @@ async def try_scrape(url: str) -> tuple[str, dict]:
             logger.warning("Garbage detected [%s]: %s", garbage_type, url)
             return "", {**meta, "garbage_type": garbage_type, "garbage_content": content}
         return content, meta
+
+    try:
+        return await asyncio.wait_for(_acquire(), timeout=TOTAL_SCRAPE_BUDGET_S)
+    except asyncio.TimeoutError:
+        logger.warning("Scrape budget exhausted (%.1fs): %s", TOTAL_SCRAPE_BUDGET_S, url)
+        return "", {**_empty_meta, "garbage_type": "budget_exhausted"}
     except Exception as e:
         if is_browser_launch_error(e):
             logger.error("Browser binary missing/failed to launch for %s: %s", url, e)
@@ -232,6 +264,9 @@ async def try_scrape(url: str) -> tuple[str, dict]:
 # to the kwargs this module explicitly tunes (the ones that shape scrape behavior), not the full
 # ~130-key BrowserConfig/CrawlerRunConfig surface (mostly untouched library defaults, no signal).
 # excluded_selector is recorded as a hash, not verbatim (426 chars, rarely changes, source-visible).
+# total_budget_s is not a crawl4ai kwarg at all — it's this module's own outer wall-clock guard
+# (TOTAL_SCRAPE_BUDGET_S); included here on the same "read the real value, don't re-declare it"
+# rule, so the stamp still changes if the guard value ever changes.
 def extract_config_stamp(browser_config, adapter, crawler_strategy, run_config) -> dict:
     content_filter = run_config.markdown_generator.content_filter
     return {
@@ -249,6 +284,7 @@ def extract_config_stamp(browser_config, adapter, crawler_strategy, run_config) 
         "content_filter_preserve_tags": sorted(content_filter.preserve_tags),
         "excluded_selector_hash": hashlib.sha256(run_config.excluded_selector.encode()).hexdigest()[:8],
         "remove_consent_popups": run_config.remove_consent_popups,
+        "total_budget_s": TOTAL_SCRAPE_BUDGET_S,
     }
 
 
