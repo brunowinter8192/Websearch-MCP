@@ -68,7 +68,7 @@ def test_build_configs_sets_fixed_anti_bot_posture():
     """_build_configs's real BrowserConfig/CrawlerRunConfig carry the milestone's exact
     calibration: stealth + simulate_user + override_navigator on, magic explicitly off,
     consent popups dismissed, pacing/timeout values untouched."""
-    browser_cfg, run_cfg = pipe_scraper._build_configs(download_delay=1.0, concurrency_per_domain=8)
+    browser_cfg, run_cfg = pipe_scraper._build_configs()
     assert browser_cfg.enable_stealth is True
     assert run_cfg.simulate_user is True
     assert run_cfg.override_navigator is True
@@ -94,7 +94,7 @@ async def test_build_configs_produces_live_stealth_adapter():
     from crawl4ai.async_crawler_strategy import AsyncPlaywrightCrawlerStrategy
     from playwright_stealth import Stealth
 
-    browser_cfg, _ = pipe_scraper._build_configs(download_delay=1.0, concurrency_per_domain=8)
+    browser_cfg, _ = pipe_scraper._build_configs()
     strategy = AsyncPlaywrightCrawlerStrategy(browser_config=browser_cfg)
 
     # use_undetected resolves False (default PlaywrightAdapter, pipe_scraper passes no adapter) —

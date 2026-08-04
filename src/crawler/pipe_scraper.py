@@ -168,7 +168,7 @@ async def _scrape_one(
 # re-declared copy. Anti-bot posture only; no extraction-side settings (no content filter, no
 # preserve_tags) — this path optimizes for getting through, not extraction quality (the capture
 # skill's Phase 3 LLM step does all cleanup afterwards).
-def _build_configs(download_delay: float, concurrency_per_domain: int) -> tuple[BrowserConfig, CrawlerRunConfig]:
+def _build_configs() -> tuple[BrowserConfig, CrawlerRunConfig]:
     browser_cfg = BrowserConfig(
         headless=True,
         verbose=False,
@@ -246,7 +246,7 @@ async def _scrape_all(
     download_delay: float,
     concurrency_per_domain: int,
 ) -> list[dict]:
-    browser_cfg, run_cfg = _build_configs(download_delay, concurrency_per_domain)
+    browser_cfg, run_cfg = _build_configs()
     config_stamp = _extract_pipe_config_stamp(browser_cfg, run_cfg, download_delay, concurrency_per_domain)
     run_ctx = {
         "run_id": str(uuid.uuid4()),
