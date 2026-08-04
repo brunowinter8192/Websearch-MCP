@@ -40,7 +40,9 @@ DEFAULT_LOG_PATH = Path(__file__).parent.parent.parent / "src" / "logs" / "scrap
 #   "config_hash": str,                    # first 10 hex chars of sha256(sort_keys JSON of "config") — cheap "same config" grouping key
 #   "config": {                            # scrape config actually in effect for this call, read off the real config objects (never hand-duplicated)
 #     "headless": bool, "enable_stealth": bool, "adapter": str, "crawler_strategy": str,
-#     "magic": bool, "wait_until": str, "page_timeout_ms": int, "max_retries": int,
+#     "magic": bool, "wait_until": str, "page_timeout_ms": int,
+#     "delay_before_return_html_s": float,  # explicit render wait before HTML capture, see scrape_url.py comment at its CrawlerRunConfig construction
+#     "max_retries": int,
 #     "cache_mode": str, "content_filter": str, "content_filter_threshold": float,
 #     "content_filter_preserve_tags": list[str],  # HTML tags exempted from pruning recursion — e.g. ["code", "pre"] guards syntax-highlighted code from whitespace-span decomposition (crawl4ai issue #2110)
 #     "excluded_selector_hash": str,       # first 8 hex chars of sha256(excluded_selector) — the 426-char selector itself is source-visible, not worth repeating per record
