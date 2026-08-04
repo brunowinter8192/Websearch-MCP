@@ -120,9 +120,12 @@ async def _scrape_one(
 ) -> dict:
     domain = urlparse(url).netloc
     state = _ensure_domain_state(domain_states, domain, concurrency_per_domain)
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
     async with state['sem']:
         await _gate_domain(state, download_delay)
+        # Stamped here, not before the semaphore/gate: asyncio.gather starts every _scrape_one
+        # coroutine at once, so a ts taken before the gate would record queue time (identical
+        # across an entire run) instead of actual request start.
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
         t0 = time.time()
         try:
             result = await crawler.arun(url=url, config=run_cfg)

@@ -13,7 +13,12 @@ DEFAULT_LOG_PATH = Path(__file__).parent.parent.parent / "src" / "logs" / "pipe_
 
 # Record schema (one record per URL per pipe_scraper run):
 # {
-#   "ts": str (ISO-8601 UTC, millisecond precision),
+#   "ts": str (ISO-8601 UTC, millisecond precision) — REQUEST START: stamped after the per-domain
+#         semaphore/pacing gate, right next to _scrape_one's own t0, not when the URL's coroutine
+#         was queued (asyncio.gather starts every _scrape_one at once, so a pre-gate ts would be
+#         near-identical across an entire run's hundreds of records — that bug existed and was
+#         fixed; do not move this stamp back above the gate). Not completion time either — that is
+#         ts + wall_ms.
 #   "run_id": str (uuid4, shared by every record of one scrape_urls_workflow invocation) — a
 #             capture run writes hundreds of records at once; this is the field that separates
 #             one run's records from another's without re-parsing timestamps/config.

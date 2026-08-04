@@ -158,6 +158,32 @@ async def test_scrape_all_logs_shared_run_id_across_urls(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_scrape_one_ts_reflects_request_start_not_queue_time(tmp_path, monkeypatch):
+    """Regression guard: ts must be stamped AFTER the per-domain gate, not when asyncio.gather
+    queues the coroutine. concurrency_per_domain=1 fully serializes 6 same-domain URLs through
+    the gate at download_delay=0.05s (jitter 0.025-0.075s/hop) — real elapsed request-start times
+    must spread across the run. A ts taken before the gate collapses to one identical value for
+    all 6 records regardless of this pacing (the bug this guards against)."""
+    log_file = tmp_path / "pipe_scrape_log.jsonl"
+    monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
+    monkeypatch.setattr(pipe_scraper, "AsyncWebCrawler", _FakeCrawler)
+
+    urls = [f"https://x.test/{i}" for i in range(6)]
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    await pipe_scraper._scrape_all(urls, output_dir, download_delay=0.05, concurrency_per_domain=1)
+
+    records = [json.loads(l) for l in log_file.read_text(encoding="utf-8").splitlines()]
+    assert len(records) == 6
+    timestamps = [datetime.fromisoformat(r["ts"].replace("Z", "+00:00")) for r in records]
+    distinct = {t for t in timestamps}
+    assert len(distinct) > 1, "all records share one ts — ts is being stamped at queue time, not request start"
+    spread_s = (max(timestamps) - min(timestamps)).total_seconds()
+    # 5 gate hops at >=0.025s jitter each (serialized, concurrency_per_domain=1) — real lower bound ~0.125s
+    assert spread_s > 0.1, f"ts spread too small ({spread_s}s) for a gated 6-URL/concurrency=1 run"
+
+
+@pytest.mark.asyncio
 async def test_scrape_all_records_carry_config_hash_and_config(tmp_path, monkeypatch):
     """Every record carries the same config_hash + config dict for one run (same config in effect)."""
     log_file = tmp_path / "pipe_scrape_log.jsonl"
