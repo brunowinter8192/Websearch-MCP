@@ -125,6 +125,13 @@ async def scrape_url_workflow(url: str) -> list[TextContent]:
         "fallback_to_raw": meta.get("fallback_to_raw", False),
         "content_path": content_path,
         "published_date": published_date,
+        # landed_url: RAW, exactly as crawl4ai reported (see try_scrape's comment) — never the
+        # is_same_target-normalized form. same_target: this project's same/different rule applied
+        # at write time, stored as its own field so the decision stays visible and auditable later
+        # even if the rule itself changes afterward (re-derive from url+landed_url, don't assume
+        # this stored verdict still matches a revised rule).
+        "landed_url": meta.get("landed_url"),
+        "same_target": is_same_target(url, meta.get("landed_url")),
         "crawl4ai_success": meta.get("crawl4ai_success"),
         "crawl4ai_error_message": meta.get("crawl4ai_error_message"),
         "crawl4ai_attempts": meta.get("crawl4ai_attempts"),
@@ -159,6 +166,12 @@ async def scrape_url_workflow(url: str) -> list[TextContent]:
 #            crawl4ai's own detector on a render that returns the full 38691-byte product page)
 #            config (scrape-side config stamp — browser/run/content-filter settings actually used,
 #            read directly off the real constructed objects, see extract_config_stamp)
+#            landed_url (crawl4ai's result.redirected_url, RAW/unnormalized — the URL the browser
+#            actually ended up on, set from page.url both right after goto and again immediately
+#            before the response is built to also catch JS-driven navigation; None on any return
+#            path that never obtained a result object — see _empty_meta. status_code is the FIRST
+#            hop of a redirect chain while landed_url/content are the LAST — a record can
+#            legitimately show status 301 next to real content; that combination is not a bug)
 # The whole acquisition (browser call + date extraction) runs inside
 # asyncio.wait_for(TOTAL_SCRAPE_BUDGET_S) — see that constant's comment for the exact guarded
 # span and its two honesty caveats (sync CPU inside crawl4ai; post-acquisition work uncounted).
@@ -218,7 +231,7 @@ async def try_scrape(url: str) -> tuple[str, dict]:
         "fallback_to_raw": False, "raw_markdown_bytes": 0, "date": None,
         "crawl4ai_success": None, "crawl4ai_error_message": None,
         "crawl4ai_attempts": None, "crawl4ai_resolved_by": None,
-        "crawl4ai_fallback_fetch_used": None,
+        "crawl4ai_fallback_fetch_used": None, "landed_url": None,
         "config": config_stamp,
     }
     # Guarded span: browser launch through content selection. Excludes config construction above
@@ -231,7 +244,12 @@ async def try_scrape(url: str) -> tuple[str, dict]:
         ct = None
         if hasattr(result, "headers") and result.headers:
             ct = result.headers.get("content-type") or result.headers.get("Content-Type")
-        meta: dict = {**_empty_meta, "status_code": status_code, "content_type": ct}
+        # RAW, never normalized — is_same_target's normalization is a comparison rule, not a
+        # storage format; if that rule is ever revised, records must stay re-analysable under the
+        # new rule, which only works if the raw value is what's on disk.
+        landed_url = getattr(result, "redirected_url", None)
+        meta: dict = {**_empty_meta, "status_code": status_code, "content_type": ct,
+                      "landed_url": landed_url}
         meta.update(extract_crawl4ai_diagnosis(result))
         # No status-code gate here — a status is a fact returned alongside content, not evidence
         # to discard it on: trustpilot returns HTTP 403 WITH the real 42707-byte review page.
@@ -498,6 +516,15 @@ def _format_scrape_output(url: str, content: str, meta: dict, published_date: st
     lines += [
         "## Acquisition facts",
         f"- HTTP status: {meta.get('status_code')}",
+    ]
+    # Rendered ONLY when requested and landed differ — the ordinary no-redirect case is the
+    # overwhelming majority of scrapes and a permanent always-present line would be noise. Placed
+    # right after HTTP status: status_code is the FIRST hop of a redirect chain while landed_url
+    # is the LAST, so a 301 next to this line is self-explanatory without a second status field.
+    landed_url = meta.get("landed_url")
+    if landed_url and not is_same_target(url, landed_url):
+        lines.append(f"- Landed URL (redirected to a different target than requested): {landed_url}")
+    lines += [
         f"- Bytes (raw markdown from crawl4ai): {meta.get('raw_markdown_bytes', 0)}",
         f"- Bytes (content below, after PruningContentFilter{selection_note}): "
         f"{len(content.encode('utf-8')) if content else 0}",
