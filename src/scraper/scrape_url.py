@@ -55,18 +55,6 @@ _LINK_LINE_RE = re.compile(r'^\[.+\]\(.+\)$')
 
 MIN_CONTENT_THRESHOLD = 200
 
-# RFC 3986 §3.2.3 default ports — a port equal to its own scheme's default is a spelling
-# difference (":443" on an https URL), not a signal of a different target. Used by is_same_target.
-_DEFAULT_PORTS = {"http": 80, "https": 443}
-
-# RFC 3986 §2.3 unreserved characters — a percent-encoded octet that decodes to one of these is a
-# pure spelling difference (%2D == '-'); anything else stays encoded, hex-normalized to uppercase
-# per §6.2.2.2 (%2f and %2F encode the same octet). Used by is_same_target.
-_UNRESERVED_CHARS = frozenset(
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
-)
-_PERCENT_ENCODED_RE = re.compile(r'%[0-9A-Fa-f]{2}')
-
 COOKIE_CONSENT_SELECTOR = ", ".join([
     "[class*='cookie-banner']", "[id*='cookie-banner']",
     "[class*='cookie-consent']", "[id*='cookie-consent']",
@@ -125,13 +113,12 @@ async def scrape_url_workflow(url: str) -> list[TextContent]:
         "fallback_to_raw": meta.get("fallback_to_raw", False),
         "content_path": content_path,
         "published_date": published_date,
-        # landed_url: RAW, exactly as crawl4ai reported (see try_scrape's comment) — never the
-        # is_same_target-normalized form. same_target: this project's same/different rule applied
-        # at write time, stored as its own field so the decision stays visible and auditable later
-        # even if the rule itself changes afterward (re-derive from url+landed_url, don't assume
-        # this stored verdict still matches a revised rule).
+        # landed_url: RAW, exactly as crawl4ai reported (see try_scrape's comment) — no verdict
+        # stored alongside it. An agent reading this log has both this field and "url" in the same
+        # record and can compare them itself; a stored same/different verdict would be a
+        # re-derivable conclusion kept as data, and this scraper reports facts, not conclusions
+        # (see process-docs/scrape_pipeline/content_judgment_removal_2026-08-05.md).
         "landed_url": meta.get("landed_url"),
-        "same_target": is_same_target(url, meta.get("landed_url")),
         "crawl4ai_success": meta.get("crawl4ai_success"),
         "crawl4ai_error_message": meta.get("crawl4ai_error_message"),
         "crawl4ai_attempts": meta.get("crawl4ai_attempts"),
@@ -244,9 +231,9 @@ async def try_scrape(url: str) -> tuple[str, dict]:
         ct = None
         if hasattr(result, "headers") and result.headers:
             ct = result.headers.get("content-type") or result.headers.get("Content-Type")
-        # RAW, never normalized — is_same_target's normalization is a comparison rule, not a
-        # storage format; if that rule is ever revised, records must stay re-analysable under the
-        # new rule, which only works if the raw value is what's on disk.
+        # RAW, never normalized — any comparison rule is a rule applied when READING this data,
+        # not a storage format; keeping the raw value means it stays analysable under any rule
+        # (current or future) applied later, by whoever reads the record.
         landed_url = getattr(result, "redirected_url", None)
         meta: dict = {**_empty_meta, "status_code": status_code, "content_type": ct,
                       "landed_url": landed_url}
@@ -322,93 +309,6 @@ def extract_config_stamp(browser_config, adapter, crawler_strategy, run_config) 
 def hash_config(config: dict) -> str:
     blob = json.dumps(config, sort_keys=True, default=str)
     return hashlib.sha256(blob.encode()).hexdigest()[:10]
-
-
-# RFC 3986 §6.2.2.2: uppercase the hex of every percent-encoded triplet, and decode it outright
-# when it names an unreserved character (%2D -> '-') — the two remaining spelling-only forms this
-# module still normalizes beyond the caller's explicit same/different list. Dot-segment resolution
-# (../, ./) is the other RFC-level normalization and is deliberately NOT implemented here: it needs
-# urljoin-style resolution against a base, dot-segments essentially never occur in a redirect's
-# landed URL, and no case in the evidence for this module needs it.
-def _normalize_percent_encoding(component: str) -> str:
-    def _decode_or_uppercase(match: re.Match) -> str:
-        hex_pair = match.group(0)[1:]
-        char = chr(int(hex_pair, 16))
-        return char if char in _UNRESERVED_CHARS else '%' + hex_pair.upper()
-    return _PERCENT_ENCODED_RE.sub(_decode_or_uppercase, component)
-
-
-# Host with its scheme-relative default port stripped and a leading "www." stripped — both listed
-# explicitly as spelling differences, never a target signal. Case-folded (host is case-insensitive
-# per RFC 3986 §3.2.2, unlike path/query).
-def _normalize_host(parsed) -> str:
-    host = (parsed.hostname or "").lower().removeprefix("www.")
-    port = parsed.port
-    default_port = _DEFAULT_PORTS.get(parsed.scheme.lower())
-    if port is not None and port != default_port:
-        return f"{host}:{port}"
-    return host
-
-
-# Path with percent-encoding normalized and a trailing slash stripped — stripping also collapses
-# the empty-path vs "/" case, since both reduce to "".
-def _normalize_path(path: str) -> str:
-    return _normalize_percent_encoding(path).rstrip("/")
-
-
-# Do `requested_url` and `landed_url` point at the same target? Pure string comparison, no
-# network I/O — the ONE primitive later milestones (JSONL logging, acquisition-facts surfacing)
-# will call to decide whether a redirect delivered different content than requested. Reports a
-# FACT (same/different target), never a verdict on which URL is "right" or what to do about a
-# difference — see process-docs/scrape_pipeline/content_judgment_removal_2026-08-05.md for why
-# this module stays fact-reporting only; this function extends the same posture to redirects.
-#
-# Treated as mere spelling (decided with the user, not open for reinterpretation): scheme
-# (http/https), case of scheme/host, a leading "www.", the scheme's own default port, empty path
-# vs "/", a trailing slash, the fragment.
-# Treated as a genuinely different target: any other host difference, any other path difference
-# (the idealo case: same numeric product ID, a rewritten slug), and ANY query-string difference —
-# including what look like tracking parameters. Deliberately no "harmless params"
-# allowlist/denylist: such a list is guesswork, and a query parameter often DOES determine content
-# — an allowlist tuned to swallow tracking params risks swallowing an idealo-shaped case too. An
-# occasional redundant report costs less than a rule that silently swallows a real content change.
-#
-# Either URL missing/empty (None or "") -> treated as SAME (no deviation reported). This is an
-# expected state, not an edge case — crawl4ai leaves the landed URL unset on some paths (e.g. an
-# exception before navigation) — and a fact-reporting function has no fact to report from an
-# absence: claiming a deviation from missing data would be a fabricated signal, the same failure
-# mode the content-judgment removal (see doc above) was written to eliminate.
-#
-# A string that is present but fails to parse as a URL at all (bad port — "x.test:notaport",
-# out-of-range port — ":99999", a malformed IPv6 literal — "[:::1]") -> treated as DIFFERENT.
-# urlparse() itself never raises; on CPython 3.14 the bracketed-IPv6 check raises inside the
-# urlparse() call, while .port/.hostname raise lazily on read on other versions — both are caught
-# here so this function NEVER propagates a ValueError to its caller (milestone 2 calls it from
-# inside try_scrape's guarded acquisition span AFTER content was already fetched; an exception
-# there would turn a successful scrape into a hard failure over an annotation, not a fact). The
-# missing-input case above is an expected, known-shape absence with nothing to compare; this case
-# is the opposite — two present strings that fail to parse the way a well-formed URL should, which
-# is itself an anomaly worth surfacing, not silence. Defaulting to "same" here would risk masking
-# a genuine mismatch behind a parse failure — the same reasoning as the no-tracking-allowlist rule
-# above: an occasional redundant report costs less than treating an unparseable target as
-# equivalent to one that may not resemble it at all.
-def is_same_target(requested_url: str | None, landed_url: str | None) -> bool:
-    if not requested_url or not landed_url:
-        return True
-    try:
-        requested = urlparse(requested_url)
-        landed = urlparse(landed_url)
-        same_host = _normalize_host(requested) == _normalize_host(landed)
-    except ValueError:
-        return False
-    if not same_host:
-        return False
-    if _normalize_path(requested.path) != _normalize_path(landed.path):
-        return False
-    if (_normalize_percent_encoding(requested.query)
-            != _normalize_percent_encoding(landed.query)):
-        return False
-    return True
 
 
 # Read crawl4ai's own anti-bot diagnosis off the result object, verbatim — an OBSERVATION
@@ -516,15 +416,14 @@ def _format_scrape_output(url: str, content: str, meta: dict, published_date: st
     lines += [
         "## Acquisition facts",
         f"- HTTP status: {meta.get('status_code')}",
-    ]
-    # Rendered ONLY when requested and landed differ — the ordinary no-redirect case is the
-    # overwhelming majority of scrapes and a permanent always-present line would be noise. Placed
-    # right after HTTP status: status_code is the FIRST hop of a redirect chain while landed_url
-    # is the LAST, so a 301 next to this line is self-explanatory without a second status field.
-    landed_url = meta.get("landed_url")
-    if landed_url and not is_same_target(url, landed_url):
-        lines.append(f"- Landed URL (redirected to a different target than requested): {landed_url}")
-    lines += [
+        # Unconditional, like every other line in this block — this module reports facts, it does
+        # not decide which facts the agent gets to see (see this function's own docstring). The
+        # requested URL is already in the header above; this is the URL the browser actually
+        # returned content from, whatever it is — same as the requested one, different, or absent
+        # (None, rendered literally like every other absent value in this block, e.g. HTTP status
+        # on a budget_exhausted record) — the agent compares the two itself, nothing here decides
+        # "redirected" or "same" on its behalf.
+        f"- Landed URL (the URL the browser actually returned content from): {meta.get('landed_url')}",
         f"- Bytes (raw markdown from crawl4ai): {meta.get('raw_markdown_bytes', 0)}",
         f"- Bytes (content below, after PruningContentFilter{selection_note}): "
         f"{len(content.encode('utf-8')) if content else 0}",

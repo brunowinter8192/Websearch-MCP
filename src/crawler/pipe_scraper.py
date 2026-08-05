@@ -14,9 +14,8 @@ from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from curl_cffi.requests import AsyncSession
 
 # From src/scraper/scrape_url.py: same config-hash algorithm + crawl4ai diagnosis extraction used
-# by the ad-hoc path's log (generic, not path-specific — reused rather than re-implemented);
-# is_same_target is the requested-vs-landed comparison rule, reused as-is (not path-specific either)
-from src.scraper.scrape_url import hash_config, extract_crawl4ai_diagnosis, is_same_target
+# by the ad-hoc path's log (generic, not path-specific — reused rather than re-implemented)
+from src.scraper.scrape_url import hash_config, extract_crawl4ai_diagnosis
 # From src/crawler/pipe_scrape_logger.py: per-URL JSONL log with run/config stamp
 from src.crawler.pipe_scrape_logger import log_pipe_scrape
 
@@ -192,29 +191,29 @@ async def _own_fallback_rescue(
     outcome = 'ok' if byte_count >= EMPTY_THRESHOLD_BYTES else 'empty'
     return outcome, 200, byte_count, True, True, landed_url
 
-# Read landed_url/same_target off the successful, non-exception result — but ONLY when crawl4ai's
-# OWN fallback_fetch_function was NOT the route that produced this result (diagnosis["crawl4ai_
+# Read landed_url off the successful, non-exception result — but ONLY when crawl4ai's OWN
+# fallback_fetch_function was NOT the route that produced this result (diagnosis["crawl4ai_
 # fallback_fetch_used"]). Verified in the installed crawl4ai 0.9.2 source
 # (async_webcrawler.py, the fallback_fetch_function block, ~line 580): on that route
 # redirected_url is hardcoded to the ORIGINAL requested url regardless of what curl_cffi's own
-# fetch actually followed — recording it verbatim would report a fabricated "no redirect", the
-# exact class of error content_judgment_removal_2026-08-05.md already eliminated once on the
-# ad-hoc path. Both fields stay (None, None) on that route, DELIBERATELY not fixed: curl_cffi's own
-# _fallback_fetch (called BY crawl4ai internally here, not by our own code) returns only a str per
-# crawl4ai's own contract (see _fallback_fetch's comment) — there is no channel back out of that
-# call for the landed URL crawl4ai itself does not surface. Reaching in via a module-level
-# dict keyed by url would work in the common case but is explicitly rejected: _scrape_all runs
-# asyncio.gather over hundreds of URLs at once, and anything keyed that loosely risks
-# cross-contamination if the same URL is ever in flight twice in one run, plus unbounded growth/
-# cleanup concerns for no clean ownership story. An honest (None, None) beats a fragile channel.
-# pipe_scraper's OWN rescue (_own_fallback_rescue, path b) is DIFFERENT: it calls _curl_cffi_get
-# directly (its own call, not one crawl4ai mediates), so it reads response.url itself and reports
-# a real landed_url/same_target — see that function's own comment.
-def _landed_url_facts(url: str, result, diagnosis: dict) -> tuple[str | None, bool | None]:
+# fetch actually followed — recording it verbatim would report a fabricated fact. None on that
+# route, DELIBERATELY not fixed: curl_cffi's own _fallback_fetch (called BY crawl4ai internally
+# here, not by our own code) returns only a str per crawl4ai's own contract (see _fallback_fetch's
+# comment) — there is no channel back out of that call for the landed URL crawl4ai itself does not
+# surface. Reaching in via a module-level dict keyed by url would work in the common case but is
+# explicitly rejected: _scrape_all runs asyncio.gather over hundreds of URLs at once, and anything
+# keyed that loosely risks cross-contamination if the same URL is ever in flight twice in one run,
+# plus unbounded growth/cleanup concerns for no clean ownership story. An honest None beats a
+# fragile channel. pipe_scraper's OWN rescue (_own_fallback_rescue, path b) is DIFFERENT: it calls
+# _curl_cffi_get directly (its own call, not one crawl4ai mediates), so it reads response.url
+# itself and reports a real landed_url — see that function's own comment. No verdict computed
+# here or anywhere in this module: an agent reading the log has both "url" and "landed_url" in the
+# same record and compares them itself (see process-docs/scrape_pipeline/
+# content_judgment_removal_2026-08-05.md for the same reasoning applied to content judgment).
+def _landed_url_from_result(result, diagnosis: dict) -> str | None:
     if diagnosis.get("crawl4ai_fallback_fetch_used"):
-        return None, None
-    landed_url = getattr(result, "redirected_url", None)
-    return landed_url, is_same_target(url, landed_url)
+        return None
+    return getattr(result, "redirected_url", None)
 
 
 # Assemble and write one JSONL record for a single URL's outcome — fail-soft via log_pipe_scrape
@@ -222,7 +221,7 @@ def _log_pipe_record(
     run_ctx: dict, ts: str, url: str, domain: str, outcome: str,
     status: int | None, byte_count: int, wall_ms: int, diagnosis: dict,
     pipe_fallback_used: bool = False, pipe_fallback_resolved: bool = False,
-    landed_url: str | None = None, same_target: bool | None = None,
+    landed_url: str | None = None,
 ) -> None:
     log_pipe_scrape({
         "ts": ts, "run_id": run_ctx["run_id"], "url": url, "domain": domain,
@@ -233,7 +232,7 @@ def _log_pipe_record(
         "crawl4ai_resolved_by": diagnosis.get("crawl4ai_resolved_by"),
         "crawl4ai_fallback_fetch_used": diagnosis.get("crawl4ai_fallback_fetch_used"),
         "pipe_fallback_used": pipe_fallback_used, "pipe_fallback_resolved": pipe_fallback_resolved,
-        "landed_url": landed_url, "same_target": same_target,
+        "landed_url": landed_url,
         "config_hash": run_ctx["config_hash"], "config": run_ctx["config"],
     })
 
@@ -269,15 +268,9 @@ async def _scrape_one(
             outcome, status, byte_count, fb_used, fb_resolved, landed_url = await _own_fallback_rescue(
                 crawler, url, run_cfg, output_dir)
             wall_ms = int((time.time() - t0) * 1000)
-            # same_target is None whenever landed_url itself is None (the curl_cffi fetch never
-            # completed at all — see _own_fallback_rescue) — NOT is_same_target's own
-            # missing-input convention (True on None), which is the right default for a normal
-            # caller but wrong for this log's specific question "was a redirect actually observed
-            # on this record": a fetch that never happened observed nothing, so nothing is claimed.
-            same_target = is_same_target(url, landed_url) if landed_url else None
             _log_pipe_record(run_ctx, ts, url, domain, outcome, status, byte_count, wall_ms, {},
                               pipe_fallback_used=fb_used, pipe_fallback_resolved=fb_resolved,
-                              landed_url=landed_url, same_target=same_target)
+                              landed_url=landed_url)
             return {'url': url, 'wall_ms': wall_ms, 'bytes': byte_count,
                     'status_code': status, 'outcome': outcome}
         wall_ms = int((time.time() - t0) * 1000)
@@ -300,9 +293,9 @@ async def _scrape_one(
         (output_dir / fname).write_text(f"<!-- source: {url} -->\n\n{raw_md}", encoding='utf-8')
 
     diagnosis = extract_crawl4ai_diagnosis(result)
-    landed_url, same_target = _landed_url_facts(url, result, diagnosis)
+    landed_url = _landed_url_from_result(result, diagnosis)
     _log_pipe_record(run_ctx, ts, url, domain, outcome, status, byte_count, wall_ms, diagnosis,
-                      landed_url=landed_url, same_target=same_target)
+                      landed_url=landed_url)
 
     return {'url': url, 'wall_ms': wall_ms, 'bytes': byte_count,
             'status_code': status, 'outcome': outcome}
