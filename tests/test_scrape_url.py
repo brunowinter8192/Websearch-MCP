@@ -156,7 +156,7 @@ async def test_try_scrape_returns_content_on_http_403(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_try_scrape_captures_landed_url_raw(monkeypatch):
-    """meta["landed_url"] is result.redirected_url verbatim — not normalized by is_same_target."""
+    """meta["landed_url"] is result.redirected_url verbatim — no normalization, no verdict."""
 
     class _FakeCrawler:
         def __init__(self, *a, **kw):
@@ -209,10 +209,10 @@ async def test_try_scrape_landed_url_is_none_on_launch_failure(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_scrape_url_workflow_logs_landed_url_and_same_target(monkeypatch):
-    """scrape_url_workflow's log_scrape record carries the raw landed_url off meta AND the
-    same_target verdict computed via is_same_target at write time — the two fields milestone 2
-    adds to the JSONL schema."""
+async def test_scrape_url_workflow_logs_landed_url(monkeypatch):
+    """scrape_url_workflow's log_scrape record carries the raw landed_url off meta — no verdict
+    computed or stored alongside it (removed: an agent reading the log has both "url" and
+    "landed_url" in the same record and compares them itself)."""
     captured = {}
 
     async def _fake_try_scrape(url):
@@ -226,7 +226,7 @@ async def test_scrape_url_workflow_logs_landed_url_and_same_target(monkeypatch):
     await scrape_url.scrape_url_workflow("https://docs.anthropic.com/en/api/getting-started")
 
     assert captured["landed_url"] == "https://platform.claude.com/en/api/getting-started"
-    assert captured["same_target"] is False
+    assert "same_target" not in captured
 
 
 # ---------------------------------------------------------------------------
@@ -399,114 +399,42 @@ def test_format_scrape_output_zero_content_is_explicit_not_suppressed():
 
 
 # ---------------------------------------------------------------------------
-# is_same_target: requested-vs-landed URL comparison primitive (milestone 1 of 3 — this function
-# is not yet wired into try_scrape/scrape_url_workflow; that is later milestones)
+# _format_scrape_output: the landed-URL line is UNCONDITIONAL — rendered on every scrape, exactly
+# like HTTP status, whether the landed URL matches the requested one, differs, or is absent. No
+# code-side verdict decides whether the agent gets to see this fact (milestone 5: same_target and
+# the conditional render it drove were both removed — see the module's own comment on this line).
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("requested,landed", [
-    ("https://www.example.com/a", "https://www.example.com/a"),
-    ("https://example.com", "https://www.example.com"),
-    ("HTTPS://WWW.Example.COM/a", "https://www.example.com/a"),
-    ("http://example.com:80/a", "http://example.com/a"),
-    ("https://example.com:443/a", "https://example.com/a"),
-    ("https://x.test", "https://x.test/"),
-    ("https://x.test/a", "https://x.test/a/"),
-    ("https://x.test/a#section", "https://x.test/a"),
-    ("http://x.test/a", "https://x.test/a"),
-    ("https://x.test/a%2db", "https://x.test/a-b"),
-    ("https://x.test/a%2fb", "https://x.test/a%2Fb"),
-])
-def test_is_same_target_true_for_spelling_differences(requested, landed):
-    """Scheme/host case, leading www., default port, empty-vs-root path, trailing slash,
-    fragment, http-vs-https, and percent-encoding normalization are all mere spelling — never
-    reported as a deviation."""
-    assert scrape_url.is_same_target(requested, landed) is True
-
-
-@pytest.mark.parametrize("requested,landed", [
-    ("https://example.com/a", "https://other.com/a"),
-    (
-        "https://www.idealo.de/preisvergleich/OffersOfProduct/203078159_-fritz-box-7510-avm.html",
-        "https://www.idealo.de/preisvergleich/OffersOfProduct/"
-        "203078159_-woman-hybrid-jacket-fix-hood-33z6026-cmp-campagnolo.html",
-    ),
-    ("https://x.test/a?id=1", "https://x.test/a?id=2"),
-    ("https://x.test/a", "https://x.test/a?utm_source=newsletter"),
-    ("https://x.test/a?utm_source=x", "https://x.test/a?utm_source=y"),
-])
-def test_is_same_target_false_for_real_differences(requested, landed):
-    """Different host, different path (idealo: same numeric ID, rewritten slug), and any query
-    difference — including tracking-parameter-shaped ones — are reported, never swallowed."""
-    assert scrape_url.is_same_target(requested, landed) is False
-
-
-@pytest.mark.parametrize("requested,landed", [
-    (None, "https://x.test/a"),
-    ("https://x.test/a", None),
-    (None, None),
-    ("", "https://x.test/a"),
-    ("https://x.test/a", ""),
-])
-def test_is_same_target_treats_missing_input_as_same(requested, landed):
-    """No landed URL (crawl4ai leaves it unset on some paths) is missing data, not evidence of a
-    deviation — a fact-reporting function has nothing to report from an absence."""
-    assert scrape_url.is_same_target(requested, landed) is True
-
-
-@pytest.mark.parametrize("requested,landed", [
-    ("https://x.test:notaport/a", "https://x.test/a"),
-    ("http://x.test:99999/a", "http://x.test/a"),
-    ("https://[:::1]/a", "https://x.test/a"),
-    ("https://x.test/a", "https://x.test:notaport/a"),
-    ("https://x.test/a", "https://[:::1]/a"),
-])
-def test_is_same_target_never_raises_on_malformed_url(requested, landed):
-    """A bad port, an out-of-range port, or a malformed IPv6 literal must not propagate — the
-    caller (milestone 2, from inside try_scrape's guarded span, AFTER content was fetched) must
-    never see an exception from this annotation step. Treated as DIFFERENT: two present strings
-    that fail to parse as a URL are an anomaly worth surfacing, not silence."""
-    assert scrape_url.is_same_target(requested, landed) is False
-
-
-# ---------------------------------------------------------------------------
-# _format_scrape_output: the landed-URL line — present ONLY on a real deviation, absent on the
-# ordinary no-redirect case and on mere-spelling differences (milestone 2 of 3)
-# ---------------------------------------------------------------------------
-
-def test_format_scrape_output_renders_landed_url_line_on_real_deviation():
-    """A landed URL on a genuinely different host renders as an explicit, readable fact."""
+def test_format_scrape_output_renders_landed_url_line_when_it_differs():
+    """A landed URL on a genuinely different host renders as an explicit, readable fact — wording
+    makes no claim about "redirect" or "different target", since nothing decides that anymore."""
     text = scrape_url._format_scrape_output(
         "https://docs.anthropic.com/en/api/getting-started",
         "the real landed page content",
         _meta(landed_url="https://platform.claude.com/en/api/getting-started"),
         None)
-    assert ("Landed URL (redirected to a different target than requested): "
+    assert ("Landed URL (the URL the browser actually returned content from): "
             "https://platform.claude.com/en/api/getting-started") in text
 
 
-def test_format_scrape_output_omits_landed_url_line_on_no_redirect():
-    """landed_url identical to the requested URL — the overwhelming majority case — renders no
-    line at all, not a redundant confirmation."""
+def test_format_scrape_output_renders_landed_url_line_when_it_matches():
+    """landed_url identical to the requested URL — the overwhelming majority case — still renders
+    the line, unconditionally, exactly like HTTP status does."""
     text = scrape_url._format_scrape_output(
-        "https://www.rfc-editor.org/rfc/rfc2616", "the rfc content",
-        _meta(landed_url="https://www.rfc-editor.org/rfc/rfc2616"), None)
-    assert "Landed URL" not in text
+        "https://www.rfc-editor.org/info/rfc2616/", "the rfc content",
+        _meta(landed_url="https://www.rfc-editor.org/info/rfc2616/"), None)
+    assert ("Landed URL (the URL the browser actually returned content from): "
+            "https://www.rfc-editor.org/info/rfc2616/") in text
 
 
-def test_format_scrape_output_omits_landed_url_line_on_mere_spelling_difference():
-    """A trailing-slash-only difference is not a target deviation — is_same_target's own rule,
-    reused here, must suppress the line just as it would for the log's same_target field."""
-    text = scrape_url._format_scrape_output(
-        "https://x.test/a", "content",
-        _meta(landed_url="https://x.test/a/"), None)
-    assert "Landed URL" not in text
-
-
-def test_format_scrape_output_omits_landed_url_line_when_absent():
-    """No landed_url at all (e.g. acquisition failed before a result existed) renders no line."""
+def test_format_scrape_output_renders_landed_url_line_when_absent():
+    """No landed_url at all (e.g. acquisition failed before a result existed) still renders the
+    line — the absence itself is the fact, rendered literally (None), matching how every other
+    absent value in this block reads (e.g. HTTP status on a budget_exhausted record) rather than
+    being suppressed into a missing line."""
     text = scrape_url._format_scrape_output(
         "https://x.test/a", "", _meta(landed_url=None, acquisition_error="browser_missing"), None)
-    assert "Landed URL" not in text
+    assert "Landed URL (the URL the browser actually returned content from): None" in text
 
 
 def test_format_scrape_output_crawl4ai_diagnosis_labeled_as_observation_not_verdict():

@@ -75,23 +75,14 @@ DEFAULT_LOG_PATH = Path(__file__).parent.parent.parent / "src" / "logs" / "pipe_
 #             internally-crawl4ai-mediated call for the real value (a module-level dict keyed by
 #             url was considered and rejected — this path runs asyncio.gather over hundreds of
 #             concurrent URLs, and anything keyed that loosely risks cross-contamination). Recording
-#             the hardcoded value verbatim would report a fabricated "no redirect", exactly the
-#             class of error content_judgment_removal_2026-08-05.md (src/scraper/scrape_url.py's
-#             own history) already eliminated once. null also on path b specifically when the
-#             curl_cffi fetch never completed at all (exception/timeout — no response object to
-#             read a url off).
-#   "same_target": bool | null,            # src/scraper/scrape_url.py's is_same_target(url,
-#             landed_url), evaluated at write time — but ONLY when landed_url is non-null; null
-#             whenever landed_url is null, on EITHER route, rather than is_same_target's own
-#             missing-input convention (True on a missing landed_url) — that default is correct for
-#             a normal caller but wrong for this log's specific question "was a redirect actually
-#             observed on this record": nothing was observed, so nothing is claimed. Read
-#             `same_target: true` together with `crawl4ai_fallback_fetch_used`/`pipe_fallback_used`
-#             — a true verdict is only ever backed by a real observed landed_url, never a
-#             hardcoded/absent one.
-#             Absent by definition on every record written before these two fields were added —
-#             read that absence as "predates the field," not as "no redirect happened" (same
-#             convention as scrape_log.jsonl's own landed_url/same_target addition).
+#             the hardcoded value verbatim would report a fabricated fact. null also on path b
+#             specifically when the curl_cffi fetch never completed at all (exception/timeout — no
+#             response object to read a url off). No verdict is stored alongside this field — an
+#             agent reading a record has both "url" and "landed_url" and compares them itself; see
+#             the retired "same_target" note below for why that verdict was removed rather than
+#             kept.
+#             Absent by definition on every record written before this field was added — read that
+#             absence as "predates the field," not as "no redirect happened."
 #   "config_hash": str,                    # first 10 hex chars of sha256(sort_keys JSON of "config") —
 #             groups records that ran under the SAME config. It is NOT a stable identity across
 #             schema versions: it changes whenever ANY stamped value changes, including when a
@@ -115,6 +106,18 @@ DEFAULT_LOG_PATH = Path(__file__).parent.parent.parent / "src" / "logs" / "pipe_
 #     "download_delay_s": float, "concurrency_per_domain": int, "empty_threshold_bytes": int,
 #   }
 # }
+#
+# Historical field, narrow window: "same_target" (bool) — ABSENT before it was introduced
+# alongside "landed_url", PRESENT on records written while this log still stored a computed
+# same/different verdict (src/scraper/scrape_url.py's is_same_target(url, landed_url) at write
+# time), ABSENT again from the date that verdict was removed. Removed because it was redundant, not
+# because it was wrong: only an agent ever reads this log, always after the fact, with both "url"
+# and "landed_url" already in the same record — the tri-state reasoning that justified storing it
+# ("the agent cannot reconstruct why landed_url is missing") does not hold, since
+# "crawl4ai_fallback_fetch_used"/"pipe_fallback_used" are in the same record and say exactly which
+# route ran. A record from that window carrying "same_target" is not broken and not a fact this log
+# still computes — it is a conclusion this log used to compute and no longer does (same posture as
+# scrape_log.jsonl's own retirement of the field — see that module's schema comment).
 #
 # Separate file from src/scraper/scrape_log.jsonl (the ad-hoc single-URL path's log) — different
 # schema (has run_id/domain, no sidecar/content_path/mode) and wildly different volume (hundreds

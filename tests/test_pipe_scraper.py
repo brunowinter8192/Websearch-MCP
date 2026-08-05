@@ -459,17 +459,16 @@ async def test_own_fallback_rescue_fires_from_scrape_one_except_block(tmp_path, 
     assert r["crawl4ai_resolved_by"] is None
     assert r["crawl4ai_fallback_fetch_used"] is None
     # Milestone 4: a real landed_url IS now available on path b — no redirect here (curl_cffi
-    # landed on the same URL it was given), so same_target is a real True, not null.
+    # landed on the same URL it was given).
     assert r["landed_url"] == "https://x.test/a"
-    assert r["same_target"] is True
 
 
 @pytest.mark.asyncio
 async def test_own_fallback_rescue_all_failed_when_curl_also_fails(tmp_path, monkeypatch):
     """Third state: browser raised AND pipe_scraper's own fallback also failed. outcome stays
     'error', http_status stays null (never a faked 200), pipe_fallback_used=True/resolved=False
-    distinguishes this from 'browser succeeded, path b never entered'. landed_url/same_target stay
-    null — the curl_cffi fetch never completed at all, so no url was ever observed."""
+    distinguishes this from 'browser succeeded, path b never entered'. landed_url stays null —
+    the curl_cffi fetch never completed at all, so no url was ever observed."""
     log_file = tmp_path / "pipe_scrape_log.jsonl"
     monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
     monkeypatch.setattr(pipe_scraper, "AsyncWebCrawler", _FakeHardFailureCrawler)
@@ -492,7 +491,6 @@ async def test_own_fallback_rescue_all_failed_when_curl_also_fails(tmp_path, mon
     assert r["pipe_fallback_resolved"] is False
     assert r["http_status"] is None
     assert r["landed_url"] is None
-    assert r["same_target"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -539,8 +537,10 @@ async def test_crawl4ai_own_fallback_surfaces_in_log_distinctly_from_pipe_fallba
 
 
 # ---------------------------------------------------------------------------
-# landed_url/same_target on the plain success route (unaffected by milestone 4) and on crawl4ai's
-# own fallback route (path a, still null/null — see below and _landed_url_facts's comment)
+# landed_url on the plain success route, and on crawl4ai's own fallback route (path a, still null
+# — see below and _landed_url_from_result's comment). No same_target verdict is computed anywhere
+# in this module (milestone 5: removed — an agent reading a record has both "url" and "landed_url"
+# and compares them itself).
 # ---------------------------------------------------------------------------
 
 class _FakeRedirectingCrawler:
@@ -561,9 +561,9 @@ class _FakeRedirectingCrawler:
 
 
 @pytest.mark.asyncio
-async def test_landed_url_and_same_target_recorded_on_plain_success_with_redirect(tmp_path, monkeypatch):
-    """The plain success route (neither fallback engaged) gets a real landed_url + same_target
-    verdict — a deviating redirect (different host) is recorded and flagged false."""
+async def test_landed_url_recorded_on_plain_success_with_redirect(tmp_path, monkeypatch):
+    """The plain success route (neither fallback engaged) gets a real landed_url — a deviating
+    redirect (different host) is recorded raw, no verdict computed alongside it."""
     log_file = tmp_path / "pipe_scrape_log.jsonl"
     monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
     monkeypatch.setattr(pipe_scraper, "AsyncWebCrawler", _FakeRedirectingCrawler)
@@ -576,13 +576,13 @@ async def test_landed_url_and_same_target_recorded_on_plain_success_with_redirec
     records = [json.loads(l) for l in log_file.read_text(encoding="utf-8").splitlines()]
     r = records[0]
     assert r["landed_url"] == "https://platform.claude.com/docs/en/api/overview"
-    assert r["same_target"] is False
+    assert "same_target" not in r
 
 
 @pytest.mark.asyncio
-async def test_landed_url_and_same_target_recorded_on_plain_success_no_redirect(tmp_path, monkeypatch):
-    """No redirect on the plain success route: landed_url equals the requested URL,
-    same_target=True."""
+async def test_landed_url_recorded_on_plain_success_no_redirect(tmp_path, monkeypatch):
+    """No redirect on the plain success route: landed_url reflects whatever crawl4ai reported
+    (None here — _FakeResult's own default, no redirected_url set)."""
     log_file = tmp_path / "pipe_scrape_log.jsonl"
     monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
     monkeypatch.setattr(pipe_scraper, "AsyncWebCrawler", _FakeCrawler)
@@ -595,14 +595,14 @@ async def test_landed_url_and_same_target_recorded_on_plain_success_no_redirect(
     records = [json.loads(l) for l in log_file.read_text(encoding="utf-8").splitlines()]
     r = records[0]
     assert r["landed_url"] is None  # _FakeResult's own default — no redirected_url set
-    assert r["same_target"] is True  # is_same_target treats a missing landed_url as "same"
+    assert "same_target" not in r
 
 
 @pytest.mark.asyncio
-async def test_landed_url_and_same_target_null_on_crawl4ai_own_fallback(tmp_path, monkeypatch):
+async def test_landed_url_null_on_crawl4ai_own_fallback(tmp_path, monkeypatch):
     """crawl4ai's own fallback_fetch_function route: redirected_url is hardcoded by crawl4ai to
     the requested URL regardless of what curl_cffi actually followed — recording it would fabricate
-    a false 'no redirect', so both fields must be null instead."""
+    a false fact, so landed_url must be null instead."""
     log_file = tmp_path / "pipe_scrape_log.jsonl"
     monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
     monkeypatch.setattr(pipe_scraper, "AsyncWebCrawler", _FakeCrawl4aiOwnFallbackCrawler)
@@ -616,12 +616,11 @@ async def test_landed_url_and_same_target_null_on_crawl4ai_own_fallback(tmp_path
     r = records[0]
     assert r["crawl4ai_fallback_fetch_used"] is True
     assert r["landed_url"] is None
-    assert r["same_target"] is None
 
 
 # ---------------------------------------------------------------------------
-# landed_url/same_target on pipe_scraper's own rescue (path b) — milestone 4: a real landed URL is
-# now available here (curl_cffi's own response.url, read directly at this call site), unlike path a
+# landed_url on pipe_scraper's own rescue (path b) — milestone 4: a real landed URL is now
+# available here (curl_cffi's own response.url, read directly at this call site), unlike path a
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
@@ -650,7 +649,7 @@ async def test_own_fallback_rescue_records_real_landed_url_on_redirect(tmp_path,
     r = records[0]
     assert r["pipe_fallback_used"] is True
     assert r["landed_url"] == "https://platform.claude.com/docs/en/api/overview"
-    assert r["same_target"] is False
+    assert "same_target" not in r
 
 
 @pytest.mark.asyncio
