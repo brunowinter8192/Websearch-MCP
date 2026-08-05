@@ -62,6 +62,29 @@ DEFAULT_LOG_PATH = Path(__file__).parent.parent.parent / "src" / "logs" / "pipe_
 #             http_status is then null, never a faked 200 (see pipe_scraper._own_fallback_rescue).
 #             Three readable states via (used, resolved): browser succeeded (False, False); pipe's own
 #             fallback rescued it (True, True); everything failed (True, False).
+#   "landed_url": str | null,              # crawl4ai's result.redirected_url, RAW/unnormalized —
+#             recorded ONLY from the plain successful browser route (neither fallback engaged).
+#             null on BOTH fallback routes — see same_target below for why.
+#   "same_target": bool | null,            # src/scraper/scrape_url.py's is_same_target(url,
+#             landed_url), evaluated at write time. TRI-STATE here, unlike scrape_log.jsonl's
+#             ad-hoc-path same_target (always a bool there) — null means "not measurable on this
+#             record's route", never "confirmed same". Two routes force (null, null):
+#             (a) crawl4ai's OWN fallback_fetch_function (crawl4ai_fallback_fetch_used=True):
+#                 verified in the installed crawl4ai 0.9.2 source (async_webcrawler.py) that on
+#                 this route redirected_url is hardcoded to the ORIGINAL requested url regardless
+#                 of what curl_cffi's own fetch actually followed — recording it at face value
+#                 would report a fabricated "no redirect", exactly the class of error
+#                 content_judgment_removal_2026-08-05.md (src/scraper/scrape_url.py's own history)
+#                 already eliminated once.
+#             (b) pipe_scraper's own rescue (pipe_fallback_used=True): the raw:// pipeline this
+#                 route runs through only ever reports redirected_url=config.base_url (verified in
+#                 crawl4ai's async_crawler_strategy.py), which this module never sets — always
+#                 None, carrying no real signal either way.
+#             Only the plain successful browser path (both pipe_fallback_used=False and
+#             crawl4ai_fallback_fetch_used is not True) gets a real True/False verdict.
+#             Absent by definition on every record written before these two fields were added —
+#             read that absence as "predates the field," not as "no redirect happened" (same
+#             convention as scrape_log.jsonl's own landed_url/same_target addition).
 #   "config_hash": str,                    # first 10 hex chars of sha256(sort_keys JSON of "config") —
 #             groups records that ran under the SAME config. It is NOT a stable identity across
 #             schema versions: it changes whenever ANY stamped value changes, including when a

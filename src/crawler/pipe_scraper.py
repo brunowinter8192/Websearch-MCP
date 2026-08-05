@@ -14,8 +14,9 @@ from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from curl_cffi.requests import AsyncSession
 
 # From src/scraper/scrape_url.py: same config-hash algorithm + crawl4ai diagnosis extraction used
-# by the ad-hoc path's log (generic, not path-specific — reused rather than re-implemented)
-from src.scraper.scrape_url import hash_config, extract_crawl4ai_diagnosis
+# by the ad-hoc path's log (generic, not path-specific — reused rather than re-implemented);
+# is_same_target is the requested-vs-landed comparison rule, reused as-is (not path-specific either)
+from src.scraper.scrape_url import hash_config, extract_crawl4ai_diagnosis, is_same_target
 # From src/crawler/pipe_scrape_logger.py: per-URL JSONL log with run/config stamp
 from src.crawler.pipe_scrape_logger import log_pipe_scrape
 
@@ -164,11 +165,31 @@ async def _own_fallback_rescue(
     outcome = 'ok' if byte_count >= EMPTY_THRESHOLD_BYTES else 'empty'
     return outcome, 200, byte_count, True, True
 
+# Read landed_url/same_target off the successful, non-exception result — but ONLY when crawl4ai's
+# OWN fallback_fetch_function was NOT the route that produced this result (diagnosis["crawl4ai_
+# fallback_fetch_used"]). Verified in the installed crawl4ai 0.9.2 source
+# (async_webcrawler.py, the fallback_fetch_function block, ~line 580): on that route
+# redirected_url is hardcoded to the ORIGINAL requested url regardless of what curl_cffi's own
+# fetch actually followed — recording it verbatim would report a fabricated "no redirect", the
+# exact class of error content_judgment_removal_2026-08-05.md already eliminated once on the
+# ad-hoc path. Both fields come back (None, None) on that route — an honest "not measurable" beats
+# a fabricated "same". pipe_scraper's OWN rescue (_own_fallback_rescue, path b) never calls this at
+# all: its raw:// pipeline only ever reports redirected_url=config.base_url (verified in
+# async_crawler_strategy.py), which this module never sets — always None there too, for the same
+# reason, so that path passes (None, None) directly at its own call site instead.
+def _landed_url_facts(url: str, result, diagnosis: dict) -> tuple[str | None, bool | None]:
+    if diagnosis.get("crawl4ai_fallback_fetch_used"):
+        return None, None
+    landed_url = getattr(result, "redirected_url", None)
+    return landed_url, is_same_target(url, landed_url)
+
+
 # Assemble and write one JSONL record for a single URL's outcome — fail-soft via log_pipe_scrape
 def _log_pipe_record(
     run_ctx: dict, ts: str, url: str, domain: str, outcome: str,
     status: int | None, byte_count: int, wall_ms: int, diagnosis: dict,
     pipe_fallback_used: bool = False, pipe_fallback_resolved: bool = False,
+    landed_url: str | None = None, same_target: bool | None = None,
 ) -> None:
     log_pipe_scrape({
         "ts": ts, "run_id": run_ctx["run_id"], "url": url, "domain": domain,
@@ -179,6 +200,7 @@ def _log_pipe_record(
         "crawl4ai_resolved_by": diagnosis.get("crawl4ai_resolved_by"),
         "crawl4ai_fallback_fetch_used": diagnosis.get("crawl4ai_fallback_fetch_used"),
         "pipe_fallback_used": pipe_fallback_used, "pipe_fallback_resolved": pipe_fallback_resolved,
+        "landed_url": landed_url, "same_target": same_target,
         "config_hash": run_ctx["config_hash"], "config": run_ctx["config"],
     })
 
@@ -214,8 +236,11 @@ async def _scrape_one(
             outcome, status, byte_count, fb_used, fb_resolved = await _own_fallback_rescue(
                 crawler, url, run_cfg, output_dir)
             wall_ms = int((time.time() - t0) * 1000)
+            # landed_url/same_target: always (None, None) on this route — see _landed_url_facts's
+            # comment for why (raw:// pipeline never carries a real redirected_url here).
             _log_pipe_record(run_ctx, ts, url, domain, outcome, status, byte_count, wall_ms, {},
-                              pipe_fallback_used=fb_used, pipe_fallback_resolved=fb_resolved)
+                              pipe_fallback_used=fb_used, pipe_fallback_resolved=fb_resolved,
+                              landed_url=None, same_target=None)
             return {'url': url, 'wall_ms': wall_ms, 'bytes': byte_count,
                     'status_code': status, 'outcome': outcome}
         wall_ms = int((time.time() - t0) * 1000)
@@ -238,7 +263,9 @@ async def _scrape_one(
         (output_dir / fname).write_text(f"<!-- source: {url} -->\n\n{raw_md}", encoding='utf-8')
 
     diagnosis = extract_crawl4ai_diagnosis(result)
-    _log_pipe_record(run_ctx, ts, url, domain, outcome, status, byte_count, wall_ms, diagnosis)
+    landed_url, same_target = _landed_url_facts(url, result, diagnosis)
+    _log_pipe_record(run_ctx, ts, url, domain, outcome, status, byte_count, wall_ms, diagnosis,
+                      landed_url=landed_url, same_target=same_target)
 
     return {'url': url, 'wall_ms': wall_ms, 'bytes': byte_count,
             'status_code': status, 'outcome': outcome}
