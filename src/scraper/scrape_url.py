@@ -55,6 +55,18 @@ _LINK_LINE_RE = re.compile(r'^\[.+\]\(.+\)$')
 
 MIN_CONTENT_THRESHOLD = 200
 
+# RFC 3986 §3.2.3 default ports — a port equal to its own scheme's default is a spelling
+# difference (":443" on an https URL), not a signal of a different target. Used by is_same_target.
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+
+# RFC 3986 §2.3 unreserved characters — a percent-encoded octet that decodes to one of these is a
+# pure spelling difference (%2D == '-'); anything else stays encoded, hex-normalized to uppercase
+# per §6.2.2.2 (%2f and %2F encode the same octet). Used by is_same_target.
+_UNRESERVED_CHARS = frozenset(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~"
+)
+_PERCENT_ENCODED_RE = re.compile(r'%[0-9A-Fa-f]{2}')
+
 COOKIE_CONSENT_SELECTOR = ", ".join([
     "[class*='cookie-banner']", "[id*='cookie-banner']",
     "[class*='cookie-consent']", "[id*='cookie-consent']",
@@ -292,6 +304,75 @@ def extract_config_stamp(browser_config, adapter, crawler_strategy, run_config) 
 def hash_config(config: dict) -> str:
     blob = json.dumps(config, sort_keys=True, default=str)
     return hashlib.sha256(blob.encode()).hexdigest()[:10]
+
+
+# RFC 3986 §6.2.2.2: uppercase the hex of every percent-encoded triplet, and decode it outright
+# when it names an unreserved character (%2D -> '-') — the two remaining spelling-only forms this
+# module still normalizes beyond the caller's explicit same/different list. Dot-segment resolution
+# (../, ./) is the other RFC-level normalization and is deliberately NOT implemented here: it needs
+# urljoin-style resolution against a base, dot-segments essentially never occur in a redirect's
+# landed URL, and no case in the evidence for this module needs it.
+def _normalize_percent_encoding(component: str) -> str:
+    def _decode_or_uppercase(match: re.Match) -> str:
+        hex_pair = match.group(0)[1:]
+        char = chr(int(hex_pair, 16))
+        return char if char in _UNRESERVED_CHARS else '%' + hex_pair.upper()
+    return _PERCENT_ENCODED_RE.sub(_decode_or_uppercase, component)
+
+
+# Host with its scheme-relative default port stripped and a leading "www." stripped — both listed
+# explicitly as spelling differences, never a target signal. Case-folded (host is case-insensitive
+# per RFC 3986 §3.2.2, unlike path/query).
+def _normalize_host(parsed) -> str:
+    host = (parsed.hostname or "").lower().removeprefix("www.")
+    port = parsed.port
+    default_port = _DEFAULT_PORTS.get(parsed.scheme.lower())
+    if port is not None and port != default_port:
+        return f"{host}:{port}"
+    return host
+
+
+# Path with percent-encoding normalized and a trailing slash stripped — stripping also collapses
+# the empty-path vs "/" case, since both reduce to "".
+def _normalize_path(path: str) -> str:
+    return _normalize_percent_encoding(path).rstrip("/")
+
+
+# Do `requested_url` and `landed_url` point at the same target? Pure string comparison, no
+# network I/O — the ONE primitive later milestones (JSONL logging, acquisition-facts surfacing)
+# will call to decide whether a redirect delivered different content than requested. Reports a
+# FACT (same/different target), never a verdict on which URL is "right" or what to do about a
+# difference — see process-docs/scrape_pipeline/content_judgment_removal_2026-08-05.md for why
+# this module stays fact-reporting only; this function extends the same posture to redirects.
+#
+# Treated as mere spelling (decided with the user, not open for reinterpretation): scheme
+# (http/https), case of scheme/host, a leading "www.", the scheme's own default port, empty path
+# vs "/", a trailing slash, the fragment.
+# Treated as a genuinely different target: any other host difference, any other path difference
+# (the idealo case: same numeric product ID, a rewritten slug), and ANY query-string difference —
+# including what look like tracking parameters. Deliberately no "harmless params"
+# allowlist/denylist: such a list is guesswork, and a query parameter often DOES determine content
+# — an allowlist tuned to swallow tracking params risks swallowing an idealo-shaped case too. An
+# occasional redundant report costs less than a rule that silently swallows a real content change.
+#
+# Either URL missing/empty (None or "") -> treated as SAME (no deviation reported). This is an
+# expected state, not an edge case — crawl4ai leaves the landed URL unset on some paths (e.g. an
+# exception before navigation) — and a fact-reporting function has no fact to report from an
+# absence: claiming a deviation from missing data would be a fabricated signal, the same failure
+# mode the content-judgment removal (see doc above) was written to eliminate.
+def is_same_target(requested_url: str | None, landed_url: str | None) -> bool:
+    if not requested_url or not landed_url:
+        return True
+    requested = urlparse(requested_url)
+    landed = urlparse(landed_url)
+    if _normalize_host(requested) != _normalize_host(landed):
+        return False
+    if _normalize_path(requested.path) != _normalize_path(landed.path):
+        return False
+    if (_normalize_percent_encoding(requested.query)
+            != _normalize_percent_encoding(landed.query)):
+        return False
+    return True
 
 
 # Read crawl4ai's own anti-bot diagnosis off the result object, verbatim — an OBSERVATION
