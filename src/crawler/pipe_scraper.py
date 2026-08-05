@@ -102,6 +102,28 @@ def _extract_pipe_config_stamp(
         "empty_threshold_bytes": EMPTY_THRESHOLD_BYTES,
     }
 
+# Shared low-level curl_cffi GET, underlying BOTH fallback routes — returns the raw curl_cffi
+# Response (or None on any exception: timeout, connection error, TLS handshake failure — fail-soft,
+# never propagated) so each caller reads only what it needs. Local to this call (no shared/module
+# state, no cross-request keying) — safe under _scrape_all's asyncio.gather over hundreds of
+# concurrent URLs; nothing here is written or read outside this one function call's own stack.
+# response.url is libcurl's EFFECTIVE_URL (curl_cffi 0.16.0 requests/session.py's
+# _parse_response: `rsp.url = c.getinfo(CurlInfo.EFFECTIVE_URL)`), always the FINAL url after
+# following redirects, never the originally-requested one on a redirecting fetch — confirmed live,
+# this venv: GET https://www.rfc-editor.org/rfc/rfc2616 -> status 200, response.url =
+# https://www.rfc-editor.org/info/rfc2616/, response.redirect_count = 1. curl_cffi follows
+# redirects by default and reports exactly where it landed; the old (None, None) blanket answer on
+# both fallback routes was this project's own call site throwing that value away before crawl4ai
+# ever got a chance to overwrite it — the fix belongs here, not in crawl4ai.
+async def _curl_cffi_get(url: str):
+    try:
+        async with AsyncSession(impersonate="chrome") as session:
+            return await asyncio.wait_for(
+                session.get(url, timeout=FALLBACK_FETCH_TIMEOUT_S), timeout=FALLBACK_FETCH_TIMEOUT_S,
+            )
+    except Exception:
+        return None
+
 # Plain-HTTP-with-browser-TLS-fingerprint acquisition attempt for the case where the BROWSER is
 # the weaker client: a capture run took 0/23 on crossref.org, every URL empty at the ~15s
 # page-load ceiling with no HTTP status, while plain curl on the same URLs returned HTTP 200 /
@@ -109,50 +131,55 @@ def _extract_pipe_config_stamp(
 # carries a real browser TLS fingerprint, not just a UA string — an httpx/requests fallback would
 # be the weaker client again and defeat the purpose (process-docs/news_pipeline/: impersonate=
 # "chrome" got 80/425 proxies through Cloudflare with HTTP 200 where another client managed
-# 0/17202, the isolating variable being the TLS fingerprint alone). Used as BOTH: (a) wired
-# directly into CrawlerRunConfig.fallback_fetch_function — crawl4ai's own mechanism, invoked when
-# the browser returns a non-exception result that is_blocked() flags; (b) called directly from
-# _scrape_one's except block via _own_fallback_rescue — the browser-raised-an-exception case
-# crawl4ai's own mechanism cannot reach at max_retries=0 (verified: async_webcrawler.py re-raises
-# past the fallback block when len(proxy_list)<=1 and max_attempts<=1, pipe_scraper's exact
-# config). Bounded (curl_cffi's own timeout= plus an outer asyncio.wait_for) and fail-soft: any
-# exception — timeout, connection error, TLS handshake failure — returns None, degrading to
-# today's behavior; a failing fallback must never break the run. status_code != 200 gate is
-# deliberate: crawl4ai's own fallback wiring forces status_code=200 on ANY non-empty return value
-# regardless of what actually happened, so if curl_cffi itself got blocked (403/429) but still
-# returned an HTML block page, returning it anyway would make crawl4ai mark that a false success.
+# 0/17202, the isolating variable being the TLS fingerprint alone). Wired DIRECTLY into
+# CrawlerRunConfig.fallback_fetch_function (path a) — crawl4ai's own mechanism, invoked when the
+# browser returns a non-exception result that is_blocked() flags; crawl4ai calls this exact
+# function and consumes the return value itself (async_webcrawler.py: `_fallback_html =
+# await _fallback_fn(url)`, then treats it directly as HTML text), so this signature (str | None)
+# is a contract, not just this module's own choice — a tuple return here would break that wiring.
+# _own_fallback_rescue (path b) does NOT call this — it calls _curl_cffi_get directly instead, to
+# also read the landed URL this function's return shape has no room for (see that function).
+# Thin wrapper over _curl_cffi_get. status_code != 200 gate is deliberate: crawl4ai's own fallback
+# wiring forces status_code=200 on ANY non-empty return value regardless of what actually happened,
+# so if curl_cffi itself got blocked (403/429) but still returned an HTML block page, returning it
+# anyway would make crawl4ai mark that a false success.
 async def _fallback_fetch(url: str) -> str | None:
-    try:
-        async with AsyncSession(impersonate="chrome") as session:
-            response = await asyncio.wait_for(
-                session.get(url, timeout=FALLBACK_FETCH_TIMEOUT_S), timeout=FALLBACK_FETCH_TIMEOUT_S,
-            )
-        if response.status_code != 200:
-            return None
-        return response.text
-    except Exception:
+    response = await _curl_cffi_get(url)
+    if response is None or response.status_code != 200:
         return None
+    return response.text
 
 # pipe_scraper's OWN fallback rescue (path b) — called only from _scrape_one's except block, the
 # one place crawl4ai's own fallback_fetch_function cannot reach at max_retries=0 (browser call
-# raised outright, no crawl_result ever formed). Converts the fetched HTML to markdown via
-# crawl4ai's own raw:// pipeline (verified: raw:// URLs run through the same
+# raised outright, no crawl_result ever formed). Calls _curl_cffi_get directly (not _fallback_fetch)
+# specifically to also read response.url — the landed URL curl_cffi actually ended up on, real and
+# available at this call site (unlike path a, see _fallback_fetch's comment). Converts the fetched
+# HTML to markdown via crawl4ai's own raw:// pipeline (verified: raw:// URLs run through the same
 # DefaultMarkdownGenerator, are exempted from anti-bot/fallback machinery entirely — no recursion
 # risk from reusing run_cfg's fallback_fetch_function here) rather than hand-rolling HTML-to-markdown.
-# Returns (outcome, http_status, byte_count, pipe_fallback_used, pipe_fallback_resolved).
+# Returns (outcome, http_status, byte_count, pipe_fallback_used, pipe_fallback_resolved, landed_url).
+# landed_url is recorded whenever a response was actually obtained (regardless of status_code) —
+# redirect behaviour was genuinely observed either way; None only when _curl_cffi_get itself
+# returned None (the fetch never completed at all: exception, timeout).
 # pipe_fallback_resolved describes the FETCH (curl_cffi returned a genuine 200 with a body) — it is
 # NOT about whether that body converted into usable markdown, which is what `outcome` describes.
 # The two can legitimately disagree: resolved=True with outcome="empty" means curl_cffi got a real
 # 200 but the raw://-pipeline conversion produced too little content to clear
 # EMPTY_THRESHOLD_BYTES — read that as "fetch worked, content didn't", not as a contradiction.
 # http_status is 200 ONLY when pipe_fallback_resolved is True (a real curl_cffi 200) — never faked,
-# unlike crawl4ai's own fallback wiring which forces 200 regardless of the real outcome.
+# unlike crawl4ai's own fallback wiring which forces 200 regardless of the real outcome. Same
+# status_code != 200 gate as _fallback_fetch (see that function's comment) — a curl-side block
+# must not be treated as a genuine rescue, independent of whether landed_url is known.
 async def _own_fallback_rescue(
     crawler: AsyncWebCrawler, url: str, run_cfg: CrawlerRunConfig, output_dir: Path,
-) -> tuple[str, int | None, int, bool, bool]:
-    html = await _fallback_fetch(url)
+) -> tuple[str, int | None, int, bool, bool, str | None]:
+    response = await _curl_cffi_get(url)
+    landed_url = (response.url or None) if response is not None else None
+    if response is None or response.status_code != 200:
+        return 'error', None, 0, True, False, landed_url
+    html = response.text
     if not html:
-        return 'error', None, 0, True, False
+        return 'error', None, 0, True, False, landed_url
     try:
         fb_result = await crawler.arun(url=f"raw://{html}", config=run_cfg)
         raw_md = (fb_result.markdown.raw_markdown if fb_result.markdown else '') or ''
@@ -163,7 +190,7 @@ async def _own_fallback_rescue(
         fname = _url_to_filename(url)
         (output_dir / fname).write_text(f"<!-- source: {url} -->\n\n{raw_md}", encoding='utf-8')
     outcome = 'ok' if byte_count >= EMPTY_THRESHOLD_BYTES else 'empty'
-    return outcome, 200, byte_count, True, True
+    return outcome, 200, byte_count, True, True, landed_url
 
 # Read landed_url/same_target off the successful, non-exception result — but ONLY when crawl4ai's
 # OWN fallback_fetch_function was NOT the route that produced this result (diagnosis["crawl4ai_
@@ -172,11 +199,17 @@ async def _own_fallback_rescue(
 # redirected_url is hardcoded to the ORIGINAL requested url regardless of what curl_cffi's own
 # fetch actually followed — recording it verbatim would report a fabricated "no redirect", the
 # exact class of error content_judgment_removal_2026-08-05.md already eliminated once on the
-# ad-hoc path. Both fields come back (None, None) on that route — an honest "not measurable" beats
-# a fabricated "same". pipe_scraper's OWN rescue (_own_fallback_rescue, path b) never calls this at
-# all: its raw:// pipeline only ever reports redirected_url=config.base_url (verified in
-# async_crawler_strategy.py), which this module never sets — always None there too, for the same
-# reason, so that path passes (None, None) directly at its own call site instead.
+# ad-hoc path. Both fields stay (None, None) on that route, DELIBERATELY not fixed: curl_cffi's own
+# _fallback_fetch (called BY crawl4ai internally here, not by our own code) returns only a str per
+# crawl4ai's own contract (see _fallback_fetch's comment) — there is no channel back out of that
+# call for the landed URL crawl4ai itself does not surface. Reaching in via a module-level
+# dict keyed by url would work in the common case but is explicitly rejected: _scrape_all runs
+# asyncio.gather over hundreds of URLs at once, and anything keyed that loosely risks
+# cross-contamination if the same URL is ever in flight twice in one run, plus unbounded growth/
+# cleanup concerns for no clean ownership story. An honest (None, None) beats a fragile channel.
+# pipe_scraper's OWN rescue (_own_fallback_rescue, path b) is DIFFERENT: it calls _curl_cffi_get
+# directly (its own call, not one crawl4ai mediates), so it reads response.url itself and reports
+# a real landed_url/same_target — see that function's own comment.
 def _landed_url_facts(url: str, result, diagnosis: dict) -> tuple[str | None, bool | None]:
     if diagnosis.get("crawl4ai_fallback_fetch_used"):
         return None, None
@@ -233,14 +266,18 @@ async def _scrape_one(
             # that failure mode is ever seen). wall_ms below deliberately includes this rescue
             # attempt's full cost on top of the failed browser attempt — see pipe_scrape_logger.py's
             # wall_ms schema note.
-            outcome, status, byte_count, fb_used, fb_resolved = await _own_fallback_rescue(
+            outcome, status, byte_count, fb_used, fb_resolved, landed_url = await _own_fallback_rescue(
                 crawler, url, run_cfg, output_dir)
             wall_ms = int((time.time() - t0) * 1000)
-            # landed_url/same_target: always (None, None) on this route — see _landed_url_facts's
-            # comment for why (raw:// pipeline never carries a real redirected_url here).
+            # same_target is None whenever landed_url itself is None (the curl_cffi fetch never
+            # completed at all — see _own_fallback_rescue) — NOT is_same_target's own
+            # missing-input convention (True on None), which is the right default for a normal
+            # caller but wrong for this log's specific question "was a redirect actually observed
+            # on this record": a fetch that never happened observed nothing, so nothing is claimed.
+            same_target = is_same_target(url, landed_url) if landed_url else None
             _log_pipe_record(run_ctx, ts, url, domain, outcome, status, byte_count, wall_ms, {},
                               pipe_fallback_used=fb_used, pipe_fallback_resolved=fb_resolved,
-                              landed_url=None, same_target=None)
+                              landed_url=landed_url, same_target=same_target)
             return {'url': url, 'wall_ms': wall_ms, 'bytes': byte_count,
                     'status_code': status, 'outcome': outcome}
         wall_ms = int((time.time() - t0) * 1000)
