@@ -1,8 +1,7 @@
 # Landed URL wired into the ad-hoc scrape path (2026-08-08)
 
-Milestone 2 of the 3-milestone plan (`is_same_target` itself, from
-`process-docs/scrape_pipeline/landed_url_comparison_primitive_2026-08-06.md`, is the primitive this
-session wired in). `src/scraper/scrape_url.py` now captures crawl4ai's `result.redirected_url`,
+Milestone 2 of the 3-milestone plan; the `is_same_target` primitive it wires in was built in an
+earlier session of this same area. `src/scraper/scrape_url.py` now captures crawl4ai's `result.redirected_url`,
 logs it alongside a `same_target` verdict, and renders it in `_format_scrape_output` — ONLY when it
 deviates. `src/crawler/pipe_scraper.py`/`pipe_scrape_logger.py` (milestone 3) untouched.
 

@@ -1,14 +1,13 @@
 # Landed URL wired into the pipe-scraper path (2026-08-10)
 
-Milestone 3 of 3 — the final piece of the requested-vs-landed URL effort
-(`process-docs/scrape_pipeline/landed_url_comparison_primitive_2026-08-06.md`: `is_same_target`
-itself; `process-docs/scrape_pipeline/landed_url_wired_into_ad_hoc_path_2026-08-08.md`: wired into
-`scrape_url.py`). This session did the same for `src/crawler/pipe_scraper.py`'s
+Milestone 3 of 3 — the final piece of the requested-vs-landed URL effort; the `is_same_target`
+primitive and its wiring into `src/scraper/scrape_url.py` were built in two earlier sessions of
+this same area. This session did the same for `src/crawler/pipe_scraper.py`'s
 `pipe_scrape_log.jsonl` — log only, no rendered-output half exists on this path (it writes files,
 not chat text). `is_same_target` itself untouched, imported as-is (same cross-module pattern
 `hash_config`/`extract_crawl4ai_diagnosis` already established for this path — see
-`process-docs/pipe_scraper_hardening/2026-08-04_persistent_scrape_log.md` for why that log's schema
-already deviates field-by-field from the ad-hoc one; the new fields had to fit that same reasoning).
+`process-docs/pipe_scraper_hardening/` for why that log's schema already deviates field-by-field
+from the ad-hoc one; the new fields had to fit that same reasoning).
 
 ## The complication: two fallback routes, both making `redirected_url` untrustworthy
 
@@ -24,8 +23,9 @@ Verified directly against the installed crawl4ai 0.9.2 source before relying on 
   crawl4ai's `raw://` pipeline. On a `raw:` scheme, `redirected_url` comes from `config.base_url`
   (`async_crawler_strategy.py`), which this module's `run_cfg` never sets — always `None` there.
 
-Recording either forced value verbatim would fabricate a fact — exactly the class of error
-`content_judgment_removal_2026-08-05.md` (scrape_url.py's own history) already eliminated once.
+Recording either forced value verbatim would fabricate a fact — exactly the class of error the
+2026-08-05 content-judgment removal (this same area, `scrape_url.py`'s own history) already
+eliminated once.
 
 ## Decision: (null, null) on both fallback routes, tri-state same_target
 

@@ -44,8 +44,8 @@ pulling in trafilatura and doing far more than this comparison needs (see the
 **Missing (`None`/`""`) on either side → `True` (same, no deviation reported).** This is an
 expected, known shape — crawl4ai leaves the landed URL unset on some paths (e.g. an exception
 before navigation) — and a fact-reporting function has no fact to report from an absence; claiming
-a deviation from missing data would be a fabricated signal, the failure mode
-`content_judgment_removal_2026-08-05.md` (this same area) was written to eliminate in the sibling
+a deviation from missing data would be a fabricated signal — the failure mode the 2026-08-05
+content-judgment removal (recorded in this same area) was written to eliminate in the sibling
 content-judgment path.
 
 **Present but unparseable as a URL (bad port, out-of-range port, malformed IPv6 literal) → `False`
@@ -64,7 +64,8 @@ parse failure, same cost model as the no-tracking-allowlist decision above. This
 correctness of the primitive itself: milestone 2 will call this from inside `try_scrape`'s guarded
 acquisition span AFTER content has already been fetched successfully — an uncaught exception there
 would have turned a successful scrape into a hard failure over an annotation step, inverting this
-module's fact-reporting contract from `content_judgment_removal_2026-08-05.md`.
+module's fact-reporting contract established by the 2026-08-05 content-judgment removal (this same
+area).
 
 ## Why `crawl_site.normalize_url` (existing, in `src/crawler/crawl_site.py`) was not reused
 
