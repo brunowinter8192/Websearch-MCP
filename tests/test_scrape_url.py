@@ -105,7 +105,8 @@ class _FakeMarkdown:
 
 
 class _FakeResult:
-    def __init__(self, raw_markdown, status_code=200, success=True, error_message=None, html=""):
+    def __init__(self, raw_markdown, status_code=200, success=True, error_message=None, html="",
+                 redirected_url=None):
         self.markdown = _FakeMarkdown(raw_markdown)
         self.status_code = status_code
         self.success = success
@@ -113,6 +114,7 @@ class _FakeResult:
         self.html = html
         self.headers = {}
         self.crawl_stats = {"attempts": 1, "resolved_by": "direct", "fallback_fetch_used": False}
+        self.redirected_url = redirected_url
 
 
 @pytest.mark.asyncio
@@ -146,6 +148,85 @@ async def test_try_scrape_returns_content_on_http_403(monkeypatch):
     assert meta["acquisition_error"] is None
     # crawl4ai's diagnosis is recorded, not acted on — content came through despite it
     assert meta["crawl4ai_error_message"] == "Blocked by anti-bot protection: Cloudflare JS challenge"
+
+
+# ---------------------------------------------------------------------------
+# try_scrape captures meta["landed_url"] RAW from result.redirected_url — milestone 2 of 3
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_try_scrape_captures_landed_url_raw(monkeypatch):
+    """meta["landed_url"] is result.redirected_url verbatim — not normalized by is_same_target."""
+
+    class _FakeCrawler:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def arun(self, url, config=None):
+            return _FakeResult(
+                raw_markdown="idealo-shaped: same numeric ID, rewritten slug, real content here.",
+                redirected_url="https://www.idealo.de/preisvergleich/OffersOfProduct/"
+                               "203078159_-woman-hybrid-jacket-fix-hood-33z6026-cmp-campagnolo.html",
+            )
+
+    monkeypatch.setattr(scrape_url, "AsyncWebCrawler", _FakeCrawler)
+
+    _, meta = await scrape_url.try_scrape(
+        "https://www.idealo.de/preisvergleich/OffersOfProduct/203078159_-fritz-box-7510-avm.html")
+
+    assert meta["landed_url"] == (
+        "https://www.idealo.de/preisvergleich/OffersOfProduct/"
+        "203078159_-woman-hybrid-jacket-fix-hood-33z6026-cmp-campagnolo.html")
+
+
+@pytest.mark.asyncio
+async def test_try_scrape_landed_url_is_none_on_launch_failure(monkeypatch):
+    """A path that never obtains a result object (browser_missing) carries landed_url=None, same
+    as every other acquisition-error field — no result means no fact to read it off."""
+
+    class _RaisingCrawler:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            raise Exception("BrowserType.launch: Executable doesn't exist at /fake/chrome")
+
+        async def __aexit__(self, *a):
+            return False
+
+    monkeypatch.setattr(scrape_url, "AsyncWebCrawler", _RaisingCrawler)
+
+    _, meta = await scrape_url.try_scrape("https://example.com")
+
+    assert meta["acquisition_error"] == "browser_missing"
+    assert meta["landed_url"] is None
+
+
+@pytest.mark.asyncio
+async def test_scrape_url_workflow_logs_landed_url_and_same_target(monkeypatch):
+    """scrape_url_workflow's log_scrape record carries the raw landed_url off meta AND the
+    same_target verdict computed via is_same_target at write time — the two fields milestone 2
+    adds to the JSONL schema."""
+    captured = {}
+
+    async def _fake_try_scrape(url):
+        return "real content", _meta(
+            landed_url="https://platform.claude.com/en/api/getting-started")
+
+    monkeypatch.setattr(scrape_url, "try_scrape", _fake_try_scrape)
+    monkeypatch.setattr(scrape_url, "write_sidecar", lambda *a, **kw: None)
+    monkeypatch.setattr(scrape_url, "log_scrape", lambda record: captured.update(record))
+
+    await scrape_url.scrape_url_workflow("https://docs.anthropic.com/en/api/getting-started")
+
+    assert captured["landed_url"] == "https://platform.claude.com/en/api/getting-started"
+    assert captured["same_target"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -285,7 +366,7 @@ def _meta(**overrides):
         "fallback_to_raw": False, "raw_markdown_bytes": 100, "date": None,
         "crawl4ai_success": True, "crawl4ai_error_message": None,
         "crawl4ai_attempts": 1, "crawl4ai_resolved_by": "direct",
-        "crawl4ai_fallback_fetch_used": False, "config": {},
+        "crawl4ai_fallback_fetch_used": False, "landed_url": None, "config": {},
     }
     base.update(overrides)
     return base
@@ -385,6 +466,47 @@ def test_is_same_target_never_raises_on_malformed_url(requested, landed):
     never see an exception from this annotation step. Treated as DIFFERENT: two present strings
     that fail to parse as a URL are an anomaly worth surfacing, not silence."""
     assert scrape_url.is_same_target(requested, landed) is False
+
+
+# ---------------------------------------------------------------------------
+# _format_scrape_output: the landed-URL line — present ONLY on a real deviation, absent on the
+# ordinary no-redirect case and on mere-spelling differences (milestone 2 of 3)
+# ---------------------------------------------------------------------------
+
+def test_format_scrape_output_renders_landed_url_line_on_real_deviation():
+    """A landed URL on a genuinely different host renders as an explicit, readable fact."""
+    text = scrape_url._format_scrape_output(
+        "https://docs.anthropic.com/en/api/getting-started",
+        "the real landed page content",
+        _meta(landed_url="https://platform.claude.com/en/api/getting-started"),
+        None)
+    assert ("Landed URL (redirected to a different target than requested): "
+            "https://platform.claude.com/en/api/getting-started") in text
+
+
+def test_format_scrape_output_omits_landed_url_line_on_no_redirect():
+    """landed_url identical to the requested URL — the overwhelming majority case — renders no
+    line at all, not a redundant confirmation."""
+    text = scrape_url._format_scrape_output(
+        "https://www.rfc-editor.org/rfc/rfc2616", "the rfc content",
+        _meta(landed_url="https://www.rfc-editor.org/rfc/rfc2616"), None)
+    assert "Landed URL" not in text
+
+
+def test_format_scrape_output_omits_landed_url_line_on_mere_spelling_difference():
+    """A trailing-slash-only difference is not a target deviation — is_same_target's own rule,
+    reused here, must suppress the line just as it would for the log's same_target field."""
+    text = scrape_url._format_scrape_output(
+        "https://x.test/a", "content",
+        _meta(landed_url="https://x.test/a/"), None)
+    assert "Landed URL" not in text
+
+
+def test_format_scrape_output_omits_landed_url_line_when_absent():
+    """No landed_url at all (e.g. acquisition failed before a result existed) renders no line."""
+    text = scrape_url._format_scrape_output(
+        "https://x.test/a", "", _meta(landed_url=None, acquisition_error="browser_missing"), None)
+    assert "Landed URL" not in text
 
 
 def test_format_scrape_output_crawl4ai_diagnosis_labeled_as_observation_not_verdict():

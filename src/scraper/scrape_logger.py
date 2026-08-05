@@ -34,6 +34,22 @@ DEFAULT_LOG_PATH = Path(__file__).parent.parent.parent / "src" / "logs" / "scrap
 #   "crawl4ai_attempts": int | null,      # result.crawl_stats["attempts"] — total browser attempts across proxies/retries
 #   "crawl4ai_resolved_by": str | null,   # result.crawl_stats["resolved_by"]: "direct" | "proxy" | "fallback_fetch" | null
 #   "crawl4ai_fallback_fetch_used": bool | null,  # result.crawl_stats["fallback_fetch_used"]
+#   "landed_url": str | null,              # crawl4ai's result.redirected_url, RAW/unnormalized —
+#                                           # exactly as crawl4ai reported it, never run through
+#                                           # is_same_target's normalization. That normalization is
+#                                           # a comparison rule, not a storage format: keeping the
+#                                           # raw value means old records stay re-analysable if the
+#                                           # rule is ever revised. null on any call that never
+#                                           # obtained a result object (browser_missing/exception/
+#                                           # budget_exhausted before acquisition completed).
+#   "same_target": bool,                   # scrape_url.py's is_same_target(url, landed_url),
+#                                           # evaluated under THIS project's same/different rule AT
+#                                           # WRITE TIME — stored as its own field so that decision
+#                                           # stays visible and auditable later even if the rule
+#                                           # changes; re-derive from url+landed_url rather than
+#                                           # assuming this stored verdict still matches a revised
+#                                           # rule. True whenever landed_url is null (no fact to
+#                                           # report from an absence — see is_same_target's comment).
 #   "config_hash": str,                    # first 10 hex chars of sha256(sort_keys JSON of "config") — cheap "same config" grouping key
 #   "config": {                            # scrape config actually in effect for this call, read off the real config objects (never hand-duplicated)
 #     "headless": bool, "enable_stealth": bool, "adapter": str, "crawler_strategy": str,
@@ -53,6 +69,10 @@ DEFAULT_LOG_PATH = Path(__file__).parent.parent.parent / "src" / "logs" / "scrap
 # Historical fields (appear ONLY on records written before the ad-hoc path stopped judging
 # content; absent by design on every record from that change onward, not a logging bug):
 # "garbage_type" (str|null), "truncated" (bool), "consent_stripped" (bool).
+#
+# "landed_url"/"same_target" are the reverse case: ABSENT on every record written before this
+# schema added them, present on every one from then onward — read their absence on an old record
+# as "this call predates the field," not as "no redirect happened."
 # Historical "outcome"/"garbage_type" values that no longer occur going forward — a content-verdict
 # category, not an acquisition-failure category: "http_error", "cookie_wall", "login_wall",
 # "cloudflare", "nav_dump", "minimal_content", "crawl4ai_error". Read an aggregate spanning this
