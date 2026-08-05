@@ -56,12 +56,13 @@ Engines: google, duckduckgo, mojeek, lobsters, semantic_scholar, openalex, cross
 |-----------|------|-------------|
 | url | str (required) | URL to fetch as filtered markdown |
 
-Returns the FULL page as markdown (`PruningContentFilter`, no length cap), preceded by an `## Acquisition facts` block — HTTP status, byte counts, and crawl4ai's own anti-bot diagnosis. No options. For capturing a whole domain into RAG, use the Permanent Capture Workflow — not this.
+Returns the FULL page as markdown (`PruningContentFilter`, no length cap), preceded by an `## Acquisition facts` block — HTTP status, the URL the browser actually landed on, byte counts, and crawl4ai's own anti-bot diagnosis. No options. For capturing a whole domain into RAG, use the Permanent Capture Workflow — not this.
 
 **The scraper does not judge the content; YOU do.** It returns whatever came back, always — a 403 carrying the full article, a 200 carrying a 400-byte "Sorry, something went wrong" placeholder, an empty page. Read the facts block against the content and say what you see. Two traps the facts block is built to expose:
 
 - **HTTP status is a fact, not a verdict.** `de.trustpilot.com` serves real review pages under HTTP 403. A non-200 status with substantial content is a server using status codes unusually, not a failed scrape.
 - **crawl4ai's diagnosis is an OBSERVATION with documented false positives.** It reports `Blocked by anti-bot protection: Cloudflare JS challenge` on renders that returned the complete page. Never restate it to the user as "the site blocked us" — check it against the content that came back.
+- **The landed URL is reported on every scrape, never judged.** Compare it against the URL you requested yourself. Differs only in spelling (trailing slash, `www.`, `http`/`https`, fragment, default port) → ignore it. Points somewhere else (different host, different path, different query) → accept the content, keep working, and flag it to the user: which URL was requested, which was delivered, and that the content may not be what was asked for. Absent → say so when reporting a failed scrape.
 
 When a page genuinely did not come through (placeholder text, near-zero bytes, an interstitial), tell the user plainly which URL failed and what the evidence was. Do not silently retry, do not paper over it, and do not treat it as a config problem to solve mid-task — scraper tuning is a separate session in the `websearch` repo, informed by `src/logs/scrape_log.jsonl`.
 

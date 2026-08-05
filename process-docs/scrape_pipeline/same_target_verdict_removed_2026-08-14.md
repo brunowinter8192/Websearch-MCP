@@ -1,9 +1,9 @@
 # Removed the stored same_target verdict; the landed-URL line is now unconditional (2026-08-14)
 
-Reverses part of the design set by three preceding entries in this area:
-`landed_url_comparison_primitive_2026-08-06.md` (built `is_same_target`), the milestone-2 wiring
-entry that gave the ad-hoc path (`src/scraper/scrape_url.py`) a conditional acquisition-facts line
-gated on that verdict, and the milestone-4 entry that gave the pipe path
+Reverses part of the design set by three preceding entries in this area: the one that built
+`is_same_target`, the milestone-2 wiring entry that gave the ad-hoc path
+(`src/scraper/scrape_url.py`) a conditional acquisition-facts line gated on that verdict, and the
+milestone-4 entry that gave the pipe path
 (`src/crawler/pipe_scraper.py`) a tri-state version of the same stored field. Those entries stand
 as written — this is a new, dated snapshot recording the reversal, not an edit to them.
 
