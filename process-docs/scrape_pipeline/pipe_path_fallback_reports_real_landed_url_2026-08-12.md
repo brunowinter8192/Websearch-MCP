@@ -1,7 +1,7 @@
 # Pipe path's own fallback route reports a real landed URL (2026-08-12)
 
-Follow-up to `process-docs/scrape_pipeline/landed_url_wired_into_pipe_path_2026-08-10.md`'s
-milestone-3 decision. That session recorded `(landed_url=None, same_target=None)` on BOTH of
+Follow-up to the milestone-3 decision recorded in an earlier session of this same area. That
+session recorded `(landed_url=None, same_target=None)` on BOTH of
 `src/crawler/pipe_scraper.py`'s fallback routes, reasoning that `redirected_url` is untrustworthy on
 both. Review measured curl_cffi directly (this venv, curl_cffi 0.16.0): a request to
 `https://www.rfc-editor.org/rfc/rfc2616` returns `response.status_code=200`,
@@ -44,8 +44,8 @@ completed this specific time" (exception/timeout) — a real distinction a later
 collapse. Computed as `is_same_target(url, landed_url) if landed_url else None` at both call sites,
 not via `is_same_target`'s own missing-input convention (`True` on `None`) — that default fits a
 normal caller with nothing to compare, but here a `None` landed_url specifically means "nothing was
-observed," and claiming "same" from that would be the exact class of fabrication
-`content_judgment_removal_2026-08-05.md` already eliminated once elsewhere.
+observed," and claiming "same" from that would be the exact class of fabrication the 2026-08-05
+content-judgment removal (this same area) already eliminated once elsewhere.
 
 ## Verification
 
@@ -65,8 +65,8 @@ Full suite: `9 failed, 175 passed`. `FAILED` list diffed against the standing ba
 
 Live: `api.crossref.org` (a DOI works-endpoint) + `rfc-editor.org` through the real CLI. The
 browser succeeded on both this run — the crossref browser-weakness recorded in
-`process-docs/pipe_scraper_hardening/2026-08-05_curl_cffi_fallback_acquisition_path.md` (0/23 empty
-in 2026-08) did not reproduce; path (b) never triggered live.
+`process-docs/pipe_scraper_hardening/` (0/23 empty in 2026-08) did not reproduce; path (b) never
+triggered live.
 
 Controlled: a local HTTP server (302 redirect → `Content-Type: application/octet-stream` +
 `Content-Disposition: attachment`) built specifically to trigger Playwright's `net::ERR_ABORTED`
