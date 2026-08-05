@@ -372,6 +372,21 @@ def test_is_same_target_treats_missing_input_as_same(requested, landed):
     assert scrape_url.is_same_target(requested, landed) is True
 
 
+@pytest.mark.parametrize("requested,landed", [
+    ("https://x.test:notaport/a", "https://x.test/a"),
+    ("http://x.test:99999/a", "http://x.test/a"),
+    ("https://[:::1]/a", "https://x.test/a"),
+    ("https://x.test/a", "https://x.test:notaport/a"),
+    ("https://x.test/a", "https://[:::1]/a"),
+])
+def test_is_same_target_never_raises_on_malformed_url(requested, landed):
+    """A bad port, an out-of-range port, or a malformed IPv6 literal must not propagate — the
+    caller (milestone 2, from inside try_scrape's guarded span, AFTER content was fetched) must
+    never see an exception from this annotation step. Treated as DIFFERENT: two present strings
+    that fail to parse as a URL are an anomaly worth surfacing, not silence."""
+    assert scrape_url.is_same_target(requested, landed) is False
+
+
 def test_format_scrape_output_crawl4ai_diagnosis_labeled_as_observation_not_verdict():
     """The diagnosis line itself carries the observation-not-verdict caveat — a caller reading
     only the output text (not the source) must see this, not just a code comment."""

@@ -360,12 +360,30 @@ def _normalize_path(path: str) -> str:
 # exception before navigation) — and a fact-reporting function has no fact to report from an
 # absence: claiming a deviation from missing data would be a fabricated signal, the same failure
 # mode the content-judgment removal (see doc above) was written to eliminate.
+#
+# A string that is present but fails to parse as a URL at all (bad port — "x.test:notaport",
+# out-of-range port — ":99999", a malformed IPv6 literal — "[:::1]") -> treated as DIFFERENT.
+# urlparse() itself never raises; on CPython 3.14 the bracketed-IPv6 check raises inside the
+# urlparse() call, while .port/.hostname raise lazily on read on other versions — both are caught
+# here so this function NEVER propagates a ValueError to its caller (milestone 2 calls it from
+# inside try_scrape's guarded acquisition span AFTER content was already fetched; an exception
+# there would turn a successful scrape into a hard failure over an annotation, not a fact). The
+# missing-input case above is an expected, known-shape absence with nothing to compare; this case
+# is the opposite — two present strings that fail to parse the way a well-formed URL should, which
+# is itself an anomaly worth surfacing, not silence. Defaulting to "same" here would risk masking
+# a genuine mismatch behind a parse failure — the same reasoning as the no-tracking-allowlist rule
+# above: an occasional redundant report costs less than treating an unparseable target as
+# equivalent to one that may not resemble it at all.
 def is_same_target(requested_url: str | None, landed_url: str | None) -> bool:
     if not requested_url or not landed_url:
         return True
-    requested = urlparse(requested_url)
-    landed = urlparse(landed_url)
-    if _normalize_host(requested) != _normalize_host(landed):
+    try:
+        requested = urlparse(requested_url)
+        landed = urlparse(landed_url)
+        same_host = _normalize_host(requested) == _normalize_host(landed)
+    except ValueError:
+        return False
+    if not same_host:
         return False
     if _normalize_path(requested.path) != _normalize_path(landed.path):
         return False
