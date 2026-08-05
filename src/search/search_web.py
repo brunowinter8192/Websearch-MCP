@@ -128,7 +128,7 @@ async def search_web_workflow(
     cache_write_ms = round((time.perf_counter() - t0) * 1000)
 
     total_ms = round((time.perf_counter() - t_total) * 1000)
-    _build_query_log_entry(query, language, selected, total_ms, engine_stats, all_excluded)
+    _build_query_log_entry(query, language, selected, total_ms, engine_stats, all_excluded, key)
 
     result = [TextContent(type="text", text=formatted_text)]
 
@@ -329,7 +329,9 @@ def _format_breakdown(query: str, pools: dict[str, list[SearchResult]], all_engi
     return "\n".join(lines)
 
 
-# Build and write workflow_summary log entry after each search_web_workflow call
+# Build and write workflow_summary log entry after each search_web_workflow call. search_key is
+# the same cache_key(...) value cache_write used for this call — the join key a later
+# search_engine_drilldown record correlates back to; see query_logger.py's schema comment.
 def _build_query_log_entry(
     query: str,
     language: str,
@@ -337,6 +339,7 @@ def _build_query_log_entry(
     total_ms: int,
     engine_stats: dict,
     engines_excluded: dict[str, str],
+    search_key: str,
 ) -> None:
     bottleneck = max(engine_stats, key=lambda k: engine_stats[k]["search_ms"]) if engine_stats else None
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
@@ -350,4 +353,5 @@ def _build_query_log_entry(
         "total_wall_ms": total_ms,
         "bottleneck_engine": bottleneck,
         "engines": engine_stats,
+        "search_key": search_key,
     })

@@ -199,3 +199,134 @@ async def test_search_web_workflow_writes_log(tmp_path):
     assert "url_timeouts" in pv
     assert "total_ms" in pv
     assert rec["bottleneck_engine"] in ("google", "duckduckgo")
+
+
+# ---------------------------------------------------------------------------
+# record_type = "drilldown" — schema + search_key correlation
+# ---------------------------------------------------------------------------
+
+def test_log_query_accepts_drilldown_record_shape(tmp_path, monkeypatch):
+    """log_query writes a well-shaped drilldown record — the generic writer, exercised with the
+    new record_type's fields (mirrors test_log_query_writes_jsonl's pattern for engine_run/
+    workflow_summary; uses the real WEBSEARCH_QUERY_LOG_PATH env var, not the ql.LOG_PATH
+    attribute the pre-existing broken tests above reference — that attribute does not exist on
+    the real module, see this file's process-docs entry for that finding)."""
+    import src.search.query_logger as ql
+    log_file = tmp_path / "query_log.jsonl"
+    monkeypatch.setenv("WEBSEARCH_QUERY_LOG_PATH", str(log_file))
+
+    ql.log_query({
+        "record_type": "drilldown", "ts": "2026-08-05T00:00:00.000Z",
+        "query": "fritzbox 7510", "language": "en", "mode": None, "engine": "google",
+        "search_key": "abc123def456", "cache_status": "hit", "engine_in_pools": True,
+        "result_count": 2, "urls": ["https://a.com", "https://b.com"],
+    })
+
+    lines = log_file.read_text().splitlines()
+    assert len(lines) == 1
+    rec = json.loads(lines[0])
+    assert rec["record_type"] == "drilldown"
+    assert rec["search_key"] == "abc123def456"
+    assert rec["urls"] == ["https://a.com", "https://b.com"]
+
+
+def _make_mock_engine_with_reason(name: str, results: list):
+    """Mock engine matching the CURRENT _engine_with_timing interface
+    (engine.search_with_reason(query, language, max_results) -> (results, empty_reason)) — NOT
+    the shared _make_mock_engine() above, which sets .search (not .search_with_reason) and is
+    stale against this interface; see this file's process-docs entry for that finding. Deliberately
+    a separate, local, correct helper rather than fixing the shared one (out of scope, pre-existing)."""
+    eng = MagicMock()
+    eng.name = name
+
+    async def _search_with_reason(query, language, max_results):
+        return results, None
+
+    eng.search_with_reason = _search_with_reason
+    return eng
+
+
+@pytest.mark.asyncio
+async def test_search_web_workflow_writes_search_key_matching_cache_key(tmp_path, monkeypatch):
+    """workflow_summary's search_key equals the real cache.cache_key(...) output for the same
+    call — the exact join value a drilldown record must reproduce to correlate back to this
+    search. Real engine fanout mocked (no network); cache_write mocked (no real cache-dir write);
+    cache_key itself is NOT mocked — it must be the real function for this assertion to mean
+    anything."""
+    from src.search import search_web
+    from src.search.cache import cache_key as real_cache_key
+    log_file = tmp_path / "query_log.jsonl"
+    monkeypatch.setenv("WEBSEARCH_QUERY_LOG_PATH", str(log_file))
+
+    result_a = _fake_result("https://a.com", engine="google")
+    mock_engines = {"google": _make_mock_engine_with_reason("google", [result_a])}
+
+    with (
+        patch.object(search_web, "ENGINES", mock_engines),
+        patch.object(search_web, "_DEFAULT_ENGINES", {"google"}),
+        patch.object(search_web, "cache_write"),
+    ):
+        await search_web.search_web_workflow("test query", language="en")
+
+    lines = log_file.read_text().splitlines()
+    records = [json.loads(l) for l in lines]
+    summary_records = [r for r in records if r["record_type"] == "workflow_summary"]
+    assert len(summary_records) == 1
+    rec = summary_records[0]
+    expected_key = real_cache_key("test query", "en", None, None, modifier_id=None)
+    assert rec["search_key"] == expected_key
+
+
+# ---------------------------------------------------------------------------
+# cli.py's _log_drilldown — real function, isolated subprocess (importing cli.py in-process
+# reconfigures the root logger via logging.basicConfig and registers an atexit chrome-kill hook;
+# side effects that must not bleed into the rest of this test suite)
+# ---------------------------------------------------------------------------
+
+def test_log_drilldown_all_cache_status_and_pool_combinations(tmp_path):
+    """Real cli.py._log_drilldown, exercised for the sub-cases that matter: a hit with the engine
+    present (real urls, result_count matches); a hit with the engine absent from pools
+    (engine_in_pools=False, urls empty — distinguishing 'excluded upstream' from 'zero results');
+    and a cache-miss-then-search-failure (cache_status names the failure explicitly rather than
+    looking like an ordinary hit)."""
+    import os
+    import subprocess
+    import sys
+
+    log_file = tmp_path / "query_log.jsonl"
+    repo_root = Path(__file__).parent.parent
+    script = f"""
+import sys
+sys.path.insert(0, {str(repo_root)!r})
+import cli
+cli._log_drilldown("fritzbox 7510", "en", None, "google", "searchkey123", "hit", True,
+                    ["https://a.com", "https://b.com"])
+cli._log_drilldown("fritzbox 7510", "en", None, "obscure_engine", "searchkey123", "hit", False, [])
+cli._log_drilldown("never searched", "en", None, "google", "searchkey999",
+                    "miss_then_search_failed", False, [])
+"""
+    env = {**os.environ, "WEBSEARCH_QUERY_LOG_PATH": str(log_file)}
+    result = subprocess.run([sys.executable, "-c", script], cwd=repo_root, env=env,
+                             capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+
+    lines = log_file.read_text().splitlines()
+    assert len(lines) == 3
+    recs = [json.loads(l) for l in lines]
+
+    hit_with_urls = recs[0]
+    assert hit_with_urls["cache_status"] == "hit"
+    assert hit_with_urls["engine_in_pools"] is True
+    assert hit_with_urls["result_count"] == 2
+    assert hit_with_urls["urls"] == ["https://a.com", "https://b.com"]
+    assert hit_with_urls["search_key"] == "searchkey123"
+
+    hit_engine_absent = recs[1]
+    assert hit_engine_absent["engine_in_pools"] is False
+    assert hit_engine_absent["result_count"] == 0
+    assert hit_engine_absent["urls"] == []
+
+    miss_failed = recs[2]
+    assert miss_failed["cache_status"] == "miss_then_search_failed"
+    assert miss_failed["engine_in_pools"] is False
+    assert miss_failed["urls"] == []

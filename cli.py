@@ -29,15 +29,37 @@ logger = logging.getLogger(__name__)
 import argparse
 import asyncio
 import atexit
+from datetime import datetime, timezone
 
 from src.search.search_web import search_web_workflow
 from src.search.browser import kill_stale_chrome
 from src.search.cache import cache_key, cache_read, format_engine_pool
+from src.search.query_logger import log_query
 from urllib.parse import urlparse
 
 from src.scraper.scrape_url import scrape_url_workflow
 
 atexit.register(kill_stale_chrome)
+
+
+# Log one search_engine_drilldown call — fail-soft via log_query, same posture as search_web's own
+# logging. search_key ties this record back to the workflow_summary of the search it came from
+# (or of the fresh search it triggered on a cache miss) — see query_logger.py's schema comment.
+def _log_drilldown(query, language, mode, engine, search_key, cache_status, engine_in_pools, urls):
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    log_query({
+        "record_type": "drilldown",
+        "ts": ts,
+        "query": query,
+        "language": language,
+        "mode": mode,
+        "engine": engine,
+        "search_key": search_key,
+        "cache_status": cache_status,
+        "engine_in_pools": engine_in_pools,
+        "result_count": len(urls),
+        "urls": urls,
+    })
 
 
 def main():
@@ -95,20 +117,26 @@ def main():
         mode = "books" if args.books else ("pdf" if args.pdf else ("docs" if args.docs else None))
         key = cache_key(args.query, "en", None, None, modifier_id=mode)
         hit = cache_read(key)
+        cache_status = "hit"
         if hit is None:
             asyncio.run(search_web_workflow(
                 args.query, "en", None, None,
                 books=args.books, pdf=args.pdf, docs=args.docs,
             ))
             hit = cache_read(key)
+            cache_status = "miss_then_searched" if hit is not None else "miss_then_search_failed"
         if hit is None:
+            _log_drilldown(args.query, "en", mode, args.engine, key, cache_status, False, [])
             print(f'# search_engine_drilldown: cache write failed for "{args.query}"')
             return
         pools = hit.get("pools", {})
         if args.engine not in pools:
+            _log_drilldown(args.query, "en", mode, args.engine, key, cache_status, False, [])
             avail = ", ".join(sorted(pools.keys())) or "(none)"
             print(f"Engine '{args.engine}' not in cached pools. Available: {avail}")
             return
+        urls = [entry["url"] for entry in pools[args.engine]]
+        _log_drilldown(args.query, "en", mode, args.engine, key, cache_status, True, urls)
         print(format_engine_pool(pools[args.engine], args.engine, args.query))
         return
 
