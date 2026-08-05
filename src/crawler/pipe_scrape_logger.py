@@ -62,26 +62,33 @@ DEFAULT_LOG_PATH = Path(__file__).parent.parent.parent / "src" / "logs" / "pipe_
 #             http_status is then null, never a faked 200 (see pipe_scraper._own_fallback_rescue).
 #             Three readable states via (used, resolved): browser succeeded (False, False); pipe's own
 #             fallback rescued it (True, True); everything failed (True, False).
-#   "landed_url": str | null,              # crawl4ai's result.redirected_url, RAW/unnormalized —
-#             recorded ONLY from the plain successful browser route (neither fallback engaged).
-#             null on BOTH fallback routes — see same_target below for why.
+#   "landed_url": str | null,              # the landed URL, RAW/unnormalized, from WHICHEVER route
+#             actually produced this record — recorded on the plain successful browser route
+#             (crawl4ai's result.redirected_url) AND on pipe_scraper's own rescue route (path b,
+#             curl_cffi's response.url — libcurl's EFFECTIVE_URL, the real final url after
+#             following redirects, read directly at pipe_scraper's OWN call site since path b calls
+#             curl_cffi itself rather than through crawl4ai). null on exactly ONE route: crawl4ai's
+#             OWN fallback_fetch_function (path a, crawl4ai_fallback_fetch_used=True) — verified in
+#             the installed crawl4ai 0.9.2 source (async_webcrawler.py) that on THAT route
+#             redirected_url is hardcoded to the ORIGINAL requested url regardless of what
+#             curl_cffi's own fetch actually followed, and there is no channel back out of that
+#             internally-crawl4ai-mediated call for the real value (a module-level dict keyed by
+#             url was considered and rejected — this path runs asyncio.gather over hundreds of
+#             concurrent URLs, and anything keyed that loosely risks cross-contamination). Recording
+#             the hardcoded value verbatim would report a fabricated "no redirect", exactly the
+#             class of error content_judgment_removal_2026-08-05.md (src/scraper/scrape_url.py's
+#             own history) already eliminated once. null also on path b specifically when the
+#             curl_cffi fetch never completed at all (exception/timeout — no response object to
+#             read a url off).
 #   "same_target": bool | null,            # src/scraper/scrape_url.py's is_same_target(url,
-#             landed_url), evaluated at write time. TRI-STATE here, unlike scrape_log.jsonl's
-#             ad-hoc-path same_target (always a bool there) — null means "not measurable on this
-#             record's route", never "confirmed same". Two routes force (null, null):
-#             (a) crawl4ai's OWN fallback_fetch_function (crawl4ai_fallback_fetch_used=True):
-#                 verified in the installed crawl4ai 0.9.2 source (async_webcrawler.py) that on
-#                 this route redirected_url is hardcoded to the ORIGINAL requested url regardless
-#                 of what curl_cffi's own fetch actually followed — recording it at face value
-#                 would report a fabricated "no redirect", exactly the class of error
-#                 content_judgment_removal_2026-08-05.md (src/scraper/scrape_url.py's own history)
-#                 already eliminated once.
-#             (b) pipe_scraper's own rescue (pipe_fallback_used=True): the raw:// pipeline this
-#                 route runs through only ever reports redirected_url=config.base_url (verified in
-#                 crawl4ai's async_crawler_strategy.py), which this module never sets — always
-#                 None, carrying no real signal either way.
-#             Only the plain successful browser path (both pipe_fallback_used=False and
-#             crawl4ai_fallback_fetch_used is not True) gets a real True/False verdict.
+#             landed_url), evaluated at write time — but ONLY when landed_url is non-null; null
+#             whenever landed_url is null, on EITHER route, rather than is_same_target's own
+#             missing-input convention (True on a missing landed_url) — that default is correct for
+#             a normal caller but wrong for this log's specific question "was a redirect actually
+#             observed on this record": nothing was observed, so nothing is claimed. Read
+#             `same_target: true` together with `crawl4ai_fallback_fetch_used`/`pipe_fallback_used`
+#             — a true verdict is only ever backed by a real observed landed_url, never a
+#             hardcoded/absent one.
 #             Absent by definition on every record written before these two fields were added —
 #             read that absence as "predates the field," not as "no redirect happened" (same
 #             convention as scrape_log.jsonl's own landed_url/same_target addition).

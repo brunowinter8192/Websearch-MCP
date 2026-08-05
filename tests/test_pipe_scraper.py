@@ -327,9 +327,10 @@ def test_is_blocked_flags_crossref_shaped_failures():
 # ---------------------------------------------------------------------------
 
 class _FakeCurlResponse:
-    def __init__(self, status_code, text):
+    def __init__(self, status_code, text, url=None):
         self.status_code = status_code
         self.text = text
+        self.url = url
 
 
 class _FakeCurlSession:
@@ -421,14 +422,20 @@ async def test_own_fallback_rescue_fires_from_scrape_one_except_block(tmp_path, 
     """Integration test through the REAL _scrape_one exception path — _scrape_all -> _scrape_one
     -> except Exception -> _own_fallback_rescue, not a direct call to _own_fallback_rescue in
     isolation. Proves the except block actually reaches the rescue, not just that the rescue
-    function works when called on its own."""
+    function works when called on its own. Mocks _curl_cffi_get (path b's own low-level call,
+    milestone 4), not _fallback_fetch (path a's crawl4ai-facing wrapper) — path b no longer goes
+    through _fallback_fetch at all, precisely so it can also read response.url."""
     log_file = tmp_path / "pipe_scrape_log.jsonl"
     monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
     monkeypatch.setattr(pipe_scraper, "AsyncWebCrawler", _FakeHardFailureCrawler)
 
-    async def _fake_fetch(url):
-        return "<html><body>curl_cffi rescued this page — real content, long enough to pass the empty threshold</body></html>"
-    monkeypatch.setattr(pipe_scraper, "_fallback_fetch", _fake_fetch)
+    async def _fake_curl_get(url):
+        return _FakeCurlResponse(
+            200,
+            "<html><body>curl_cffi rescued this page — real content, long enough to pass the empty threshold</body></html>",
+            url=url,
+        )
+    monkeypatch.setattr(pipe_scraper, "_curl_cffi_get", _fake_curl_get)
 
     output_dir = tmp_path / "out"
     output_dir.mkdir()
@@ -451,20 +458,25 @@ async def test_own_fallback_rescue_fires_from_scrape_one_except_block(tmp_path, 
     assert r["crawl4ai_success"] is None
     assert r["crawl4ai_resolved_by"] is None
     assert r["crawl4ai_fallback_fetch_used"] is None
+    # Milestone 4: a real landed_url IS now available on path b — no redirect here (curl_cffi
+    # landed on the same URL it was given), so same_target is a real True, not null.
+    assert r["landed_url"] == "https://x.test/a"
+    assert r["same_target"] is True
 
 
 @pytest.mark.asyncio
 async def test_own_fallback_rescue_all_failed_when_curl_also_fails(tmp_path, monkeypatch):
     """Third state: browser raised AND pipe_scraper's own fallback also failed. outcome stays
     'error', http_status stays null (never a faked 200), pipe_fallback_used=True/resolved=False
-    distinguishes this from 'browser succeeded, path b never entered'."""
+    distinguishes this from 'browser succeeded, path b never entered'. landed_url/same_target stay
+    null — the curl_cffi fetch never completed at all, so no url was ever observed."""
     log_file = tmp_path / "pipe_scrape_log.jsonl"
     monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
     monkeypatch.setattr(pipe_scraper, "AsyncWebCrawler", _FakeHardFailureCrawler)
 
-    async def _fake_fetch_fails(url):
+    async def _fake_curl_get_fails(url):
         return None
-    monkeypatch.setattr(pipe_scraper, "_fallback_fetch", _fake_fetch_fails)
+    monkeypatch.setattr(pipe_scraper, "_curl_cffi_get", _fake_curl_get_fails)
 
     output_dir = tmp_path / "out"
     output_dir.mkdir()
@@ -479,6 +491,8 @@ async def test_own_fallback_rescue_all_failed_when_curl_also_fails(tmp_path, mon
     assert r["pipe_fallback_used"] is True
     assert r["pipe_fallback_resolved"] is False
     assert r["http_status"] is None
+    assert r["landed_url"] is None
+    assert r["same_target"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -525,8 +539,8 @@ async def test_crawl4ai_own_fallback_surfaces_in_log_distinctly_from_pipe_fallba
 
 
 # ---------------------------------------------------------------------------
-# landed_url/same_target — milestone 3 of 3: real on the plain success route, (null, null) on
-# BOTH fallback routes (crawl4ai's own fallback_fetch_function AND pipe_scraper's own rescue)
+# landed_url/same_target on the plain success route (unaffected by milestone 4) and on crawl4ai's
+# own fallback route (path a, still null/null — see below and _landed_url_facts's comment)
 # ---------------------------------------------------------------------------
 
 class _FakeRedirectingCrawler:
@@ -605,25 +619,76 @@ async def test_landed_url_and_same_target_null_on_crawl4ai_own_fallback(tmp_path
     assert r["same_target"] is None
 
 
+# ---------------------------------------------------------------------------
+# landed_url/same_target on pipe_scraper's own rescue (path b) — milestone 4: a real landed URL is
+# now available here (curl_cffi's own response.url, read directly at this call site), unlike path a
+# ---------------------------------------------------------------------------
+
 @pytest.mark.asyncio
-async def test_landed_url_and_same_target_null_on_pipe_own_rescue(tmp_path, monkeypatch):
-    """pipe_scraper's own except-block rescue (raw:// pipeline): redirected_url is never
-    meaningful there (config.base_url is never set by this module) — both fields null."""
+async def test_own_fallback_rescue_records_real_landed_url_on_redirect(tmp_path, monkeypatch):
+    """curl_cffi follows redirects itself and reports where it landed (response.url = libcurl's
+    EFFECTIVE_URL) — a genuinely different host is recorded and flagged as a real deviation, not
+    the blanket null milestone 3 left here."""
     log_file = tmp_path / "pipe_scrape_log.jsonl"
     monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
     monkeypatch.setattr(pipe_scraper, "AsyncWebCrawler", _FakeHardFailureCrawler)
 
-    async def _fake_fetch(url):
-        return "<html><body>curl_cffi rescued this page — real content, long enough to pass the empty threshold</body></html>"
-    monkeypatch.setattr(pipe_scraper, "_fallback_fetch", _fake_fetch)
+    async def _fake_curl_get(url):
+        return _FakeCurlResponse(
+            200,
+            "<html><body>rescued content, long enough to clear the empty threshold easily</body></html>",
+            url="https://platform.claude.com/docs/en/api/overview",
+        )
+    monkeypatch.setattr(pipe_scraper, "_curl_cffi_get", _fake_curl_get)
 
     output_dir = tmp_path / "out"
     output_dir.mkdir()
-    await pipe_scraper._scrape_all(["https://x.test/a"], output_dir,
-                                    download_delay=0.01, concurrency_per_domain=8)
+    await pipe_scraper._scrape_all(["https://docs.anthropic.com/en/api/getting-started"],
+                                    output_dir, download_delay=0.01, concurrency_per_domain=8)
 
     records = [json.loads(l) for l in log_file.read_text(encoding="utf-8").splitlines()]
     r = records[0]
     assert r["pipe_fallback_used"] is True
-    assert r["landed_url"] is None
-    assert r["same_target"] is None
+    assert r["landed_url"] == "https://platform.claude.com/docs/en/api/overview"
+    assert r["same_target"] is False
+
+
+@pytest.mark.asyncio
+async def test_own_fallback_rescue_no_cross_contamination_across_concurrent_urls(tmp_path, monkeypatch):
+    """Several URLs rescued via path b at once (asyncio.gather inside _scrape_all) — each record's
+    landed_url must match ITS OWN request. _curl_cffi_get carries no shared/module-level state (see
+    its own comment); this proves that in practice, not just by reading the implementation:
+    different domains (no per-domain gate serializing them) + randomized completion order so the
+    fetches genuinely overlap and finish out of request order."""
+    log_file = tmp_path / "pipe_scrape_log.jsonl"
+    monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
+    monkeypatch.setattr(pipe_scraper, "AsyncWebCrawler", _FakeHardFailureCrawler)
+
+    landed_by_request = {
+        "https://a.test/page": "https://landed-a.test/page",
+        "https://b.test/page": "https://landed-b.test/page",
+        "https://c.test/page": "https://landed-c.test/page",
+    }
+    # Reverse completion order vs. request order, so the first URL gathered finishes LAST —
+    # a shared-state bug would show up as values swapped between records.
+    delays = {"https://a.test/page": 0.03, "https://b.test/page": 0.015, "https://c.test/page": 0.0}
+
+    async def _fake_curl_get(url):
+        await asyncio.sleep(delays[url])
+        return _FakeCurlResponse(
+            200,
+            "<html><body>rescued content, long enough to clear the empty threshold easily</body></html>",
+            url=landed_by_request[url],
+        )
+    monkeypatch.setattr(pipe_scraper, "_curl_cffi_get", _fake_curl_get)
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    await pipe_scraper._scrape_all(list(landed_by_request), output_dir,
+                                    download_delay=0.01, concurrency_per_domain=8)
+
+    records = [json.loads(l) for l in log_file.read_text(encoding="utf-8").splitlines()]
+    assert len(records) == 3
+    by_url = {r["url"]: r for r in records}
+    for requested, landed in landed_by_request.items():
+        assert by_url[requested]["landed_url"] == landed
