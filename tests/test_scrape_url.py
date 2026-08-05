@@ -317,6 +317,76 @@ def test_format_scrape_output_zero_content_is_explicit_not_suppressed():
     assert "Error scraping" not in text  # the old discard-message phrasing must not reappear
 
 
+# ---------------------------------------------------------------------------
+# is_same_target: requested-vs-landed URL comparison primitive (milestone 1 of 3 — this function
+# is not yet wired into try_scrape/scrape_url_workflow; that is later milestones)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("requested,landed", [
+    ("https://www.example.com/a", "https://www.example.com/a"),
+    ("https://example.com", "https://www.example.com"),
+    ("HTTPS://WWW.Example.COM/a", "https://www.example.com/a"),
+    ("http://example.com:80/a", "http://example.com/a"),
+    ("https://example.com:443/a", "https://example.com/a"),
+    ("https://x.test", "https://x.test/"),
+    ("https://x.test/a", "https://x.test/a/"),
+    ("https://x.test/a#section", "https://x.test/a"),
+    ("http://x.test/a", "https://x.test/a"),
+    ("https://x.test/a%2db", "https://x.test/a-b"),
+    ("https://x.test/a%2fb", "https://x.test/a%2Fb"),
+])
+def test_is_same_target_true_for_spelling_differences(requested, landed):
+    """Scheme/host case, leading www., default port, empty-vs-root path, trailing slash,
+    fragment, http-vs-https, and percent-encoding normalization are all mere spelling — never
+    reported as a deviation."""
+    assert scrape_url.is_same_target(requested, landed) is True
+
+
+@pytest.mark.parametrize("requested,landed", [
+    ("https://example.com/a", "https://other.com/a"),
+    (
+        "https://www.idealo.de/preisvergleich/OffersOfProduct/203078159_-fritz-box-7510-avm.html",
+        "https://www.idealo.de/preisvergleich/OffersOfProduct/"
+        "203078159_-woman-hybrid-jacket-fix-hood-33z6026-cmp-campagnolo.html",
+    ),
+    ("https://x.test/a?id=1", "https://x.test/a?id=2"),
+    ("https://x.test/a", "https://x.test/a?utm_source=newsletter"),
+    ("https://x.test/a?utm_source=x", "https://x.test/a?utm_source=y"),
+])
+def test_is_same_target_false_for_real_differences(requested, landed):
+    """Different host, different path (idealo: same numeric ID, rewritten slug), and any query
+    difference — including tracking-parameter-shaped ones — are reported, never swallowed."""
+    assert scrape_url.is_same_target(requested, landed) is False
+
+
+@pytest.mark.parametrize("requested,landed", [
+    (None, "https://x.test/a"),
+    ("https://x.test/a", None),
+    (None, None),
+    ("", "https://x.test/a"),
+    ("https://x.test/a", ""),
+])
+def test_is_same_target_treats_missing_input_as_same(requested, landed):
+    """No landed URL (crawl4ai leaves it unset on some paths) is missing data, not evidence of a
+    deviation — a fact-reporting function has nothing to report from an absence."""
+    assert scrape_url.is_same_target(requested, landed) is True
+
+
+@pytest.mark.parametrize("requested,landed", [
+    ("https://x.test:notaport/a", "https://x.test/a"),
+    ("http://x.test:99999/a", "http://x.test/a"),
+    ("https://[:::1]/a", "https://x.test/a"),
+    ("https://x.test/a", "https://x.test:notaport/a"),
+    ("https://x.test/a", "https://[:::1]/a"),
+])
+def test_is_same_target_never_raises_on_malformed_url(requested, landed):
+    """A bad port, an out-of-range port, or a malformed IPv6 literal must not propagate — the
+    caller (milestone 2, from inside try_scrape's guarded span, AFTER content was fetched) must
+    never see an exception from this annotation step. Treated as DIFFERENT: two present strings
+    that fail to parse as a URL are an anomaly worth surfacing, not silence."""
+    assert scrape_url.is_same_target(requested, landed) is False
+
+
 def test_format_scrape_output_crawl4ai_diagnosis_labeled_as_observation_not_verdict():
     """The diagnosis line itself carries the observation-not-verdict caveat — a caller reading
     only the output text (not the source) must see this, not just a code comment."""
