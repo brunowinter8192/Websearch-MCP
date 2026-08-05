@@ -79,7 +79,7 @@ def main():
                    help="Must match original search_web call (part of cache key)")
 
     # ── scrape_url ────────────────────────────────────────────────────────────
-    p = sub.add_parser("scrape_url", help="Scrape URL to filtered markdown (PruningContentFilter, 15000 char limit).")
+    p = sub.add_parser("scrape_url", help="Scrape URL to filtered markdown (PruningContentFilter, full content, no length cap) plus acquisition facts.")
     p.add_argument("url", help="URL to scrape")
 
     # ── Dispatch ──────────────────────────────────────────────────────────────

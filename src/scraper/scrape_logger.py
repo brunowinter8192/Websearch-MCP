@@ -18,22 +18,19 @@ DEFAULT_LOG_PATH = Path(__file__).parent.parent.parent / "src" / "logs" / "scrap
 #   "url": str,
 #   "domain": str,
 #   "mode": "filtered",
-#   "outcome": "ok" | "empty" | <garbage_type> (e.g. "http_error", "cookie_wall",
-#              "budget_exhausted", "browser_missing", ...) — mirrors try_scrape's
-#              meta["garbage_type"] when set, "empty" otherwise,
+#   "outcome": "ok" (content came back) | "empty" (browser succeeded, page had nothing) |
+#              "budget_exhausted" | "browser_missing" | "exception" (acquisition itself produced
+#              no result — never a content-judgment category; see scrape_url.py meta["acquisition_error"]),
 #   "timings_ms": {"total_wall": int},
-#   "http_status": int | null,
+#   "http_status": int | null,            # a fact, not a verdict — status alone no longer gates content
 #   "content_type": str | null,
 #   "bytes_returned": int | null,
 #   "bytes_raw_markdown": int | null,
-#   "fallback_to_raw": bool,
-#   "truncated": bool,
-#   "consent_stripped": bool,
-#   "garbage_type": str | null,
+#   "fallback_to_raw": bool,               # fit_markdown was too thin, raw_markdown used instead — PruningContentFilter's own fallback, not a garbage check
 #   "content_path": str | null,           # relative path under log dir, e.g. "scrape_content/<file>.md"
 #   "published_date": str | null,         # ISO day precision (YYYY-MM-DD), htmldate-extracted, only on "ok" outcome
 #   "crawl4ai_success": bool | null,      # crawl4ai's own result.success; null only when the call raised before a result existed
-#   "crawl4ai_error_message": str | null, # crawl4ai's own result.error_message verbatim (e.g. "Blocked by anti-bot protection: <reason>"); NOT a verdict — the library's own detector has documented false positives, informational only
+#   "crawl4ai_error_message": str | null, # crawl4ai's own result.error_message verbatim (e.g. "Blocked by anti-bot protection: <reason>"); an OBSERVATION, NOT a verdict — the library's own detector has documented false positives (e.g. reports "Cloudflare JS challenge" on guenstiger.de even when the full product page came back) — never acted on here, and now also surfaced to the caller (scrape_url.py's _format_scrape_output), which must present it the same way
 #   "crawl4ai_attempts": int | null,      # result.crawl_stats["attempts"] — total browser attempts across proxies/retries
 #   "crawl4ai_resolved_by": str | null,   # result.crawl_stats["resolved_by"]: "direct" | "proxy" | "fallback_fetch" | null
 #   "crawl4ai_fallback_fetch_used": bool | null,  # result.crawl_stats["fallback_fetch_used"]
@@ -47,11 +44,20 @@ DEFAULT_LOG_PATH = Path(__file__).parent.parent.parent / "src" / "logs" / "scrap
 #     "content_filter_preserve_tags": list[str],  # HTML tags exempted from pruning recursion — e.g. ["code", "pre"] guards syntax-highlighted code from whitespace-span decomposition (crawl4ai issue #2110)
 #     "excluded_selector_hash": str,       # first 8 hex chars of sha256(excluded_selector) — the 426-char selector itself is source-visible, not worth repeating per record
 #     "remove_consent_popups": bool,       # crawl4ai's own CMP click-dismissal, alongside (not instead of) excluded_selector; unconditional ~1s cost per scrape, see scrape_url.py comment at its CrawlerRunConfig construction
-#     "total_budget_s": float,             # TOTAL_SCRAPE_BUDGET_S — outer wall-clock guard around try_scrape's acquisition (browser call + date extraction + classification); bounds network/browser hangs only, NOT synchronous CPU inside crawl4ai (markdown gen) — see constant's comment in scrape_url.py
-#     "max_content_length": int, "min_content_threshold": int
-#     # OR, only if try_scrape's config invariant ever breaks: {"config_incomplete": true, "max_content_length": int, "min_content_threshold": int}
+#     "total_budget_s": float,             # TOTAL_SCRAPE_BUDGET_S — outer wall-clock guard around try_scrape's acquisition (browser call + date extraction + content selection); bounds network/browser hangs only, NOT synchronous CPU inside crawl4ai (markdown gen) — see constant's comment in scrape_url.py
+#     "min_content_threshold": int         # fit->raw content-selection fallback threshold, NOT a garbage-verdict threshold
+#     # OR, only if try_scrape's config invariant ever breaks: {"config_incomplete": true}
 #   }
 # }
+#
+# Historical fields (appear ONLY on records written before the ad-hoc path stopped judging
+# content; absent by design on every record from that change onward, not a logging bug):
+# "garbage_type" (str|null), "truncated" (bool), "consent_stripped" (bool).
+# Historical "outcome"/"garbage_type" values that no longer occur going forward — a content-verdict
+# category, not an acquisition-failure category: "http_error", "cookie_wall", "login_wall",
+# "cloudflare", "nav_dump", "minimal_content", "crawl4ai_error". Read an aggregate spanning this
+# change as: those categories stopped being PRODUCED (the classifier that emitted them was
+# removed), not that those failure modes stopped happening on the live web.
 #
 # Log path: WEBSEARCH_SCRAPE_LOG_PATH env var → DEFAULT_LOG_PATH fallback.
 # Sidecar path: <log_dir>/scrape_content/<ts_safe>_<url_slug>.md
