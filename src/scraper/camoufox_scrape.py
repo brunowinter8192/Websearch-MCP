@@ -1,7 +1,10 @@
 # INFRASTRUCTURE
 import asyncio
 import logging
+import time
+from datetime import datetime, timezone
 from functools import partial
+from urllib.parse import urlparse
 
 from camoufox import launch_options
 from camoufox.async_api import AsyncCamoufox
@@ -10,10 +13,14 @@ from camoufox.exceptions import CamoufoxNotInstalled
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
+from mcp.types import TextContent
 # From src/scraper/scrape_url.py: same config-hash algorithm used across all scrape paths
 # (generic, not path-specific — reused rather than re-implemented, same precedent as
 # src/crawler/pipe_scraper.py's own reuse of this function)
 from src.scraper.scrape_url import hash_config
+# From src/scraper/scrape_logger.py: per-URL JSONL log + sidecar content file — the SAME log file
+# and functions scrape_url.py's chromium lane uses; "engine" is the field that tells them apart
+from src.scraper.scrape_logger import log_scrape, write_sidecar
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +48,62 @@ _PLAYWRIGHT_DEFAULT_TIMEOUT_MS = 30000
 # by this same outer guard, not separately bounded.
 TOTAL_CAMOUFOX_BUDGET_S = 61.1
 
+# Short descriptions for the acquisition-error states this lane can render, same pattern and same
+# two entries as scrape_url.py's _ACQUISITION_ERROR_MESSAGES ("exception" has no entry there either
+# — its detail already goes to cli.log via logger.warning, not worth guessing a message for it).
+_CAMOUFOX_ACQUISITION_ERROR_MESSAGES = {
+    "browser_missing": "camoufox browser binary missing — run `./venv/bin/python -m camoufox fetch` to install it",
+    "budget_exhausted": f"camoufox acquisition exceeded the total time budget ({TOTAL_CAMOUFOX_BUDGET_S}s)",
+}
+
 
 # ORCHESTRATOR
+# Runs the Camoufox lane end to end for one URL: acquisition, JSONL logging (SAME log file/schema
+# as scrape_url.py's chromium lane, "engine" is the discriminator), sidecar content, rendered
+# acquisition-facts block. Mirrors scrape_url_workflow's shape exactly. See _format_camoufox_output
+# for why this lane gets its own renderer rather than reusing _format_scrape_output.
+async def scrape_url_camoufox_workflow(url: str, block_images: bool = False) -> list[TextContent]:
+    t_total = time.perf_counter()
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    domain = (urlparse(url).hostname or "").removeprefix("www.")
+    logger.info("Scraping via camoufox: %s", url)
+
+    content, meta = await try_scrape_camoufox(url, block_images=block_images)
+    total_wall = round((time.perf_counter() - t_total) * 1000)
+
+    # outcome: same three acquisition_error states as the chromium lane, same "ok"-if-content-came-
+    # back-else-"empty" fallback. A markdown-conversion failure is NOT its own outcome value:
+    # outcome describes whether ACQUISITION produced a result, and raw HTML IS a result that came
+    # back — see content_is_raw_html/markdown_conversion_error for that separate, categorically
+    # different fact.
+    outcome = meta.get("acquisition_error") or ("ok" if content else "empty")
+    # mode: reuses the EXISTING field (scrape_logger.py's schema), describing what kind of content
+    # is in the log/sidecar — "markdown" normally, "raw_html" when conversion failed and the
+    # captured HTML is what's actually stored (see try_scrape_camoufox's content_is_raw_html).
+    mode = "raw_html" if meta.get("content_is_raw_html") else "markdown"
+    content_path = write_sidecar(url, ts, content, outcome, mode)
+    log_scrape({
+        "ts": ts, "url": url, "domain": domain, "mode": mode, "outcome": outcome,
+        "engine": "camoufox",
+        "timings_ms": {"total_wall": total_wall},
+        "http_status": meta.get("status_code"),
+        "bytes_returned": len(content.encode("utf-8")) if content else 0,
+        "bytes_raw_markdown": meta.get("raw_markdown_bytes", 0),
+        "content_path": content_path,
+        "landed_url": meta.get("landed_url"),
+        "markdown_conversion_error": meta.get("markdown_conversion_error"),
+        "content_is_raw_html": meta.get("content_is_raw_html", False),
+        # config_hash computed ONCE, inside try_scrape_camoufox itself (unlike the chromium lane,
+        # where the workflow computes it) — read back here, never re-hashed, so this record's hash
+        # always matches the one try_scrape_camoufox's own caller (tests, future callers) would see.
+        "config_hash": meta.get("config_hash"), "config": meta.get("config"),
+    })
+    logger.info("Camoufox scrape complete: %s (%d chars, outcome=%s)", url, len(content), outcome)
+    return [TextContent(type="text", text=_format_camoufox_output(url, content, meta))]
+
+
+# FUNCTIONS
+
 # Single-call Camoufox (Playwright-Firefox, fingerprint spoofing compiled in at C++ level)
 # acquisition; return (raw_markdown, meta). A SECOND, parallel acquisition lane beside crawl4ai's
 # chromium path (src/scraper/scrape_url.py) — not a fallback, no trigger logic lives here or
@@ -300,3 +361,42 @@ async def _html_to_markdown(html: str) -> tuple[str, str | None]:
     if result.markdown and result.markdown.raw_markdown:
         return result.markdown.raw_markdown, None
     return "", (getattr(result, "error_message", None) or "crawl4ai raw:// conversion produced no markdown")
+
+
+# Render acquisition facts + full content into one text block — SAME fixed-shape philosophy as
+# scrape_url.py's _format_scrape_output (facts always, unconditionally, before a fixed "## Content"
+# delimiter; landed URL unconditional, same rule as that lane since this session), but a SIBLING
+# function rather than a shared one: the two lanes' fact vocabularies diverge too much to share one
+# renderer without conditional logic that would itself violate "always the same shape" — this lane
+# has no content_type, no crawl4ai diagnosis, no fallback_to_raw (no fit/raw content SELECTION at
+# all here), and has two facts the chromium lane has no concept of at all
+# (markdown_conversion_error/content_is_raw_html). Writing a sibling keeps BOTH renderers honest
+# about their own actual fact set instead of one function papering over the difference.
+def _format_camoufox_output(url: str, content: str, meta: dict) -> str:
+    lines = [
+        f"# Content from: {url}", "",
+        "## Acquisition facts",
+        "- Engine: camoufox",
+        f"- HTTP status: {meta.get('status_code')}",
+        # Unconditional, same rule as the chromium lane since this session — matches, differs, or
+        # absent (None, rendered literally) all render the same way; nothing here decides which of
+        # these the agent gets to see.
+        f"- Landed URL (the URL the browser actually returned content from): {meta.get('landed_url')}",
+        f"- Bytes (raw markdown from crawl4ai's raw:// conversion): {meta.get('raw_markdown_bytes', 0)}",
+        f"- Bytes (content below): {len(content.encode('utf-8')) if content else 0}",
+    ]
+    # Present ONLY when there is something to say (same conditional-presence precedent as the
+    # "Acquisition error" line below and in _format_scrape_output) — but stated PLAINLY, not
+    # buried: the agent must know it is reading raw HTML, not markdown, and why.
+    if meta.get("content_is_raw_html"):
+        lines.append(
+            "- Content format: RAW HTML, NOT markdown — the markdown-conversion step failed "
+            "(an OBSERVATION off crawl4ai's own raw:// pipeline, not a verdict on this page; the "
+            f"page already captured is returned as-is rather than discarded): "
+            f"{meta.get('markdown_conversion_error')}"
+        )
+    if meta.get("acquisition_error"):
+        reason = _CAMOUFOX_ACQUISITION_ERROR_MESSAGES.get(meta["acquisition_error"], meta["acquisition_error"])
+        lines.append(f"- Acquisition error: {reason}")
+    lines += ["", "## Content", "", content if content else "(no content returned)"]
+    return "\n".join(lines)

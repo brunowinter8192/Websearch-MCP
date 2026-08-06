@@ -17,33 +17,86 @@ DEFAULT_LOG_PATH = Path(__file__).parent.parent.parent / "src" / "logs" / "scrap
 #   "ts": str (ISO-8601 UTC, millisecond precision),
 #   "url": str,
 #   "domain": str,
-#   "mode": "filtered",
+#   "mode": "filtered" (chromium engine, PruningContentFilter fit/raw selection) |
+#           "markdown" | "raw_html" (camoufox engine — no content-filter selection on that lane;
+#           "raw_html" means content_is_raw_html was set, see camoufox_scrape.py),
 #   "outcome": "ok" (content came back) | "empty" (browser succeeded, page had nothing) |
 #              "budget_exhausted" | "browser_missing" | "exception" (acquisition itself produced
-#              no result — never a content-judgment category; see scrape_url.py meta["acquisition_error"]),
+#              no result — never a content-judgment category; see scrape_url.py meta["acquisition_error"]
+#              on the chromium engine, camoufox_scrape.py's try_scrape_camoufox on the camoufox one),
+#   "engine": "chromium" | "camoufox" — FIRST-CLASS discriminator between the two acquisition lanes
+#             sharing this one log file (scrape_url.py's crawl4ai/chromium path vs
+#             camoufox_scrape.py's Camoufox/Firefox path, not a fallback of each other — the agent/
+#             operator chooses the lane deliberately). The config stamp already differs
+#             structurally between the two (different key sets entirely), but this field exists so
+#             a reader filtering the log never has to infer engine from config shape. ABSENT on
+#             every record written before this field existed — same convention as every prior field
+#             addition (read absence as "predates the field," never as "chromium by default").
 #   "timings_ms": {"total_wall": int},
 #   "http_status": int | null,            # a fact, not a verdict — status alone no longer gates content
-#   "content_type": str | null,
+#   "content_type": str | null,           # chromium engine only — camoufox's acquisition path
+#                                          # (Playwright's raw Response object) does not expose a
+#                                          # convenient content-type header the way crawl4ai's
+#                                          # result.headers does; absent (key never written) on
+#                                          # "engine": "camoufox" records, not null — a genuinely
+#                                          # different fact surface between the two engines, not a
+#                                          # missing value on this one
 #   "bytes_returned": int | null,
 #   "bytes_raw_markdown": int | null,
-#   "fallback_to_raw": bool,               # fit_markdown was too thin, raw_markdown used instead — PruningContentFilter's own fallback, not a garbage check
+#   "fallback_to_raw": bool,               # chromium engine only (fit_markdown was too thin, raw_markdown
+#                                          # used instead — PruningContentFilter's own fallback, not a
+#                                          # garbage check); absent (key never written), not false, on
+#                                          # "engine": "camoufox" records — that lane has no fit/raw
+#                                          # selection to report on at all
 #   "content_path": str | null,           # relative path under log dir, e.g. "scrape_content/<file>.md"
-#   "published_date": str | null,         # ISO day precision (YYYY-MM-DD), htmldate-extracted, only on "ok" outcome
-#   "crawl4ai_success": bool | null,      # crawl4ai's own result.success; null only when the call raised before a result existed
-#   "crawl4ai_error_message": str | null, # crawl4ai's own result.error_message verbatim (e.g. "Blocked by anti-bot protection: <reason>"); an OBSERVATION, NOT a verdict — the library's own detector has documented false positives (e.g. reports "Cloudflare JS challenge" on guenstiger.de even when the full product page came back) — never acted on here, and now also surfaced to the caller (scrape_url.py's _format_scrape_output), which must present it the same way
-#   "crawl4ai_attempts": int | null,      # result.crawl_stats["attempts"] — total browser attempts across proxies/retries
-#   "crawl4ai_resolved_by": str | null,   # result.crawl_stats["resolved_by"]: "direct" | "proxy" | "fallback_fetch" | null
-#   "crawl4ai_fallback_fetch_used": bool | null,  # result.crawl_stats["fallback_fetch_used"]
-#   "landed_url": str | null,              # crawl4ai's result.redirected_url, RAW/unnormalized —
-#                                           # exactly as crawl4ai reported it, no comparison rule
-#                                           # applied at write time. Any rule (current or future)
-#                                           # can be applied later by whoever reads "url" and
-#                                           # "landed_url" together — this log stores the two facts,
-#                                           # not a conclusion derived from them. null on any call
-#                                           # that never obtained a result object (browser_missing/
-#                                           # exception/budget_exhausted before acquisition completed).
-#   "config_hash": str,                    # first 10 hex chars of sha256(sort_keys JSON of "config") — cheap "same config" grouping key
-#   "config": {                            # scrape config actually in effect for this call, read off the real config objects (never hand-duplicated)
+#   "published_date": str | null,         # ISO day precision (YYYY-MM-DD), htmldate-extracted, only on
+#                                          # "ok" outcome — chromium engine only. ABSENT (key never
+#                                          # written), not null, on every "engine": "camoufox" record:
+#                                          # that lane never attempts htmldate extraction at all — same
+#                                          # "absent means the concept doesn't apply to this engine,
+#                                          # not a missed value" treatment as content_type/
+#                                          # fallback_to_raw above and the crawl4ai_* fields below.
+#   "markdown_conversion_error": str | null,  # camoufox engine ONLY — crawl4ai's raw:// pipeline's own
+#             error_message, verbatim, an OBSERVATION not a verdict, when it failed to convert
+#             captured HTML to markdown (see camoufox_scrape.py's try_scrape_camoufox for the real,
+#             observed failure shape and its cross-module implication for pipe_scraper.py). Absent
+#             (key never written) on "engine": "chromium" records — that lane has no raw:// step of
+#             its own to report on.
+#   "content_is_raw_html": bool,           # camoufox engine ONLY — True when markdown_conversion_error
+#             is set and the logged/sidecar content is therefore the RAW CAPTURED HTML, not markdown
+#             (the real page is never silently discarded just because conversion failed). Absent (key
+#             never written) on "engine": "chromium" records.
+#   "crawl4ai_success": bool | null,      # chromium engine only (crawl4ai's own result.success; null
+#                                          # only when the call raised before a result existed).
+#                                          # ABSENT (key never written) on "engine": "camoufox"
+#                                          # records — crawl4ai is involved there only incidentally,
+#                                          # for the raw:// markdown-conversion step, and that step's
+#                                          # own diagnosis is not what this field describes
+#   "crawl4ai_error_message": str | null, # crawl4ai's own result.error_message verbatim (e.g. "Blocked by anti-bot protection: <reason>"); an OBSERVATION, NOT a verdict — the library's own detector has documented false positives (e.g. reports "Cloudflare JS challenge" on guenstiger.de even when the full product page came back) — never acted on here, and now also surfaced to the caller (scrape_url.py's _format_scrape_output), which must present it the same way. Chromium engine only, same absent-on-camoufox treatment as crawl4ai_success above.
+#   "crawl4ai_attempts": int | null,      # result.crawl_stats["attempts"] — total browser attempts across proxies/retries. Chromium engine only.
+#   "crawl4ai_resolved_by": str | null,   # result.crawl_stats["resolved_by"]: "direct" | "proxy" | "fallback_fetch" | null. Chromium engine only.
+#   "crawl4ai_fallback_fetch_used": bool | null,  # result.crawl_stats["fallback_fetch_used"]. Chromium engine only.
+#   "landed_url": str | null,              # BOTH engines. Chromium: crawl4ai's result.redirected_url.
+#                                           # Camoufox: Playwright's page.url after goto. Either way
+#                                           # RAW/unnormalized — exactly as the engine reported it, no
+#                                           # comparison rule applied at write time. Any rule (current
+#                                           # or future) can be applied later by whoever reads "url"
+#                                           # and "landed_url" together — this log stores the two
+#                                           # facts, not a conclusion derived from them. null on any
+#                                           # call that never obtained a result object
+#                                           # (browser_missing/exception/budget_exhausted before
+#                                           # acquisition completed) — present-but-null here (unlike
+#                                           # the engine-specific fields above), since landed_url is a
+#                                           # concept BOTH engines share, just sometimes unpopulated.
+#   "config_hash": str,                    # first 10 hex chars of sha256(sort_keys JSON of "config") — cheap "same config" grouping key. BOTH engines, but never comparable to each other — see "config" below.
+#   "config": {                            # BOTH engines, but a STRUCTURALLY DIFFERENT key set per
+#                                           # engine (this IS the config-shape difference "engine"
+#                                           # above exists so a reader doesn't have to detect it
+#                                           # manually). Chromium shape below; camoufox's own shape
+#                                           # (headless, os, block_images, timeout, executable_path,
+#                                           # total_budget_s — no PruningContentFilter/adapter keys
+#                                           # at all) is documented in camoufox_scrape.py's
+#                                           # _build_camoufox_kwargs/_extract_camoufox_config_stamp.
 #     "headless": bool, "enable_stealth": bool, "adapter": str, "crawler_strategy": str,
 #     "magic": bool, "wait_until": str, "page_timeout_ms": int,
 #     "delay_before_return_html_s": float,  # explicit render wait before HTML capture, see scrape_url.py comment at its CrawlerRunConfig construction
