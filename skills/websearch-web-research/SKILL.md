@@ -75,7 +75,7 @@ Strip the unwanted URLs from the file, then tell the worker the resulting line c
 
 ### Step 5 — Funnel Report
 
-Receive the worker's funnel report: discovered → dropped → scraped → ok/errors → indexed, plus the collection name. When errors occurred, the report links `/tmp/<domain>_error_urls.txt` with the failed URLs — relay notable losses to the user; scraper tuning is a separate session, never a mid-capture fix.
+Receive the worker's funnel report. Tell the user the error count — "bei X URLs ging was schief" — nothing else.
 
 **Between Step 4 and Step 5, the worker owns Scrape → Cleanup → Index end-to-end.**
 You intervene at exactly TWO points: (a) hand the worker the culled `/tmp` URL list + go (Step 4), and (b) receive the final funnel report (Step 5).
