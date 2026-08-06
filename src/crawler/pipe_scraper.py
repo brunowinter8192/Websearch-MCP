@@ -52,15 +52,19 @@ FALLBACK_FETCH_TIMEOUT_S = 15.0   # symmetric with PAGE_TIMEOUT_MS — comparabl
 # chromium, CAMOUFOX_CONCURRENCY_PER_DOMAIN for camoufox) — an explicit value here always wins,
 # for either engine, so an operator who knows their machine can still raise it deliberately.
 # block_images: only consulted when engine="camoufox" (the chromium engine has no such param, its
-# own _build_configs() is fixed) — True by default here, NOT the ad-hoc lane's own False default;
-# see _scrape_all's comment for why the two lanes reasonably differ on this.
+# own _build_configs() is fixed) — False by default here, SAME as the ad-hoc lane's own default
+# (scrape_url_camoufox_workflow). Settled by design decision, not measurement: Camoufox's own
+# LeakWarning documents image-blocking as a known WAF detection signal, and this lane exists
+# precisely for hard anti-bot targets — stealth wins over the bandwidth saving. Images never reach
+# the output either way (this pipeline produces markdown text), so nothing about the content
+# changes; an explicit block_images=True still overrides this default when a caller wants it.
 async def scrape_urls_workflow(
     urls: list[str],
     output_dir: Path,
     download_delay: float = DOWNLOAD_DELAY,
     concurrency_per_domain: int | None = None,
     engine: str = "chromium",
-    block_images: bool = True,
+    block_images: bool = False,
 ) -> list[dict]:
     output_dir.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
@@ -517,7 +521,7 @@ async def _scrape_all(
     download_delay: float,
     concurrency_per_domain: int | None,
     engine: str = "chromium",
-    block_images: bool = True,
+    block_images: bool = False,
 ) -> list[dict]:
     resolved_concurrency = concurrency_per_domain if concurrency_per_domain is not None else (
         CAMOUFOX_CONCURRENCY_PER_DOMAIN if engine == "camoufox" else CONCURRENCY_PER_DOMAIN
@@ -600,11 +604,15 @@ if __name__ == '__main__':
                         help='Acquisition engine, chosen per RUN not per URL: "chromium" (crawl4ai, '
                              'default, current behavior) or "camoufox" (Playwright-Firefox, a '
                              'deliberate second lane — not a fallback of chromium)')
-    parser.add_argument('--block-images', dest='block_images', action='store_true', default=True,
-                        help='camoufox engine only: block image requests (default: on — raw mass '
-                             'capture for Phase-3 LLM cleanup never consumes images)')
+    # default=False on THIS action is what actually applies when the flag is omitted — argparse
+    # resolves a shared dest's default from the first action added that lacks a namespace value
+    # yet, so this default (not --no-block-images's) governs omission.
+    parser.add_argument('--block-images', dest='block_images', action='store_true', default=False,
+                        help='camoufox engine only: block image requests (default: off — stealth '
+                             'wins over bandwidth; Camoufox\'s own LeakWarning documents '
+                             'image-blocking as a WAF detection signal)')
     parser.add_argument('--no-block-images', dest='block_images', action='store_false',
-                        help='camoufox engine only: allow image requests')
+                        help='camoufox engine only: allow image requests (default)')
     args = parser.parse_args()
 
     urls = [ln.strip() for ln in Path(args.url_file).read_text(encoding='utf-8').splitlines()
