@@ -1,9 +1,12 @@
 # INFRASTRUCTURE
 import asyncio
 import logging
+import plistlib
+import sys
 import time
 from datetime import datetime, timezone
 from functools import partial
+from pathlib import Path
 from urllib.parse import urlparse
 
 from camoufox import launch_options
@@ -171,6 +174,9 @@ async def try_scrape_camoufox(url: str, block_images: bool = False) -> tuple[str
         resolved = await asyncio.get_event_loop().run_in_executor(
             None, partial(launch_options, **kwargs)
         )
+        await asyncio.get_event_loop().run_in_executor(
+            None, _ensure_no_focus_steal, resolved.get("executable_path")
+        )
         config_stamp = _extract_camoufox_config_stamp(kwargs, resolved)
         meta: dict = {**_empty_meta, "config": config_stamp, "config_hash": hash_config(config_stamp)}
 
@@ -225,7 +231,56 @@ async def try_scrape_camoufox(url: str, block_images: bool = False) -> tuple[str
         return "", {**_empty_meta, "acquisition_error": "exception"}
 
 
-# FUNCTIONS
+# Walk up from a bundle-internal executable path (.../Foo.app/Contents/MacOS/bin) to the .app root.
+# None if executable_path isn't inside a bundle (e.g. a non-macOS layout).
+def _find_app_bundle(executable_path: str) -> Path | None:
+    for parent in Path(executable_path).parents:
+        if parent.suffix == ".app":
+            return parent
+    return None
+
+
+# MANDATORY requirement, resolved this session (deferred from milestone 1): the chrome lane solves
+# no-focus-steal via macOS `open -g -n -a` (src/search/browser.py) — launching the app bundle
+# through LaunchServices with the "don't activate" flag. That mechanism has NO equivalent here:
+# Playwright launches the browser process from inside its own internal Node.js driver, which
+# exposes no hook to substitute our own subprocess/`open -g` launcher (confirmed: no
+# process_creator-style parameter anywhere in the installed playwright package's launch path,
+# unlike pydoll's BrowserProcessManager, which is what makes `open -g` possible for the chrome
+# lane at all). Camoufox's fetched build IS a real macOS .app bundle though (verified:
+# launch_path() resolves to ".../Camoufox.app/Contents/MacOS/camoufox", a genuine bundle, not a
+# bare binary) — which makes LSUIElement the right lever: a property of the APP ITSELF, read by
+# macOS at NSApplication startup, independent of how the process was spawned (unlike `open -g`,
+# which only suppresses LaunchServices' OWN activate-on-open behavior).
+#
+# Verified empirically, not assumed: a real run (this session) polling the frontmost application
+# via `osascript`/System Events every 250ms during a live try_scrape_camoufox call — WITHOUT
+# LSUIElement, "camoufox" became frontmost for ~1.2s of a 1.8s run (focus genuinely stolen from the
+# calling terminal); WITH LSUIElement=true set on the same bundle, frontmost stayed the calling
+# terminal for the ENTIRE run, same URL, same code path. Idempotent (checked before written) and
+# cheap (one plist read, a write only the first time per cached browser version) — safe to call on
+# every launch. Applied here so BOTH lanes (ad-hoc via scrape_url_camoufox_workflow, and the pipe
+# engine switch below) get it for free, per the task's own instruction. macOS only — this project's
+# whole Camoufox posture is macOS-first, same as src/search/browser.py's own `open -g` mechanism;
+# a silent no-op elsewhere (there is no bundle to patch on a non-macOS layout in the first place).
+def _ensure_no_focus_steal(executable_path: str | None) -> None:
+    if sys.platform != "darwin" or not executable_path:
+        return
+    app_path = _find_app_bundle(executable_path)
+    if app_path is None:
+        return
+    plist_path = app_path / "Contents" / "Info.plist"
+    try:
+        with open(plist_path, "rb") as f:
+            data = plistlib.load(f)
+        if data.get("LSUIElement") is True:
+            return
+        data["LSUIElement"] = True
+        with open(plist_path, "wb") as f:
+            plistlib.dump(data, f)
+    except Exception as e:
+        logger.warning("Could not set LSUIElement on %s (no-focus-steal not applied): %s", plist_path, e)
+
 
 # Build the plain kwargs this module hands to camoufox.launch_options()/AsyncCamoufox — the
 # calibrated core parameter surface, every value justified below. Every parameter NOT listed here
