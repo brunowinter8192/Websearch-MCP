@@ -5,102 +5,46 @@ description:
 
 # Web Research — Skill
 
-**Default = Permanent Capture Workflow (worker).** When the user wants a source pulled in, assume they want it captured into RAG — spawn the capture worker (bottom of this file). Only run ad-hoc in-chat scraping (`search_web` / `search_engine_drilldown` / `scrape_url` directly) when the user EXPLICITLY says "ad hoc" (or equivalent: "nur kurz nachschauen", "nicht indexieren").
+**Default = Permanent Capture Workflow.**
+Assume permanent capture into RAG — always. Ad-hoc in-chat scraping only when the user EXPLICITLY asks for it. (PDF → MD conversion is a separate flow — see the `websearch-pdf` skill.)
 
-Ad-hoc web research via `websearch`: search across engines, drill into one engine for its URLs, scrape a page to filtered markdown. To permanently capture a whole domain into RAG, use the Permanent Capture Workflow at the bottom — that spawns a worker; this CLI is for in-chat lookups. (PDF → MD conversion is a separate flow — see the `websearch-pdf` skill.)
+Run via `websearch <command>` (in PATH), foreground — no `&`, no redirect.
 
-## CLI Invocation
+## Commands
 
-All tools run via the `websearch` wrapper (in PATH). Run them in the foreground — no `&`, no redirect.
+| Command | Args | Does |
+|---|---|---|
+| search_web | query (2–5 keywords) | Search: counts per engine |
+| search_engine_drilldown | query --engine <name> | URLs for one engine from the prior search_web |
+| scrape_url | url | Page → full markdown (chromium lane) |
+| scrape_url_camoufox | url | Page → full markdown (Camoufox lane) |
 
-```bash
-# Search — engine breakdown (counts per engine, no URLs)
-websearch search_web "machine learning retrieval"
-websearch search_web --docs "react hooks"
-
-# URLs for one engine (from the search_web cache)
-websearch search_engine_drilldown "machine learning retrieval" --engine google
-
-# Scrape a page to filtered markdown
-websearch scrape_url "https://example.com/article"
-
-# Scrape via the Camoufox lane (second engine, deliberate choice — see scrape_url_camoufox)
-websearch scrape_url_camoufox "https://example.com/article"
-```
-
-On error (missing dependency, engine timeout): prints to stderr, exits non-zero.
-
-## Parameters
-
-### search_web
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| query | str (required) | Search query, 2–5 keywords |
-| --books | flag | Book lookup (+book modifier + book-domain whitelist). Mutually exclusive with --pdf / --docs |
-| --pdf | flag | PDF lookup (+pdf modifier + PDF-host whitelist). Mutually exclusive with --books / --docs |
-| --docs | flag | Docs lookup (+documentation modifier + noise blacklist). Mutually exclusive with --books / --pdf |
-
-All three mode flags restrict the engine set to google/duckduckgo/mojeek, append the modifier to the query, and post-filter URLs; use the same flag on the matching `search_engine_drilldown` call.
-
-Engines: google, duckduckgo, mojeek, lobsters, semantic_scholar, openalex, crossref, stack_exchange, open_library.
-
-### search_engine_drilldown
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| query | str (required) | Must match the prior search_web call |
-| --engine | str (required) | One engine name (see list above) |
-| --books / --pdf / --docs | flag | Must match the prior search_web call's mode |
-
-### scrape_url
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| url | str (required) | URL to fetch as filtered markdown |
-
-Returns the FULL page as markdown (`PruningContentFilter`, no length cap), preceded by an `## Acquisition facts` block — HTTP status, the URL the browser actually landed on, byte counts, and crawl4ai's own anti-bot diagnosis. No options. For capturing a whole domain into RAG, use the Permanent Capture Workflow — not this.
-
-### scrape_url_camoufox
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| url | str (required) | URL to fetch via the Camoufox lane |
-
-A SECOND acquisition engine (Camoufox: Playwright-Firefox with C++-level fingerprint spoofing), parallel to `scrape_url`'s crawl4ai/chromium lane — a deliberate per-call choice, never an automatic fallback. Same contract: full content plus an acquisition-facts block (HTTP status, landed URL, byte counts). Lane choice is OPTIONAL and yours per target — no reliability data yet favors either lane per site type. One measured data point: Camoufox passed idealo.de's Akamai Bot Manager wall (real page, HTTP 200) where the chromium lane gets a courtesy block page — on a hard anti-bot target where `scrape_url` returns a block/placeholder, trying `scrape_url_camoufox` is the natural second move. Slower than `scrape_url` (launches a fresh browser per call, ~15s+ on hard targets). Camoufox-specific fact: the output may be RAW HTML instead of markdown when the markdown conversion failed — the facts block says so explicitly (`content_is_raw_html`); the content is still the real page.
-
-**The scraper does not judge the content; YOU do.** It returns whatever came back, always — a 403 carrying the full article, a 200 carrying a 400-byte "Sorry, something went wrong" placeholder, an empty page. Read the facts block against the content and say what you see. Two traps the facts block is built to expose:
-
-- **HTTP status is a fact, not a verdict.** `de.trustpilot.com` serves real review pages under HTTP 403. A non-200 status with substantial content is a server using status codes unusually, not a failed scrape.
-- **crawl4ai's diagnosis is an OBSERVATION with documented false positives.** It reports `Blocked by anti-bot protection: Cloudflare JS challenge` on renders that returned the complete page. Never restate it to the user as "the site blocked us" — check it against the content that came back.
-- **The landed URL is reported on every scrape, never judged.** Compare it against the URL you requested yourself. Differs only in spelling (trailing slash, `www.`, `http`/`https`, fragment, default port) → ignore it. Points somewhere else (different host, different path, different query) → accept the content, keep working, and flag it to the user: which URL was requested, which was delivered, and that the content may not be what was asked for. Absent → say so when reporting a failed scrape.
-
-When a page genuinely did not come through (placeholder text, near-zero bytes, an interstitial), the ONE legitimate escalation is the other lane: try `scrape_url_camoufox` on the same URL (say you are doing it). If that also fails, tell the user plainly which URL failed on both lanes and what the evidence was. Do not silently retry the same lane, do not paper over it, and do not treat it as a config problem to solve mid-task — scraper tuning is a separate session in the `websearch` repo, informed by `src/logs/scrape_log.jsonl`.
+**The two scrape lanes are a free per-call choice.**
+Page didn't come through → try the other lane once, then report both failures plainly.
 
 ## Search Strategy
 
 1. `search_web` for the engine breakdown. For a deep dive, fire 2–4 parallel calls with query variations.
-2. `search_engine_drilldown` per engine with a useful count to get its URLs.
+2. `search_engine_drilldown` to get an engine's URLs — which engine(s) is your free choice, guided by the breakdown counts.
 3. `scrape_url` the relevant URLs. PDFs and books: give the user the exact URLs from the search results — the user downloads them. Do not `scrape_url` a `.pdf` URL (it returns an error: the PDF must be downloaded by the user).
 
-Write the query in the language you want results in.
-
-Query diversity: when investigating an entity X, vary the angle across queries — X as the anchor, the broader category without X, alternatives/competitors, the underlying technique.
+**Write the query in the language you want results in.**
+The user-chat language does not apply here — a German conversation still gets English queries when English results are wanted.
 
 ---
 
 ## Permanent Capture Workflow
 
-When the user wants to permanently capture a whole domain into RAG — "crawl X and index it", "RAG-fähig machen". A worker drives the capture; this is the Opus-side setup. The worker activates `websearch-capture-and-index`. (PDF → MD conversion is a separate flow — see the `websearch-pdf` skill.)
+When the user wants to permanently capture a whole domain into RAG — "crawl X and index it", "RAG-fähig machen". A worker drives the capture; this is your setup. The worker activates `websearch-capture-and-index`. (PDF → MD conversion is a separate flow — see the `websearch-pdf` skill.)
 
-**1.** Identify the source: a seed domain URL.
+**Step 1.** Identify the source: a seed domain URL.
 
-**2.** Confirm the target collection with the user (MANDATORY ASK — never pick it yourself):
+**Step 2.** Confirm the target collection with the user (MANDATORY ASK — never pick it yourself):
 > "Target collection: `<project>-reference`. OUTPUT_DIR: `~/Documents/ai/Meta/ClaudeCode/cli/rag-cli/data/documents/<project>-reference/`. Confirm or override?"
 
 Default is `<current_project>-reference`, but it may be another project's reference collection. Collection names are hyphen-separated (`websearch-reference`), never underscore — an underscore variant creates a second, parallel collection instead of appending to the existing one.
 
-**3.** Spawn the worker. It activates the `websearch-capture-and-index` skill and runs the pipe: Discovery → URL Selection → **STOP (Opus cull, Phase 1b)** → Scrape → Cleanup → Index. Opus provides the seed, collection, output dir.
+**Step 3.** Spawn the worker. It activates the `websearch-capture-and-index` skill and runs the pipe: Discovery → URL Selection → **STOP (cull review, your gate)** → Scrape → Cleanup → Index. You provide the seed, collection, output dir.
 
 Worker prompt (`/tmp/spawn-<name>.md`):
 
@@ -111,23 +55,25 @@ Inputs:
 - SEED_URL: <root domain URL>
 - COLLECTION: <name>
 - OUTPUT_DIR: ~/Documents/ai/Meta/ClaudeCode/cli/rag-cli/data/documents/<name>/
-STOP at Phase 1b — report the URL-list path + per-section breakdown and WAIT for my cull decision before scraping. Then report the funnel when done (incl. blocks-detected). No commit needed (output is data files).
+STOP at Step 3 (cull review) — report the URL-list path + per-section breakdown and WAIT for my cull decision before scraping. Then report the funnel when done (incl. blocks-detected). No commit needed (output is data files).
 ```
 
 ```bash
 worker-cli spawn capture-<collection_lower> /tmp/spawn-<name>.md <current_project_root> sonnet
 ```
 
-### Opus gates
+### Your gates
 
-**4.** Cull review. When the worker stops at Phase 1b it reports the URL-list path + a per-section breakdown. Review it against what the user actually needs this session — drop sections that are valid content but off-topic (e.g. a GitHub REST capture aimed at search/contents/git-trees does not need `actions`/`enterprise-admin`/`scim`). This is YOUR call, not the worker's.
+**Step 4.** Cull review. When the worker stops at its cull gate it reports the URL-list path + a per-section breakdown. Review it against what the user actually needs this session — drop sections that are valid content but off-topic (e.g. a GitHub REST capture aimed at search/contents/git-trees does not need `actions`/`enterprise-admin`/`scim`). This is YOUR call, not the worker's.
 
-**YOU edit the `/tmp` URL-list file itself — never send the worker patterns to apply.** Strip the unwanted URLs from the file, then tell the worker the resulting line count and give it go. The worker re-reads the same path and scrapes whatever is in it; it never rewrites the list. Rationale: the culled file on disk IS the verifiable state — its line count says exactly what will be scraped. Handing over patterns instead defers the cull into the worker and makes it visible only after the scrape has already run.
+**YOU edit the `/tmp` URL-list file itself — never send the worker patterns to apply.**
+Strip the unwanted URLs from the file, then tell the worker the resulting line count and give it go. The worker re-reads the same path and scrapes whatever is in it; it never rewrites the list. Rationale: the culled file on disk IS the verifiable state — its line count says exactly what will be scraped. Handing over patterns instead defers the cull into the worker and makes it visible only after the scrape has already run.
 
-**5.** When the worker reports the funnel, check two lines.
+**Step 5.** When the worker reports the funnel, check two lines.
 
 `blocks detected` — non-zero means it found cookie/paywall MDs (not auto-stripped). Decide from the reported patterns whether a `src/` strip-script is warranted.
 
 `systemic gap` — anything other than `none` means a domain class did not come through. **Flag it to the user and keep rolling.** The capture is already indexed with whatever passed; there is nothing to re-run. The scraper carries one fixed calibration and exposes no per-domain lever, so this is NOT a value to adjust here — it is input for a separate tuning session against this repo and `src/logs/pipe_scrape_log.jsonl`. Report to the user: the domain, the failure pattern, the count, the worker's evidence and suspected cause, and that resolving it needs its own session. Then continue whatever the user actually asked for.
 
-**Between step 4 and step 5, the worker owns Scrape → Cleanup → Index end-to-end.** Opus intervenes at exactly TWO points: (a) hand the worker the culled `/tmp` URL list + go (step 4), and (b) receive the final funnel report (step 5).
+**Between Step 4 and Step 5, the worker owns Scrape → Cleanup → Index end-to-end.**
+You intervene at exactly TWO points: (a) hand the worker the culled `/tmp` URL list + go (Step 4), and (b) receive the final funnel report (Step 5).

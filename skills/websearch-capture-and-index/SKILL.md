@@ -13,14 +13,14 @@ Every file this pipeline produces under `/tmp` — URL lists, discovery scripts,
 
 Pipeline: Discovery → URL Selection (pre-scrape) → Scrape (raw) → Cleanup (incl. post-scrape drop) → Index.
 
-**Multiple domains = phase-by-phase across ALL of them, never domain-by-domain.**
-Given N seed domains, run every phase to completion for all N before entering the next phase: discover all → select all → ONE Phase-1b stop covering all → scrape all → clean all → index once at the end. `rag-cli index` operates on the whole collection directory, not on single files — indexing after domain 1 sweeps up domain 2's raw, uncleaned files and indexes them as garbage. Index is therefore the LAST action of the entire run and runs exactly once.
+**Multiple domains = step-by-step across ALL of them, never domain-by-domain.**
+Given N seed domains, run every step to completion for all N before entering the next step: discover all → select all → ONE Step-3 stop covering all → scrape all → clean all → index once at the end. `rag-cli index` operates on the whole collection directory, not on single files — indexing after domain 1 sweeps up domain 2's raw, uncleaned files and indexes them as garbage. Index is therefore the LAST action of the entire run and runs exactly once.
 
 **Scraper posture — best-effort, not guaranteed.** `src/crawler/pipe_scraper.py` is a GENERAL scraper; do NOT assume the scrape worked. Coverage verification is a first-class duty: every discovered URL that survives the cull must actually yield real content.
 
 **A reachability problem is DIAGNOSED and REPORTED, never acted on.** The scraper runs ONE fixed calibration; it exposes no stealth, wait-strategy or per-domain lever, and none is coming — tuning happens in a separate session against the repo and its logs, never mid-capture. So on ANY systemic, diagnosable problem — a patterned coverage gap, a repeating block-type, a dominant error class (NOT scattered legit 404s) — do NOT stop, do NOT re-run, do NOT vary the config. Capture what does come through, carry it to Index, and put the diagnosis in the Completion Report: what failed, the evidence (block text / coverage delta / error breakdown), your read of the cause. A partial capture that is honestly reported beats a halted one.
 
-#### Phase 0 — Discovery
+#### Step 1 — Discovery
 
 Deliverable: `/tmp/<domain>_discovered_urls.txt` — one URL per line, maximum coverage of the target domain/section.
 
@@ -84,7 +84,7 @@ concurrency = 1                  # WAF-safe default
 
 Write discovered URLs to `/tmp/<domain>_discovered_urls.txt`.
 
-#### Phase 1 — URL Selection (pre-scrape)
+#### Step 2 — URL Selection (pre-scrape)
 
 The cull happens on the URL LIST, before any scraping — not by reading scraped `.md` files. Inspect `/tmp/<domain>_discovered_urls.txt`, decide which URLs are obvious noise (e.g. changelog/archive/legal/asset paths, known-dead sections), and write a `/tmp` script that rewrites the list so only the URLs worth scraping remain.
 
@@ -92,7 +92,7 @@ Record which patterns were dropped and why — this goes into the Completion Rep
 
 Do NOT read page content here; that is impossible pre-scrape. This step is purely list-level pattern selection.
 
-#### Phase 1b — Opus Cull Review (MANDATORY STOP)
+#### Step 3 — Opus Cull Review (MANDATORY STOP)
 
 After the pattern-noise cull, the list still contains pages that are valid content but may be **irrelevant to what the user actually needs**. Do NOT edit the list for relevance; present it, and **Opus edits the `/tmp` file directly**.
 
@@ -100,13 +100,13 @@ STOP here. Report to Opus:
 - the URL-list path (`/tmp/<domain>_discovered_urls.txt`) and total count
 - a **per-section breakdown**: group URLs by their first path segment under the target root, with counts — e.g. `rest/actions: 41 · rest/repos: 28 · rest/enterprise-admin: 35 · …`
 
-Then WAIT. Opus strips the unwanted URLs from `/tmp/<domain>_discovered_urls.txt` itself. When Opus says go, re-read the now-shorter file and proceed to Phase 2 — do NOT modify the list yourself.
+Then WAIT. Opus strips the unwanted URLs from `/tmp/<domain>_discovered_urls.txt` itself. When Opus says go, re-read the now-shorter file and proceed to Step 4 — do NOT modify the list yourself.
 
 Do NOT scrape before Opus says go.
 
 **Pre-scrape line-count gate (MANDATORY).** In a Bash call of its OWN — never chained onto the scrape command — run `wc -l` on the URL file and compare it against the count Opus gave with the go. Mismatch → STOP and report to Opus; do not scrape. A stale or un-culled list otherwise burns a full scrape run against hundreds of unwanted URLs and is only noticed afterwards. Keep it a separate call: anything chained onto the scrape command defeats auto-backgrounding.
 
-#### Phase 2 — Scrape
+#### Step 4 — Scrape
 
 Scrape every URL in the filtered list **raw and maximal** — no content filter, no truncation.
 
@@ -135,7 +135,7 @@ Take from that console line for the Completion Report: scraped N, errors K, **du
 
 A systemic gap is a REPORT line, not a stop — record it under `systemic gap` in the Completion Report and continue to Cleanup → Index with what you have. State the failed count, the affected URL slice, the evidence, and your suspected cause. Whatever passed still gets cleaned and indexed.
 
-#### Phase 3 — Cleanup
+#### Step 5 — Cleanup
 
 Diagnose first. Don't write cleanup regex before classifying shape.
 
@@ -223,7 +223,7 @@ For each detected shape, write ONE small script in `/tmp/clean_<shape>_<COLLECTI
 
 ---
 
-### Index — Final Phase (web-md)
+### Step 6 — Index (final, web-md)
 
 One script call, once per run. `rag-cli index` is incremental (hash-based skip) — re-running only embeds new/changed files. It indexes the ENTIRE collection directory, so every file in it must be cleaned before this runs — with multiple domains that means all domains scraped AND cleaned first.
 
@@ -235,7 +235,7 @@ OUTPUT_DIR="$RAG_ROOT/data/documents/$COLLECTION"
 mkdir -p "$OUTPUT_DIR"
 ```
 
-Set this BEFORE the Scrape phase (Phase 2).
+Set this BEFORE the Scrape step (Step 4).
 
 Then run the index:
 
