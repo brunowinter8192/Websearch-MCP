@@ -352,3 +352,126 @@ async def test_config_hash_stable_for_identical_kwargs(monkeypatch):
     _, meta2 = await camoufox_scrape.try_scrape_camoufox("https://x.test/b")
 
     assert meta1["config_hash"] == meta2["config_hash"]
+
+
+# ---------------------------------------------------------------------------
+# scrape_url_camoufox_workflow: milestone 2 — the ad-hoc CLI wiring. Logs into the SAME
+# scrape_log.jsonl / log_scrape / write_sidecar as scrape_url.py's chromium lane, discriminated by
+# the "engine" field. try_scrape_camoufox is faked at the module boundary; log_scrape/write_sidecar
+# are faked to capture the record instead of touching the filesystem.
+# ---------------------------------------------------------------------------
+
+def _meta(**overrides):
+    base = {
+        "acquisition_error": None, "status_code": 200, "landed_url": "https://x.test/a",
+        "raw_markdown_bytes": 100, "markdown_conversion_error": None, "content_is_raw_html": False,
+        "config": {"headless": False}, "config_hash": "deadbeef00",
+    }
+    base.update(overrides)
+    return base
+
+
+@pytest.mark.asyncio
+async def test_scrape_url_camoufox_workflow_logs_engine_discriminator(monkeypatch):
+    """The logged record carries engine="camoufox" — the first-class discriminator this milestone
+    adds, distinguishing it from the chromium lane's engine="chromium" records in the same file."""
+    captured = {}
+
+    async def _fake_try_scrape_camoufox(url, block_images=False):
+        return "real markdown content", _meta()
+    monkeypatch.setattr(camoufox_scrape, "try_scrape_camoufox", _fake_try_scrape_camoufox)
+    monkeypatch.setattr(camoufox_scrape, "write_sidecar", lambda *a, **kw: None)
+    monkeypatch.setattr(camoufox_scrape, "log_scrape", lambda record: captured.update(record))
+
+    await camoufox_scrape.scrape_url_camoufox_workflow("https://x.test/a")
+
+    assert captured["engine"] == "camoufox"
+    assert captured["url"] == "https://x.test/a"
+    assert captured["outcome"] == "ok"
+    assert captured["mode"] == "markdown"
+
+
+@pytest.mark.asyncio
+async def test_scrape_url_camoufox_workflow_does_not_double_hash_config(monkeypatch):
+    """config_hash is read straight off meta (computed once, inside try_scrape_camoufox) — the
+    workflow must not re-hash it itself."""
+    captured = {}
+
+    async def _fake_try_scrape_camoufox(url, block_images=False):
+        return "content", _meta(config_hash="already-computed-hash")
+    monkeypatch.setattr(camoufox_scrape, "try_scrape_camoufox", _fake_try_scrape_camoufox)
+    monkeypatch.setattr(camoufox_scrape, "write_sidecar", lambda *a, **kw: None)
+    monkeypatch.setattr(camoufox_scrape, "log_scrape", lambda record: captured.update(record))
+
+    await camoufox_scrape.scrape_url_camoufox_workflow("https://x.test/a")
+
+    assert captured["config_hash"] == "already-computed-hash"
+
+
+@pytest.mark.asyncio
+async def test_scrape_url_camoufox_workflow_mode_reflects_raw_html_fallback(monkeypatch):
+    """mode="raw_html" (not "markdown") when content_is_raw_html is set — the sidecar/log record
+    must say plainly what kind of content is actually stored."""
+    captured = {}
+
+    async def _fake_try_scrape_camoufox(url, block_images=False):
+        return "<html>raw</html>", _meta(content_is_raw_html=True,
+                                          markdown_conversion_error="Invalid IPv6 URL")
+    monkeypatch.setattr(camoufox_scrape, "try_scrape_camoufox", _fake_try_scrape_camoufox)
+    monkeypatch.setattr(camoufox_scrape, "write_sidecar", lambda *a, **kw: None)
+    monkeypatch.setattr(camoufox_scrape, "log_scrape", lambda record: captured.update(record))
+
+    await camoufox_scrape.scrape_url_camoufox_workflow("https://x.test/a")
+
+    assert captured["mode"] == "raw_html"
+    assert captured["content_is_raw_html"] is True
+    assert captured["markdown_conversion_error"] == "Invalid IPv6 URL"
+
+
+# ---------------------------------------------------------------------------
+# _format_camoufox_output: same fixed-shape philosophy as _format_scrape_output — facts always,
+# landed URL unconditional, content_is_raw_html stated plainly with the conversion error surfaced
+# ---------------------------------------------------------------------------
+
+def test_format_camoufox_output_normal_markdown_shape():
+    text = camoufox_scrape._format_camoufox_output(
+        "https://x.test/a", "the real markdown content here", _meta())
+    assert "- Engine: camoufox" in text
+    assert "- HTTP status: 200" in text
+    assert "- Landed URL (the URL the browser actually returned content from): https://x.test/a" in text
+    assert "Content format" not in text  # only rendered when content_is_raw_html
+    facts_idx = text.index("## Acquisition facts")
+    content_idx = text.index("## Content")
+    body_idx = text.index("the real markdown content here")
+    assert facts_idx < content_idx < body_idx
+
+
+def test_format_camoufox_output_landed_url_unconditional_even_when_absent():
+    """Same rule as the chromium lane: landed_url renders even when None (absent), literally."""
+    text = camoufox_scrape._format_camoufox_output(
+        "https://x.test/a", "", _meta(landed_url=None, acquisition_error="browser_missing"))
+    assert "- Landed URL (the URL the browser actually returned content from): None" in text
+
+
+def test_format_camoufox_output_raw_html_shape_states_it_plainly():
+    """content_is_raw_html must be stated PLAINLY, with the conversion error surfaced verbatim as
+    an observation, not buried or omitted."""
+    text = camoufox_scrape._format_camoufox_output(
+        "https://www.idealo.de/preisvergleich/OffersOfProduct/203078159_-fritz-box-7510-avm.html",
+        "<html><body>real captured page</body></html>",
+        _meta(content_is_raw_html=True, markdown_conversion_error="Invalid IPv6 URL",
+              landed_url="https://www.idealo.de/preisvergleich/OffersOfProduct/"
+                         "203078159_-woman-hybrid-jacket-fix-hood-33z6026-cmp-campagnolo.html"))
+    assert "RAW HTML, NOT markdown" in text
+    assert "Invalid IPv6 URL" in text
+    assert "OBSERVATION" in text
+    assert "<html><body>real captured page</body></html>" in text
+
+
+def test_format_camoufox_output_acquisition_failure_shape():
+    text = camoufox_scrape._format_camoufox_output(
+        "https://x.test/a", "",
+        _meta(status_code=None, landed_url=None, raw_markdown_bytes=0,
+              acquisition_error="budget_exhausted"))
+    assert "(no content returned)" in text
+    assert "Acquisition error: camoufox acquisition exceeded the total time budget" in text

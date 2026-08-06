@@ -38,6 +38,7 @@ from src.search.query_logger import log_query
 from urllib.parse import urlparse
 
 from src.scraper.scrape_url import scrape_url_workflow
+from src.scraper.camoufox_scrape import scrape_url_camoufox_workflow
 
 atexit.register(kill_stale_chrome)
 
@@ -65,7 +66,7 @@ def _log_drilldown(query, language, mode, engine, search_key, cache_status, engi
 def main():
     parser = argparse.ArgumentParser(
         prog="cli.py",
-        description="websearch CLI — search_web, search_engine_drilldown, scrape_url."
+        description="websearch CLI — search_web, search_engine_drilldown, scrape_url, scrape_url_camoufox."
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -102,6 +103,13 @@ def main():
 
     # ── scrape_url ────────────────────────────────────────────────────────────
     p = sub.add_parser("scrape_url", help="Scrape URL to filtered markdown (PruningContentFilter, full content, no length cap) plus acquisition facts.")
+    p.add_argument("url", help="URL to scrape")
+
+    # ── scrape_url_camoufox ───────────────────────────────────────────────────
+    # A deliberate SECOND acquisition lane (Camoufox/Playwright-Firefox), not a fallback of
+    # scrape_url — pick this one explicitly when the chromium lane is known/likely to be blocked;
+    # the name says which engine runs, on purpose (see camoufox_scrape.py for the calibration).
+    p = sub.add_parser("scrape_url_camoufox", help="Scrape URL via the Camoufox (Playwright-Firefox) lane — a second, deliberately chosen acquisition engine, not a fallback. Full content, no length cap, plus acquisition facts.")
     p.add_argument("url", help="URL to scrape")
 
     # ── Dispatch ──────────────────────────────────────────────────────────────
@@ -146,6 +154,13 @@ def main():
             print(f"PDF must be downloaded by the user: {url}")
             return
         result = asyncio.run(scrape_url_workflow(url))
+
+    elif args.cmd == "scrape_url_camoufox":
+        url = args.url
+        if urlparse(url).path.lower().endswith(".pdf"):
+            print(f"PDF must be downloaded by the user: {url}")
+            return
+        result = asyncio.run(scrape_url_camoufox_workflow(url))
 
     print(result[0].text)
 

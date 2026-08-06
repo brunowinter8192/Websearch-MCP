@@ -106,6 +106,13 @@ async def scrape_url_workflow(url: str) -> list[TextContent]:
     content_path = write_sidecar(url, ts, content, outcome, "filtered")
     log_scrape({
         "ts": ts, "url": url, "domain": domain, "mode": "filtered", "outcome": outcome,
+        # First-class discriminator between this (chromium/crawl4ai) lane and the camoufox lane
+        # (camoufox_scrape.py's scrape_url_camoufox_workflow) sharing this same log file — the
+        # config stamp already differs structurally between the two, but a reader filtering the
+        # log should not have to do config-shape archaeology to tell them apart. Absent on every
+        # record written before this field existed, same convention as every prior field addition
+        # this session (see scrape_logger.py's schema comment).
+        "engine": "chromium",
         "timings_ms": {"total_wall": total_wall},
         "http_status": meta.get("status_code"), "content_type": meta.get("content_type"),
         "bytes_returned": len(content.encode("utf-8")) if content else 0,
