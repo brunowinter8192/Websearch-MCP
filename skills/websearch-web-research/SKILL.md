@@ -23,6 +23,9 @@ websearch search_engine_drilldown "machine learning retrieval" --engine google
 
 # Scrape a page to filtered markdown
 websearch scrape_url "https://example.com/article"
+
+# Scrape via the Camoufox lane (second engine, deliberate choice — see scrape_url_camoufox)
+websearch scrape_url_camoufox "https://example.com/article"
 ```
 
 On error (missing dependency, engine timeout): prints to stderr, exits non-zero.
@@ -58,13 +61,21 @@ Engines: google, duckduckgo, mojeek, lobsters, semantic_scholar, openalex, cross
 
 Returns the FULL page as markdown (`PruningContentFilter`, no length cap), preceded by an `## Acquisition facts` block — HTTP status, the URL the browser actually landed on, byte counts, and crawl4ai's own anti-bot diagnosis. No options. For capturing a whole domain into RAG, use the Permanent Capture Workflow — not this.
 
+### scrape_url_camoufox
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| url | str (required) | URL to fetch via the Camoufox lane |
+
+A SECOND acquisition engine (Camoufox: Playwright-Firefox with C++-level fingerprint spoofing), parallel to `scrape_url`'s crawl4ai/chromium lane — a deliberate per-call choice, never an automatic fallback. Same contract: full content plus an acquisition-facts block (HTTP status, landed URL, byte counts). Lane choice is OPTIONAL and yours per target — no reliability data yet favors either lane per site type. One measured data point: Camoufox passed idealo.de's Akamai Bot Manager wall (real page, HTTP 200) where the chromium lane gets a courtesy block page — on a hard anti-bot target where `scrape_url` returns a block/placeholder, trying `scrape_url_camoufox` is the natural second move. Slower than `scrape_url` (launches a fresh browser per call, ~15s+ on hard targets). Camoufox-specific fact: the output may be RAW HTML instead of markdown when the markdown conversion failed — the facts block says so explicitly (`content_is_raw_html`); the content is still the real page.
+
 **The scraper does not judge the content; YOU do.** It returns whatever came back, always — a 403 carrying the full article, a 200 carrying a 400-byte "Sorry, something went wrong" placeholder, an empty page. Read the facts block against the content and say what you see. Two traps the facts block is built to expose:
 
 - **HTTP status is a fact, not a verdict.** `de.trustpilot.com` serves real review pages under HTTP 403. A non-200 status with substantial content is a server using status codes unusually, not a failed scrape.
 - **crawl4ai's diagnosis is an OBSERVATION with documented false positives.** It reports `Blocked by anti-bot protection: Cloudflare JS challenge` on renders that returned the complete page. Never restate it to the user as "the site blocked us" — check it against the content that came back.
 - **The landed URL is reported on every scrape, never judged.** Compare it against the URL you requested yourself. Differs only in spelling (trailing slash, `www.`, `http`/`https`, fragment, default port) → ignore it. Points somewhere else (different host, different path, different query) → accept the content, keep working, and flag it to the user: which URL was requested, which was delivered, and that the content may not be what was asked for. Absent → say so when reporting a failed scrape.
 
-When a page genuinely did not come through (placeholder text, near-zero bytes, an interstitial), tell the user plainly which URL failed and what the evidence was. Do not silently retry, do not paper over it, and do not treat it as a config problem to solve mid-task — scraper tuning is a separate session in the `websearch` repo, informed by `src/logs/scrape_log.jsonl`.
+When a page genuinely did not come through (placeholder text, near-zero bytes, an interstitial), the ONE legitimate escalation is the other lane: try `scrape_url_camoufox` on the same URL (say you are doing it). If that also fails, tell the user plainly which URL failed on both lanes and what the evidence was. Do not silently retry the same lane, do not paper over it, and do not treat it as a config problem to solve mid-task — scraper tuning is a separate session in the `websearch` repo, informed by `src/logs/scrape_log.jsonl`.
 
 ## Search Strategy
 

@@ -123,6 +123,8 @@ cd "$WEBSEARCH" && ./venv/bin/python -m src.crawler.pipe_scraper \
     --output-dir $OUTPUT_DIR > /tmp/<domain>_scrape.log 2>&1
 ```
 
+**Engine choice (`--engine {chromium,camoufox}`, default chromium):** a per-RUN choice, OPTIONAL — no reliability data yet favors either engine per site type. Default (omit the flag) is the chromium/crawl4ai engine. `--engine camoufox` runs the Camoufox lane (Playwright-Firefox, fingerprint spoofing) — measured to pass Akamai Bot Manager where chromium gets a block page, but launches a fresh browser per URL and serializes per domain (concurrency default 1 vs chromium's 8), so it is MUCH slower at volume. Use it only when the run is spawned with that instruction, or as the re-run engine after a chromium run shows a SYSTEMIC anti-bot gap (block-page pattern across a coherent slice) — in that case report the gap first, and re-run on the other engine only if Opus says so. A camoufox record may carry raw HTML instead of markdown (`content_is_raw_html` in the pipe log) — such files still index but flow through Cleanup like any other.
+
 > You own Scrape → Cleanup → Index end-to-end — never hand back to Opus mid-pipeline. When the run returns, read `/tmp/<domain>_scrape.log` ONCE for the `Scraped N/N ok` summary, then continue on your own to Cleanup → Index → final report.
 
 The scraper's own output is short: a console line with **success count, error count, and total duration**, plus a full per-URL report written to `/tmp/<domain>_scrape_report.md` (per-URL status + outcome). It does NOT dump a per-URL list to the console — failures live in the report md.
