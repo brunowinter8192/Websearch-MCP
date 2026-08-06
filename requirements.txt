@@ -9,3 +9,4 @@ lxml
 httpx
 pyyaml
 curl_cffi
+camoufox
