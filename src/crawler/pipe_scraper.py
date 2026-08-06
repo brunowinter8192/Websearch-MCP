@@ -185,9 +185,16 @@ async def _fallback_fetch(url: str) -> str | None:
 # raised outright, no crawl_result ever formed). Calls _curl_cffi_get directly (not _fallback_fetch)
 # specifically to also read response.url — the landed URL curl_cffi actually ended up on, real and
 # available at this call site (unlike path a, see _fallback_fetch's comment). Converts the fetched
-# HTML to markdown via crawl4ai's own raw:// pipeline (verified: raw:// URLs run through the same
+# HTML to markdown via crawl4ai's own raw: pipeline (verified: raw: URLs run through the same
 # DefaultMarkdownGenerator, are exempted from anti-bot/fallback machinery entirely — no recursion
 # risk from reusing run_cfg's fallback_fetch_function here) rather than hand-rolling HTML-to-markdown.
+# Uses "raw:", not "raw://" — crawl4ai's own urlparse() call on a raw://<html> pseudo-URL raises
+# "Invalid IPv6 URL" whenever the HTML contains a bare "[" before the first "/" in the document
+# (e.g. an early inline <script> with a JS array literal); "raw:" carries no netloc and hits none
+# of that parsing. Both prefixes are equivalent in crawl4ai's own contract (async_webcrawler.py's
+# _is_raw_url check, async_crawler_strategy.py's raw-html branch, upstream's own
+# test_raw_html_browser.py::test_raw_prefix_variations) — see camoufox_scrape.py's
+# try_scrape_camoufox meta-keys comment for the full finding (fixed there the same way).
 # Returns (outcome, http_status, byte_count, pipe_fallback_used, pipe_fallback_resolved, landed_url).
 # landed_url is recorded whenever a response was actually obtained (regardless of status_code) —
 # redirect behaviour was genuinely observed either way; None only when _curl_cffi_get itself
@@ -195,7 +202,7 @@ async def _fallback_fetch(url: str) -> str | None:
 # pipe_fallback_resolved describes the FETCH (curl_cffi returned a genuine 200 with a body) — it is
 # NOT about whether that body converted into usable markdown, which is what `outcome` describes.
 # The two can legitimately disagree: resolved=True with outcome="empty" means curl_cffi got a real
-# 200 but the raw://-pipeline conversion produced too little content to clear
+# 200 but the raw:-pipeline conversion produced too little content to clear
 # EMPTY_THRESHOLD_BYTES — read that as "fetch worked, content didn't", not as a contradiction.
 # http_status is 200 ONLY when pipe_fallback_resolved is True (a real curl_cffi 200) — never faked,
 # unlike crawl4ai's own fallback wiring which forces 200 regardless of the real outcome. Same
@@ -212,7 +219,7 @@ async def _own_fallback_rescue(
     if not html:
         return 'error', None, 0, True, False, landed_url
     try:
-        fb_result = await crawler.arun(url=f"raw://{html}", config=run_cfg)
+        fb_result = await crawler.arun(url=f"raw:{html}", config=run_cfg)
         raw_md = (fb_result.markdown.raw_markdown if fb_result.markdown else '') or ''
     except Exception:
         raw_md = ''

@@ -397,7 +397,7 @@ def test_fallback_fetch_respects_timeout(monkeypatch):
 
 class _FakeHardFailureCrawler:
     """Raises on the real URL (simulating a hard browser failure — e.g. navigation timeout, the
-    crossref signature); succeeds on raw:// (simulating crawl4ai's own raw-HTML-to-markdown
+    crossref signature); succeeds on raw: (simulating crawl4ai's own raw-HTML-to-markdown
     pipeline, separately verified for real against installed crawl4ai)."""
     def __init__(self, *a, **kw):
         pass
@@ -409,11 +409,37 @@ class _FakeHardFailureCrawler:
         return False
 
     async def arun(self, url, config=None):
-        if url.startswith("raw://"):
+        if url.startswith("raw:"):
             return _FakeResult(raw_markdown="rescued content via pipe_scraper's own curl_cffi "
                                              "fallback, deliberately padded well past the "
                                              "100-byte empty threshold so this classifies as ok "
                                              "rather than empty in the assertions below")
+        raise Exception("simulated hard browser failure (e.g. navigation timeout)")
+
+
+class _FakeUrlsplitRescueCrawler:
+    """Raises on the real URL (same shape as _FakeHardFailureCrawler, forcing _own_fallback_rescue
+    to fire); on the raw: pseudo-URL, simulates crawl4ai's OWN internal
+    urllib.parse.urlsplit(url) call — the real failure mode this guards against: a raw://<html>
+    pseudo-URL where the HTML contains a bare "[" before the first "/" raises
+    ValueError("Invalid IPv6 URL") (Python 3.14's _check_bracketed_netloc). "raw:" carries no
+    netloc and is not subject to that parsing at all."""
+    def __init__(self, *a, **kw):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def arun(self, url, config=None):
+        if url.startswith("raw:"):
+            from urllib.parse import urlsplit
+            urlsplit(url)
+            return _FakeResult(raw_markdown="rescued content deliberately padded well past the "
+                                             "100-byte empty threshold used in these assertions "
+                                             "so this classifies as ok rather than empty")
         raise Exception("simulated hard browser failure (e.g. navigation timeout)")
 
 
@@ -454,13 +480,40 @@ async def test_own_fallback_rescue_fires_from_scrape_one_except_block(tmp_path, 
     assert r["outcome"] == "ok"
     assert r["http_status"] == 200
     # No real crawl4ai diagnosis exists for a browser call that raised before producing a result —
-    # these must stay None, not be filled in from the unrelated raw:// conversion call's own stats
+    # these must stay None, not be filled in from the unrelated raw: conversion call's own stats
     assert r["crawl4ai_success"] is None
     assert r["crawl4ai_resolved_by"] is None
     assert r["crawl4ai_fallback_fetch_used"] is None
     # Milestone 4: a real landed_url IS now available on path b — no redirect here (curl_cffi
     # landed on the same URL it was given).
     assert r["landed_url"] == "https://x.test/a"
+
+
+@pytest.mark.asyncio
+async def test_own_fallback_rescue_survives_bracket_before_first_slash(tmp_path, monkeypatch):
+    """Regression: HTML with a bare "[" before the first "/" (e.g. an early inline <script> JS
+    array literal, extremely common) used to make crawl4ai's own urlsplit() raise "Invalid IPv6
+    URL" on a raw://<html> pseudo-URL. _own_fallback_rescue's raw: call must survive it and
+    convert real content instead of failing."""
+    log_file = tmp_path / "pipe_scrape_log.jsonl"
+    monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
+    monkeypatch.setattr(pipe_scraper, "AsyncWebCrawler", _FakeUrlsplitRescueCrawler)
+
+    html = ("<html><head><script>var a = [1,2,3];</script></head>"
+            "<body>curl_cffi rescued this page, long enough to pass the empty threshold"
+            "</body></html>")
+
+    async def _fake_curl_get(url):
+        return _FakeCurlResponse(200, html, url=url)
+    monkeypatch.setattr(pipe_scraper, "_curl_cffi_get", _fake_curl_get)
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    results = await pipe_scraper._scrape_all(["https://x.test/a"], output_dir,
+                                              download_delay=0.01, concurrency_per_domain=8)
+
+    assert results[0]["outcome"] == "ok"
+    assert results[0]["status_code"] == 200
 
 
 @pytest.mark.asyncio

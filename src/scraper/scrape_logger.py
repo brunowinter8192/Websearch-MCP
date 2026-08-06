@@ -56,11 +56,12 @@ DEFAULT_LOG_PATH = Path(__file__).parent.parent.parent / "src" / "logs" / "scrap
 #                                          # "absent means the concept doesn't apply to this engine,
 #                                          # not a missed value" treatment as content_type/
 #                                          # fallback_to_raw above and the crawl4ai_* fields below.
-#   "markdown_conversion_error": str | null,  # camoufox engine ONLY — crawl4ai's raw:// pipeline's own
+#   "markdown_conversion_error": str | null,  # camoufox engine ONLY — crawl4ai's raw: pipeline's own
 #             error_message, verbatim, an OBSERVATION not a verdict, when it failed to convert
-#             captured HTML to markdown (see camoufox_scrape.py's try_scrape_camoufox for the real,
-#             observed failure shape and its cross-module implication for pipe_scraper.py). Absent
-#             (key never written) on "engine": "chromium" records — that lane has no raw:// step of
+#             captured HTML to markdown (see camoufox_scrape.py's try_scrape_camoufox for the
+#             "[" -before-first-"/" trigger this was closed for, and its cross-module implication
+#             for pipe_scraper.py — still reachable for other crawl4ai conversion failures). Absent
+#             (key never written) on "engine": "chromium" records — that lane has no raw: step of
 #             its own to report on.
 #   "content_is_raw_html": bool,           # camoufox engine ONLY — True when markdown_conversion_error
 #             is set and the logged/sidecar content is therefore the RAW CAPTURED HTML, not markdown
@@ -70,7 +71,7 @@ DEFAULT_LOG_PATH = Path(__file__).parent.parent.parent / "src" / "logs" / "scrap
 #                                          # only when the call raised before a result existed).
 #                                          # ABSENT (key never written) on "engine": "camoufox"
 #                                          # records — crawl4ai is involved there only incidentally,
-#                                          # for the raw:// markdown-conversion step, and that step's
+#                                          # for the raw: markdown-conversion step, and that step's
 #                                          # own diagnosis is not what this field describes
 #   "crawl4ai_error_message": str | null, # crawl4ai's own result.error_message verbatim (e.g. "Blocked by anti-bot protection: <reason>"); an OBSERVATION, NOT a verdict — the library's own detector has documented false positives (e.g. reports "Cloudflare JS challenge" on guenstiger.de even when the full product page came back) — never acted on here, and now also surfaced to the caller (scrape_url.py's _format_scrape_output), which must present it the same way. Chromium engine only, same absent-on-camoufox treatment as crawl4ai_success above.
 #   "crawl4ai_attempts": int | null,      # result.crawl_stats["attempts"] — total browser attempts across proxies/retries. Chromium engine only.

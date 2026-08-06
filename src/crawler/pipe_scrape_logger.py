@@ -48,7 +48,7 @@ DEFAULT_LOG_PATH = Path(__file__).parent.parent.parent / "src" / "logs" / "pipe_
 #                                          # null on pre-result exception. ABSENT (key never
 #                                          # written), not null, on "engine": "camoufox" records —
 #                                          # crawl4ai is involved there only incidentally, for the
-#                                          # raw:// markdown-conversion step (see
+#                                          # raw: markdown-conversion step (see
 #                                          # markdown_conversion_error below), and that step's own
 #                                          # diagnosis is not what this field describes.
 #   "crawl4ai_error_message": str | null,  # CHROMIUM engine only, same absent-on-camoufox treatment
@@ -79,25 +79,26 @@ DEFAULT_LOG_PATH = Path(__file__).parent.parent.parent / "src" / "logs" / "pipe_
 #             curl_cffi returned a genuine HTTP 200 with a body — this describes the FETCH
 #             succeeding, NOT whether that body converted into usable markdown. The two CAN
 #             legitimately disagree: resolved=True + outcome="empty" means curl_cffi got a real 200
-#             but the raw://-pipeline markdown conversion produced too little content to pass
+#             but the raw:-pipeline markdown conversion produced too little content to pass
 #             EMPTY_THRESHOLD_BYTES — that is not a contradiction, read it as "fetch worked, content
 #             didn't". False means curl_cffi itself failed/timed out/returned non-200 — this record's
 #             http_status is then null, never a faked 200 (see pipe_scraper._own_fallback_rescue).
 #             Three readable states via (used, resolved): browser succeeded (False, False); pipe's own
 #             fallback rescued it (True, True); everything failed (True, False).
-#   "markdown_conversion_error": str | null,  # CAMOUFOX engine ONLY — crawl4ai's raw:// pipeline's
+#   "markdown_conversion_error": str | null,  # CAMOUFOX engine ONLY — crawl4ai's raw: pipeline's
 #             own error_message, verbatim, an OBSERVATION not a verdict, when it failed to convert
-#             captured HTML to markdown (see camoufox_scrape.py's try_scrape_camoufox for the real,
-#             observed failure shape — a bare "[" before the first "/" in the HTML breaking
-#             crawl4ai's own internal urlparse() call — and its cross-module implication: this
-#             SAME raw:// call pattern is also used by this module's own _own_fallback_rescue on
-#             the chromium engine, an existing, latent, not-yet-fixed exposure there too). ABSENT
-#             (key never written) on "engine": "chromium" records.
+#             captured HTML to markdown. Still reachable for other crawl4ai conversion failures —
+#             the "[" -before-first-"/" trigger (crawl4ai's own internal urlparse() raising on a
+#             raw://<html> pseudo-URL, see camoufox_scrape.py's try_scrape_camoufox comment) is
+#             closed: both this module's _own_fallback_rescue on the chromium engine and
+#             camoufox_scrape.py's raw: call use the "raw:" prefix, which carries no netloc and is
+#             not subject to that parsing at all. ABSENT (key never written) on "engine": "chromium"
+#             records.
 #   "content_is_raw_html": bool,           # CAMOUFOX engine ONLY — True when markdown_conversion_error
 #             is set and the logged .md file is therefore the RAW CAPTURED HTML, not markdown (the
 #             real page is never silently discarded just because conversion failed — same posture
 #             as scrape_log.jsonl's own field of the same name). ABSENT on "engine": "chromium"
-#             records — that engine has no concept of this state (its own raw:// use,
+#             records — that engine has no concept of this state (its own raw: use,
 #             _own_fallback_rescue, is a from-exception rescue path, not this record's main
 #             acquisition route, and doesn't get its own content-format flag).
 #   "landed_url": str | null,              # BOTH engines, but populated differently. CHROMIUM: the

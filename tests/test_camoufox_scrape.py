@@ -4,7 +4,7 @@ wiring exists yet (later milestones); this only tests the module boundary itself
 
 Runs without a real Camoufox browser: camoufox_scrape.AsyncCamoufox and camoufox_scrape.launch_options
 are patched with fakes, isolating the module from the real binary/network. camoufox_scrape.AsyncWebCrawler
-(the separate throwaway crawler used for raw:// markdown conversion) is patched the same way
+(the separate throwaway crawler used for raw: markdown conversion) is patched the same way
 test_pipe_scraper.py fakes crawl4ai's own AsyncWebCrawler.
 """
 import asyncio
@@ -119,7 +119,28 @@ class _FakeAsyncWebCrawler:
         return False
 
     async def arun(self, url, config=None):
-        assert url.startswith("raw://")
+        assert url.startswith("raw:")
+        return _FakeCrawlResult(_FAKE_MARKDOWN_TEXT)
+
+
+class _UrlsplitAsyncWebCrawler:
+    """Simulates crawl4ai's OWN internal urllib.parse.urlsplit(url) call on the pseudo-URL — the
+    real failure mode this guards against: a raw://<html> pseudo-URL where the HTML contains a
+    bare "[" before the first "/" raises ValueError("Invalid IPv6 URL") (Python 3.14's
+    _check_bracketed_netloc) before crawl4ai's own raw-html branch ever runs. "raw:" (no netloc)
+    does not trigger this parsing at all."""
+    def __init__(self, *a, **kw):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def arun(self, url, config=None):
+        from urllib.parse import urlsplit
+        urlsplit(url)
         return _FakeCrawlResult(_FAKE_MARKDOWN_TEXT)
 
 
@@ -222,7 +243,28 @@ async def test_try_scrape_camoufox_exception_fail_soft(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Markdown-conversion failure: acquisition SUCCEEDED (real HTML captured) but crawl4ai's raw://
+# Regression: HTML with a bare "[" before the first "/" (e.g. an early inline <script> JS array
+# literal, extremely common) used to make crawl4ai's own urlsplit() raise "Invalid IPv6 URL" on a
+# raw://<html> pseudo-URL. _html_to_markdown uses "raw:" instead, which carries no netloc and is
+# not subject to that parsing at all.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_html_to_markdown_survives_bracket_before_first_slash(monkeypatch):
+    """Real trigger shape (idealo.de): an inline <script> with a JS array literal puts "[" before
+    the document's first "/". _html_to_markdown must produce a pseudo-URL that survives crawl4ai's
+    own urlsplit() call unchanged, converting real content instead of failing."""
+    monkeypatch.setattr(camoufox_scrape, "AsyncWebCrawler", _UrlsplitAsyncWebCrawler)
+    html = "<html><head><script>var a = [1,2,3];</script></head><body>content</body></html>"
+
+    content, error = await camoufox_scrape._html_to_markdown(html)
+
+    assert error is None
+    assert content == _FAKE_MARKDOWN_TEXT
+
+
+# ---------------------------------------------------------------------------
+# Markdown-conversion failure: acquisition SUCCEEDED (real HTML captured) but crawl4ai's raw:
 # pipeline failed — must NOT look like acquisition_error, and the captured HTML must not be
 # silently discarded (the exact invisible-failure class this whole project session worked against)
 # ---------------------------------------------------------------------------
