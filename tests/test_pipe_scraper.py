@@ -773,6 +773,30 @@ async def test_scrape_all_camoufox_engine_dispatches_to_try_scrape_camoufox(tmp_
 
 
 @pytest.mark.asyncio
+async def test_scrape_all_camoufox_default_block_images_is_false(tmp_path, monkeypatch):
+    """block_images omitted -> defaults to False, unified with the ad-hoc lane's own default
+    (settled decision: stealth over bandwidth, per Camoufox's own LeakWarning on image-blocking
+    as a WAF detection signal) — no longer True as the pipe engine used to default."""
+    log_file = tmp_path / "pipe_scrape_log.jsonl"
+    monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
+
+    called = []
+    async def _fake_try_scrape_camoufox(url, block_images=False):
+        called.append((url, block_images))
+        return "# real markdown, deliberately padded well past the 100-byte empty threshold" * 2, _camoufox_meta()
+    monkeypatch.setattr(pipe_scraper, "try_scrape_camoufox", _fake_try_scrape_camoufox)
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    await pipe_scraper._scrape_all(
+        ["https://x.test/a"], output_dir, download_delay=0.01,
+        concurrency_per_domain=None, engine="camoufox",
+    )
+
+    assert called == [("https://x.test/a", False)]
+
+
+@pytest.mark.asyncio
 async def test_scrape_all_camoufox_engine_resolves_own_concurrency_default(tmp_path, monkeypatch):
     """concurrency_per_domain=None + engine="camoufox" -> resolves to
     CAMOUFOX_CONCURRENCY_PER_DOMAIN, not the chromium default. Proven via timing: 3 same-domain
