@@ -222,6 +222,76 @@ async def test_try_scrape_camoufox_exception_fail_soft(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Markdown-conversion failure: acquisition SUCCEEDED (real HTML captured) but crawl4ai's raw://
+# pipeline failed — must NOT look like acquisition_error, and the captured HTML must not be
+# silently discarded (the exact invisible-failure class this whole project session worked against)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_try_scrape_camoufox_preserves_html_when_markdown_conversion_raises(monkeypatch):
+    """Real shape observed against idealo.de: HTML acquisition succeeds, but the markdown-
+    conversion step blows up. content must be the raw captured HTML (never silently lost as ""),
+    content_is_raw_html=True, markdown_conversion_error set, and acquisition_error MUST stay None
+    — acquisition itself produced a real result, this is a downstream conversion failure."""
+    monkeypatch.setattr(camoufox_scrape, "launch_options", _fake_launch_options)
+    monkeypatch.setattr(
+        camoufox_scrape, "AsyncCamoufox",
+        _make_fake_camoufox(landed_url="https://x.test/a", status=200,
+                             html="<html><body>real captured page</body></html>"),
+    )
+
+    async def _raising_html_to_markdown(html):
+        raise ValueError("Invalid IPv6 URL")
+    monkeypatch.setattr(camoufox_scrape, "_html_to_markdown", _raising_html_to_markdown)
+
+    content, meta = await camoufox_scrape.try_scrape_camoufox("https://x.test/a")
+
+    assert content == "<html><body>real captured page</body></html>"
+    assert meta["content_is_raw_html"] is True
+    assert meta["markdown_conversion_error"] == "Invalid IPv6 URL"
+    assert meta["acquisition_error"] is None
+    assert meta["raw_markdown_bytes"] == 0
+    assert meta["status_code"] == 200
+    assert meta["landed_url"] == "https://x.test/a"
+
+
+@pytest.mark.asyncio
+async def test_try_scrape_camoufox_preserves_html_when_crawl4ai_swallows_conversion_error(monkeypatch):
+    """_html_to_markdown's OWN internal fail-soft path (crawl4ai swallows the error internally and
+    returns success=False/markdown=None rather than raising — the ACTUAL idealo.de shape): same
+    outcome as the raising case, reached without _html_to_markdown itself ever raising."""
+    monkeypatch.setattr(camoufox_scrape, "launch_options", _fake_launch_options)
+    monkeypatch.setattr(
+        camoufox_scrape, "AsyncCamoufox",
+        _make_fake_camoufox(landed_url="https://x.test/a", status=200,
+                             html="<html><body>real captured page</body></html>"),
+    )
+
+    class _FakeFailedResult:
+        markdown = None
+        error_message = "Unexpected error in _crawl_web: Invalid IPv6 URL"
+
+    class _FakeFailingAsyncWebCrawler:
+        def __init__(self, *a, **kw):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            return False
+        async def arun(self, url, config=None):
+            return _FakeFailedResult()
+
+    monkeypatch.setattr(camoufox_scrape, "AsyncWebCrawler", _FakeFailingAsyncWebCrawler)
+
+    content, meta = await camoufox_scrape.try_scrape_camoufox("https://x.test/a")
+
+    assert content == "<html><body>real captured page</body></html>"
+    assert meta["content_is_raw_html"] is True
+    assert meta["markdown_conversion_error"] == "Unexpected error in _crawl_web: Invalid IPv6 URL"
+    assert meta["acquisition_error"] is None
+
+
+# ---------------------------------------------------------------------------
 # Calibration surface: _build_camoufox_kwargs / _extract_camoufox_config_stamp
 # ---------------------------------------------------------------------------
 

@@ -54,14 +54,37 @@ TOTAL_CAMOUFOX_BUDGET_S = 61.1
 # acquisition_error set), never a raise to the caller.
 #
 # meta keys: acquisition_error (None | "budget_exhausted" | "browser_missing" | "exception" — ONLY
-#            set when acquisition itself produced no result at all, never a content verdict),
+#            set when ACQUISITION itself produced no result at all (no HTML ever captured), never
+#            a content verdict AND never set for a markdown-conversion failure — see
+#            markdown_conversion_error below for that, a categorically different state),
 #            status_code (Playwright Response.status, the FIRST hop's status is not separately
 #            tracked here — Playwright's own goto() already resolves multi-hop redirects to one
 #            Response for the final hop, unlike crawl4ai's own multi-hop tracking),
 #            landed_url (Playwright Page.url after goto — RAW, no comparison, no verdict, same
 #            posture as the landed-URL surface elsewhere in this project: both URLs are facts, the
 #            agent compares them if it wants to),
-#            raw_markdown_bytes (byte length of the returned raw_markdown),
+#            raw_markdown_bytes (byte length of raw_markdown itself — 0 when conversion failed,
+#            literally true; NOT the byte length of whatever `content` this function returns, see
+#            content_is_raw_html below),
+#            markdown_conversion_error (str | None — set when acquisition SUCCEEDED (real HTML was
+#            captured) but crawl4ai's raw:// pipeline failed to convert it to markdown; carries
+#            crawl4ai's own error_message verbatim, an OBSERVATION not a verdict, same posture as
+#            crawl4ai_error_message elsewhere in this project. Found via a real run against idealo.de:
+#            crawl4ai's OWN internal urlparse() call on the raw://<html> pseudo-URL raises
+#            "Invalid IPv6 URL" whenever the HTML contains a bare "[" before the first "/" in the
+#            document (e.g. an early inline <script> with a JS array literal) — crawl4ai swallows
+#            this internally and returns success=False/markdown=None rather than raising; a
+#            pre-existing crawl4ai robustness bug, not fixed here (no crawl4ai patch, no
+#            hand-rolled markdown — out of this module's scope) and NOT unique to Camoufox: it
+#            equally affects src/crawler/pipe_scraper.py's already-shipped _own_fallback_rescue,
+#            which reuses the exact same raw:// call and has never been exercised against HTML
+#            with this shape),
+#            content_is_raw_html (bool — True when markdown_conversion_error is set and `content`
+#            below is therefore the RAW CAPTURED HTML, not markdown; the contract "returns whatever
+#            came back, unconditionally" means the real HTML already in hand is never silently
+#            discarded as "" just because the markdown step failed — the caller still gets the
+#            captured page, in whichever format is actually available, with an explicit flag
+#            saying which),
 #            config (launch-option stamp — see _build_camoufox_kwargs/_extract_camoufox_config_stamp),
 #            config_hash (hash_config(config) — computed HERE, unlike scrape_url.py's try_scrape
 #            where the caller/workflow computes it; this module has no calling workflow yet, so
@@ -70,7 +93,8 @@ async def try_scrape_camoufox(url: str, block_images: bool = False) -> tuple[str
     kwargs = _build_camoufox_kwargs(block_images)
     _empty_meta: dict = {
         "acquisition_error": None, "status_code": None, "landed_url": None,
-        "raw_markdown_bytes": 0, "config": {"config_incomplete": True}, "config_hash": None,
+        "raw_markdown_bytes": 0, "markdown_conversion_error": None, "content_is_raw_html": False,
+        "config": {"config_incomplete": True}, "config_hash": None,
     }
 
     # Guarded span: launch-option resolution (where CamoufoxNotInstalled actually surfaces, see
@@ -98,13 +122,31 @@ async def try_scrape_camoufox(url: str, block_images: bool = False) -> tuple[str
         # Camoufox's browser (headed, real Firefox process — the memory-footprint field evidence
         # this module's calibration weighed) is closed above before markdown conversion starts,
         # not held open any longer than needed for a second, unrelated browser launch below.
-        raw_markdown = await _html_to_markdown(html)
+        #
+        # try/except here (in addition to _html_to_markdown's own internal one) is deliberate
+        # defense in depth, not paranoia: it guarantees ANY failure at the conversion layer —
+        # whether crawl4ai swallows it internally (the observed idealo.de shape) or something else
+        # raises outright — is funneled into markdown_conversion_error/content_is_raw_html, NEVER
+        # into acquisition_error. Acquisition already succeeded by this point (real HTML in `html`)
+        # — a downstream conversion failure must never be reported as if nothing was acquired.
+        try:
+            raw_markdown, conversion_error = await _html_to_markdown(html)
+        except Exception as e:
+            raw_markdown, conversion_error = "", str(e)
+
+        if conversion_error:
+            logger.warning("Camoufox markdown conversion failed for %s: %s", url, conversion_error)
+            content, content_is_raw_html = html, True
+        else:
+            content, content_is_raw_html = raw_markdown, False
 
         meta.update({
             "status_code": status_code, "landed_url": landed_url,
             "raw_markdown_bytes": len(raw_markdown.encode("utf-8")),
+            "markdown_conversion_error": conversion_error,
+            "content_is_raw_html": content_is_raw_html,
         })
-        return raw_markdown, meta
+        return content, meta
 
     try:
         return await asyncio.wait_for(_acquire(), timeout=TOTAL_CAMOUFOX_BUDGET_S)
@@ -233,13 +275,28 @@ def _extract_camoufox_config_stamp(kwargs: dict, resolved: dict) -> dict:
 # AsyncWebCrawler (a second, unrelated chromium instance via crawl4ai/patchright) since this
 # module has no long-lived crawler to reuse the way pipe_scraper's shared instance does — that
 # per-call cost is exactly what TOTAL_CAMOUFOX_BUDGET_S's 1.1s cold-start summand accounts for.
-async def _html_to_markdown(html: str) -> str:
+#
+# Returns (raw_markdown, error_message). error_message is None on success. Internally fail-soft
+# (never raises) — a real, observed failure shape (idealo.de): crawl4ai's OWN internal urlparse()
+# call on the raw://<html> pseudo-URL raises "Invalid IPv6 URL" whenever the HTML contains a bare
+# "[" before the first "/" in the document; crawl4ai's own _crawl_web wrapper catches this
+# internally and returns success=False/markdown=None rather than raising, so the ONLY way the
+# caller (_acquire) can tell markdown genuinely came back empty from "conversion crashed on this
+# HTML" is by reading error_message here. A pre-existing crawl4ai robustness bug, not fixed here —
+# see try_scrape_camoufox's own meta-keys comment for the full finding and its blast radius
+# (also affects pipe_scraper.py's _own_fallback_rescue, untouched in this milestone).
+async def _html_to_markdown(html: str) -> tuple[str, str | None]:
     browser_config = BrowserConfig(headless=True, verbose=False)
     run_config = CrawlerRunConfig(
         cache_mode=CacheMode.BYPASS,
         markdown_generator=DefaultMarkdownGenerator(),
         verbose=False,
     )
-    async with AsyncWebCrawler(config=browser_config) as crawler:
-        result = await crawler.arun(url=f"raw://{html}", config=run_config)
-    return (result.markdown.raw_markdown if result.markdown else "") or ""
+    try:
+        async with AsyncWebCrawler(config=browser_config) as crawler:
+            result = await crawler.arun(url=f"raw://{html}", config=run_config)
+    except Exception as e:
+        return "", str(e)
+    if result.markdown and result.markdown.raw_markdown:
+        return result.markdown.raw_markdown, None
+    return "", (getattr(result, "error_message", None) or "crawl4ai raw:// conversion produced no markdown")
