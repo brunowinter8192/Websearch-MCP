@@ -34,10 +34,16 @@ from src.search.merge import build_engine_pools
 from src.search import status as S
 # From query_logger.py: append-only JSONL query log
 from src.search.query_logger import log_query
-# From filter_modes.py: engine restriction, modifier map, URL filter, and default engine set
-from src.search.filter_modes import apply_filter_mode, filter_urls_by_mode, _DEFAULT_ENGINES
 
 logger = logging.getLogger(__name__)
+
+# Default engine set — all 14 active engines. Scholar fully removed (not just dormant) until
+# Pooling-Rework assigns it a Google-free pool.
+_DEFAULT_ENGINES: frozenset[str] = frozenset({
+    "google", "crossref", "duckduckgo", "mojeek", "lobsters",
+    "openalex", "stack_exchange", "semantic_scholar", "open_library", "startpage", "brave", "bing", "yandex",
+    "marginalia",
+})
 
 ENGINE_WATCHDOG_TIMEOUT: float = 3.6
 RATE_WAIT_TIMEOUT: float = 60.0
@@ -95,15 +101,10 @@ async def search_web_workflow(
     _with_timings: bool = False,
     engine_timeout: float | None = None,
     query_modifier_map: dict[str, Callable[[str], str]] | None = None,
-    books: bool = False,
-    pdf: bool = False,
-    docs: bool = False,
 ) -> list[TextContent] | tuple[list[TextContent], dict]:
     t_total = time.perf_counter()
-    logger.info("Searching: %s (language=%s, books=%s, pdf=%s, docs=%s)", query, language, books, pdf, docs)
-    selected, select_excluded = _select_engines(engines)
-    selected, query_modifier_map, mode, mode_excluded = apply_filter_mode(selected, books, pdf, docs, query_modifier_map)
-    all_excluded = {**select_excluded, **mode_excluded}
+    logger.info("Searching: %s (language=%s)", query, language)
+    selected, all_excluded = _select_engines(engines)
     effective_timeout = engine_timeout if engine_timeout is not None else ENGINE_WATCHDOG_TIMEOUT
 
     raw_results, engine_stats, engine_fanout_ms, engine_ms, engine_details = await _run_engine_fanout(
@@ -111,8 +112,7 @@ async def search_web_workflow(
     )
 
     t0 = time.perf_counter()
-    filtered = filter_urls_by_mode(raw_results, mode)
-    pools = build_engine_pools(filtered)
+    pools = build_engine_pools(raw_results)
     pool_build_ms = round((time.perf_counter() - t0) * 1000)
 
     google_count = len(pools.get("google", []))
@@ -122,7 +122,7 @@ async def search_web_workflow(
 
     formatted_text = _format_breakdown(query, capped_pools, list(selected.keys()))
 
-    key = cache_key(query, language, engines, time_range, modifier_id=mode)
+    key = cache_key(query, language, engines, time_range)
     t0 = time.perf_counter()
     cache_write(key, capped_pools, query, language, engines, time_range)
     cache_write_ms = round((time.perf_counter() - t0) * 1000)
