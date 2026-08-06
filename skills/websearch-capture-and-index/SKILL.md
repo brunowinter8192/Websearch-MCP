@@ -13,8 +13,7 @@ Every file this pipeline produces under `/tmp` — URL lists, discovery scripts,
 **Multiple domains = step-by-step across ALL of them, never domain-by-domain.**
 Discover all → select all → ONE Step-3 stop covering all → scrape all → clean all → index once at the end. `rag-cli index` operates on the whole collection directory — indexing after domain 1 sweeps up domain 2's raw, uncleaned files as garbage. Index is the LAST action and runs exactly once.
 
-**A reachability problem is REPORTED, never acted on.**
-The scraper runs ONE fixed calibration, no per-domain lever — tuning is a separate session, never mid-capture. On any failure pattern: do NOT stop, do NOT re-run, do NOT vary the config. Capture what comes through, carry it to Index, and let the error count + error-URL file in the Completion Report speak.
+**Scrape failures are reported in the Completion Report, never acted on mid-capture.**
 
 ## Step 1 — Discovery
 
