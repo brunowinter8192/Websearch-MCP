@@ -35,11 +35,9 @@ The user-chat language does not apply here — a German conversation still gets 
 
 ## Permanent Capture Workflow
 
-When the user wants to permanently capture a whole domain into RAG — "crawl X and index it", "RAG-fähig machen". A worker drives the capture; this is your setup. The worker activates `websearch-capture-and-index`. (PDF → MD conversion is a separate flow — see the `websearch-pdf` skill.)
-
 ### Step 1 — Source
 
-Identify the source: a seed domain URL.
+Identify the seed domain URL via the search pipe: `search_web` → `search_engine_drilldown` → the domain(s) worth capturing are in those URLs.
 
 ### Step 2 — Collection
 
@@ -61,7 +59,7 @@ Inputs:
 - SEED_URL: <root domain URL>
 - COLLECTION: <name>
 - OUTPUT_DIR: ~/Documents/ai/Meta/ClaudeCode/cli/rag-cli/data/documents/<name>/
-STOP at your skill's Step 3 (cull review) — report the URL-list path + per-section breakdown and WAIT for my cull decision before scraping. Then report the funnel when done (incl. blocks-detected). No commit needed (output is data files).
+STOP at your skill's Step 3 (cull review) — report the URL-list path + per-section breakdown and WAIT for my cull decision before scraping. Then report the funnel when done. No commit needed (output is data files).
 ```
 
 ```bash
@@ -73,15 +71,11 @@ worker-cli spawn capture-<collection_lower> /tmp/spawn-<name>.md <current_projec
 When the worker stops at its cull gate it reports the URL-list path + a per-section breakdown. Review it against what the user actually needs this session — drop sections that are valid content but off-topic (e.g. a GitHub REST capture aimed at search/contents/git-trees does not need `actions`/`enterprise-admin`/`scim`). This is YOUR call, not the worker's.
 
 **YOU edit the `/tmp` URL-list file itself — never send the worker patterns to apply.**
-Strip the unwanted URLs from the file, then tell the worker the resulting line count and give it go. The worker re-reads the same path and scrapes whatever is in it; it never rewrites the list. Rationale: the culled file on disk IS the verifiable state — its line count says exactly what will be scraped. Handing over patterns instead defers the cull into the worker and makes it visible only after the scrape has already run.
+Strip the unwanted URLs from the file, then tell the worker the resulting line count and give it go.
 
 ### Step 5 — Funnel Report
 
-When the worker reports the funnel, check two lines.
-
-`blocks detected` — non-zero means it found cookie/paywall MDs (not auto-stripped). Decide from the reported patterns whether a `src/` strip-script is warranted.
-
-`systemic gap` — anything other than `none` means a domain class did not come through. **Flag it to the user and keep rolling.** The capture is already indexed with whatever passed; there is nothing to re-run. The scraper carries one fixed calibration and exposes no per-domain lever, so this is NOT a value to adjust here — it is input for a separate tuning session against this repo and `src/logs/pipe_scrape_log.jsonl`. Report to the user: the domain, the failure pattern, the count, the worker's evidence and suspected cause, and that resolving it needs its own session. Then continue whatever the user actually asked for.
+Receive the worker's funnel report: discovered → dropped → scraped → ok/errors → indexed, plus the collection name. When errors occurred, the report links `/tmp/<domain>_error_urls.txt` with the failed URLs — relay notable losses to the user; scraper tuning is a separate session, never a mid-capture fix.
 
 **Between Step 4 and Step 5, the worker owns Scrape → Cleanup → Index end-to-end.**
 You intervene at exactly TWO points: (a) hand the worker the culled `/tmp` URL list + go (Step 4), and (b) receive the final funnel report (Step 5).

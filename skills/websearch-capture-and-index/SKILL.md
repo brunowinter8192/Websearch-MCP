@@ -18,7 +18,7 @@ Given N seed domains, run every step to completion for all N before entering the
 
 **Scraper posture — best-effort, not guaranteed.** `src/crawler/pipe_scraper.py` is a GENERAL scraper; do NOT assume the scrape worked. Coverage verification is a first-class duty: every discovered URL that survives the cull must actually yield real content.
 
-**A reachability problem is DIAGNOSED and REPORTED, never acted on.** The scraper runs ONE fixed calibration; it exposes no stealth, wait-strategy or per-domain lever, and none is coming — tuning happens in a separate session against the repo and its logs, never mid-capture. So on ANY systemic, diagnosable problem — a patterned coverage gap, a repeating block-type, a dominant error class (NOT scattered legit 404s) — do NOT stop, do NOT re-run, do NOT vary the config. Capture what does come through, carry it to Index, and put the diagnosis in the Completion Report: what failed, the evidence (block text / coverage delta / error breakdown), your read of the cause. A partial capture that is honestly reported beats a halted one.
+**A reachability problem is REPORTED, never acted on.** The scraper runs ONE fixed calibration; it exposes no stealth, wait-strategy or per-domain lever — tuning happens in a separate session, never mid-capture. On any scrape failure pattern: do NOT stop, do NOT re-run, do NOT vary the config. Capture what does come through, carry it to Index, and let the error count + error-URL file in the Completion Report speak. A partial capture that is honestly reported beats a halted one.
 
 #### Step 1 — Discovery
 
@@ -123,17 +123,13 @@ cd "$WEBSEARCH" && ./venv/bin/python -m src.crawler.pipe_scraper \
     --output-dir $OUTPUT_DIR > /tmp/<domain>_scrape.log 2>&1
 ```
 
-**Engine choice (`--engine {chromium,camoufox}`, default chromium):** a per-RUN choice, OPTIONAL — no reliability data yet favors either engine per site type. Default (omit the flag) is the chromium/crawl4ai engine. `--engine camoufox` runs the Camoufox lane (Playwright-Firefox, fingerprint spoofing) — measured to pass Akamai Bot Manager where chromium gets a block page, but launches a fresh browser per URL and serializes per domain (concurrency default 1 vs chromium's 8), so it is MUCH slower at volume. Use it only when the run is spawned with that instruction, or as the re-run engine after a chromium run shows a SYSTEMIC anti-bot gap (block-page pattern across a coherent slice) — in that case report the gap first, and re-run on the other engine only if Opus says so. A camoufox record may carry raw HTML instead of markdown (`content_is_raw_html` in the pipe log) — such files still index but flow through Cleanup like any other.
+**Engine choice (`--engine {chromium,camoufox}`, default chromium):** a per-RUN choice, OPTIONAL — no reliability data yet favors either engine per site type. Default (omit the flag) is the chromium/crawl4ai engine. `--engine camoufox` runs the Camoufox lane (Playwright-Firefox, fingerprint spoofing) — measured to pass Akamai Bot Manager where chromium gets a block page, but launches a fresh browser per URL and serializes per domain (concurrency default 1 vs chromium's 8), so it is MUCH slower at volume. Use it only when the run is spawned with that instruction; a heavy anti-bot error pattern in a chromium run goes into the Completion Report, and a re-run on the other engine happens only if Opus says so. A camoufox record may carry raw HTML instead of markdown (`content_is_raw_html` in the pipe log) — such files still index but flow through Cleanup like any other.
 
 > You own Scrape → Cleanup → Index end-to-end — never hand back to Opus mid-pipeline. When the run returns, read `/tmp/<domain>_scrape.log` ONCE for the `Scraped N/N ok` summary, then continue on your own to Cleanup → Index → final report.
 
 The scraper's own output is short: a console line with **success count, error count, and total duration**, plus a full per-URL report written to `/tmp/<domain>_scrape_report.md` (per-URL status + outcome). It does NOT dump a per-URL list to the console — failures live in the report md.
 
-Take from that console line for the Completion Report: scraped N, errors K, **duration T**. The error breakdown (429 / timeout / http_error) is already itemized in the scrape report md.
-
-**Coverage gate — verify, don't assume, keep going.** Compare the scrape outcome against the cull-survived URL list — every URL should have yielded a usable body. Where it did not, classify the shortfall: SYSTEMIC (one block-type or error class hitting a coherent slice — e.g. all article pages regwalled while index pages pass) vs scattered legit 404s / thin pages, which are ordinary and flow to the post-scrape drop.
-
-A systemic gap is a REPORT line, not a stop — record it under `systemic gap` in the Completion Report and continue to Cleanup → Index with what you have. State the failed count, the affected URL slice, the evidence, and your suspected cause. Whatever passed still gets cleaned and indexed.
+Take from that console line for the Completion Report: scraped N, errors K, **duration T**. When E > 0, write the failed URLs (one per line) to `/tmp/<domain>_error_urls.txt` — the Completion Report links this file.
 
 #### Step 5 — Cleanup
 
@@ -264,16 +260,10 @@ Output back to Opus when done — the funnel:
 URLs discovered:                    N
 URLs dropped (pre-scrape, pattern): K    — which patterns + why
 URLs scraped:                       N − K
-Scrape:                             M ok, E errors   ·   duration: T   (errors itemized in /tmp scrape report md)
-md dropped (post-scrape, thin):     D
-blocks detected (cookie/paywall):   B    — confirmed real-block MDs + example URLs (NOT auto-stripped)
-systemic gap:                       none | <failed count + affected URL slice + evidence + suspected cause>
-Final md indexed:                   M − D
+Scrape:                             M ok, E errors   ·   duration: T
+Final md indexed:                   <count>
 Collection:                         <COLLECTION>
+Error URLs:                         /tmp/<domain>_error_urls.txt   (one URL per line; omit the line when E = 0)
 ```
-
-Keep the two drop reasons separate: scrape errors **E** come from the scraper, thin/noise **D** comes from the cleanup check.
-
-`systemic gap` is `none` unless the coverage gate classified one. It is a diagnosis handed upward, never something you resolved — Opus routes it to the user.
 
 End with this report. STOP. No commit needed (output is data files, not code).
