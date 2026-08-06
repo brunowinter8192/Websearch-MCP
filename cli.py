@@ -46,14 +46,13 @@ atexit.register(kill_stale_chrome)
 # Log one search_engine_drilldown call — fail-soft via log_query, same posture as search_web's own
 # logging. search_key ties this record back to the workflow_summary of the search it came from
 # (or of the fresh search it triggered on a cache miss) — see query_logger.py's schema comment.
-def _log_drilldown(query, language, mode, engine, search_key, cache_status, engine_in_pools, urls):
+def _log_drilldown(query, language, engine, search_key, cache_status, engine_in_pools, urls):
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
     log_query({
         "record_type": "drilldown",
         "ts": ts,
         "query": query,
         "language": language,
-        "mode": mode,
         "engine": engine,
         "search_key": search_key,
         "cache_status": cache_status,
@@ -76,13 +75,6 @@ def main():
         help="Search across 9 engines. Returns engine breakdown table — use search_engine_drilldown to see URLs per engine."
     )
     p.add_argument("query", help="Search query (2-5 keywords)")
-    mode_sw = p.add_mutually_exclusive_group()
-    mode_sw.add_argument("--books", action="store_true",
-                   help="Restrict to book-domain whitelist (+book modifier). Mutually exclusive with --pdf / --docs")
-    mode_sw.add_argument("--pdf", action="store_true",
-                   help="Restrict to PDF-domain whitelist (+pdf modifier). Mutually exclusive with --books / --docs")
-    mode_sw.add_argument("--docs", action="store_true",
-                   help="Noise-blacklist filter (+documentation modifier). Mutually exclusive with --books / --pdf")
 
     # ── search_engine_drilldown ───────────────────────────────────────────────
     p = sub.add_parser(
@@ -93,13 +85,6 @@ def main():
     p.add_argument("--engine", required=True,
                    help="Engine name: google, duckduckgo, mojeek, lobsters, semantic_scholar, "
                         "openalex, crossref, stack_exchange, open_library")
-    mode_edd = p.add_mutually_exclusive_group()
-    mode_edd.add_argument("--books", action="store_true",
-                   help="Must match original search_web call (part of cache key)")
-    mode_edd.add_argument("--pdf", action="store_true",
-                   help="Must match original search_web call (part of cache key)")
-    mode_edd.add_argument("--docs", action="store_true",
-                   help="Must match original search_web call (part of cache key)")
 
     # ── scrape_url ────────────────────────────────────────────────────────────
     p = sub.add_parser("scrape_url", help="Scrape URL to filtered markdown (PruningContentFilter, full content, no length cap) plus acquisition facts.")
@@ -116,35 +101,28 @@ def main():
     args = parser.parse_args()
 
     if args.cmd == "search_web":
-        result = asyncio.run(search_web_workflow(
-            args.query, "en", None, None,
-            books=args.books, pdf=args.pdf, docs=args.docs,
-        ))
+        result = asyncio.run(search_web_workflow(args.query, "en", None, None))
 
     elif args.cmd == "search_engine_drilldown":
-        mode = "books" if args.books else ("pdf" if args.pdf else ("docs" if args.docs else None))
-        key = cache_key(args.query, "en", None, None, modifier_id=mode)
+        key = cache_key(args.query, "en", None, None)
         hit = cache_read(key)
         cache_status = "hit"
         if hit is None:
-            asyncio.run(search_web_workflow(
-                args.query, "en", None, None,
-                books=args.books, pdf=args.pdf, docs=args.docs,
-            ))
+            asyncio.run(search_web_workflow(args.query, "en", None, None))
             hit = cache_read(key)
             cache_status = "miss_then_searched" if hit is not None else "miss_then_search_failed"
         if hit is None:
-            _log_drilldown(args.query, "en", mode, args.engine, key, cache_status, False, [])
+            _log_drilldown(args.query, "en", args.engine, key, cache_status, False, [])
             print(f'# search_engine_drilldown: cache write failed for "{args.query}"')
             return
         pools = hit.get("pools", {})
         if args.engine not in pools:
-            _log_drilldown(args.query, "en", mode, args.engine, key, cache_status, False, [])
+            _log_drilldown(args.query, "en", args.engine, key, cache_status, False, [])
             avail = ", ".join(sorted(pools.keys())) or "(none)"
             print(f"Engine '{args.engine}' not in cached pools. Available: {avail}")
             return
         urls = [entry["url"] for entry in pools[args.engine]]
-        _log_drilldown(args.query, "en", mode, args.engine, key, cache_status, True, urls)
+        _log_drilldown(args.query, "en", args.engine, key, cache_status, True, urls)
         print(format_engine_pool(pools[args.engine], args.engine, args.query))
         return
 

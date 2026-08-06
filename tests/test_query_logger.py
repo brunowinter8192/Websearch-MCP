@@ -217,7 +217,7 @@ def test_log_query_accepts_drilldown_record_shape(tmp_path, monkeypatch):
 
     ql.log_query({
         "record_type": "drilldown", "ts": "2026-08-05T00:00:00.000Z",
-        "query": "fritzbox 7510", "language": "en", "mode": None, "engine": "google",
+        "query": "fritzbox 7510", "language": "en", "engine": "google",
         "search_key": "abc123def456", "cache_status": "hit", "engine_in_pools": True,
         "result_count": 2, "urls": ["https://a.com", "https://b.com"],
     })
@@ -273,7 +273,7 @@ async def test_search_web_workflow_writes_search_key_matching_cache_key(tmp_path
     summary_records = [r for r in records if r["record_type"] == "workflow_summary"]
     assert len(summary_records) == 1
     rec = summary_records[0]
-    expected_key = real_cache_key("test query", "en", None, None, modifier_id=None)
+    expected_key = real_cache_key("test query", "en", None, None)
     assert rec["search_key"] == expected_key
 
 
@@ -299,10 +299,10 @@ def test_log_drilldown_all_cache_status_and_pool_combinations(tmp_path):
 import sys
 sys.path.insert(0, {str(repo_root)!r})
 import cli
-cli._log_drilldown("fritzbox 7510", "en", None, "google", "searchkey123", "hit", True,
+cli._log_drilldown("fritzbox 7510", "en", "google", "searchkey123", "hit", True,
                     ["https://a.com", "https://b.com"])
-cli._log_drilldown("fritzbox 7510", "en", None, "obscure_engine", "searchkey123", "hit", False, [])
-cli._log_drilldown("never searched", "en", None, "google", "searchkey999",
+cli._log_drilldown("fritzbox 7510", "en", "obscure_engine", "searchkey123", "hit", False, [])
+cli._log_drilldown("never searched", "en", "google", "searchkey999",
                     "miss_then_search_failed", False, [])
 """
     env = {**os.environ, "WEBSEARCH_QUERY_LOG_PATH": str(log_file)}

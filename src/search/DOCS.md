@@ -2,7 +2,7 @@
 
 ## Role
 
-pydoll-based parallel web-search pipeline behind the `search_web` and `search_engine_drilldown` CLI subcommands. Fans a single query out across 14 engines concurrently, dedups URLs into per-engine pools, caches the pools to disk, and returns an engine-breakdown table; the drilldown subcommand re-reads the cache to emit one engine's URLs. As of 2026-08-05, the drilldown path is ALSO logged (`record_type: "drilldown"` in `query_log.jsonl`, `cli.py`) — closing the "a scraped URL cannot be traced back to which engine(s) offered it" gap; see query_logger.py's module entry. Touch this package when changing engine fan-out, dedup/pool-building, the disk cache, rate-limiting, or the three filter flags. Individual engine parsers live one level down in `engines/`.
+pydoll-based parallel web-search pipeline behind the `search_web` and `search_engine_drilldown` CLI subcommands. Fans a single query out across 14 engines concurrently, dedups URLs into per-engine pools, caches the pools to disk, and returns an engine-breakdown table; the drilldown subcommand re-reads the cache to emit one engine's URLs. As of 2026-08-05, the drilldown path is ALSO logged (`record_type: "drilldown"` in `query_log.jsonl`, `cli.py`) — closing the "a scraped URL cannot be traced back to which engine(s) offered it" gap; see query_logger.py's module entry. Touch this package when changing engine fan-out, dedup/pool-building, the disk cache, or rate-limiting. Individual engine parsers live one level down in `engines/`.
 
 ## Public Interface
 
@@ -16,17 +16,17 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 
 ## Flow
 
-`search_web_workflow` selects engines → `asyncio.gather` of `_engine_with_timing` tasks (each acquires a rate-limiter token, then runs the engine) → flat `raw_results` → `filter_urls_by_mode` (if a filter flag set) → `build_engine_pools` dedups by URL owner → post-dedup pool cap to Google's pool size (fallback 10) → `_format_breakdown` table → `cache_write` to `~/.cache/websearch/<key>.json`. `search_engine_drilldown` skips all of this: `cache_read` the per-engine pool → `format_engine_pool` numbers + cleans snippets.
+`search_web_workflow` selects engines → `asyncio.gather` of `_engine_with_timing` tasks (each acquires a rate-limiter token, then runs the engine) → flat `raw_results` → `build_engine_pools` dedups by URL owner → post-dedup pool cap to Google's pool size (fallback 10) → `_format_breakdown` table → `cache_write` to `~/.cache/websearch/<key>.json`. `search_engine_drilldown` skips all of this: `cache_read` the per-engine pool → `format_engine_pool` numbers + cleans snippets.
 
 ## Modules
 
 ### search_web.py (357 LOC)
 
-**Purpose:** Search orchestrator. Fans out across the 14 active engines via `asyncio.gather`, then filters → builds pools → caps → formats → caches. Post-dedup pool cap: K = `len(pools['google'])` if >0 else 10, each pool trimmed to `pool[:K]` (prevents CrossRef/OpenAlex/StackExchange/OpenLibrary drilldown floods). Three-tier timeout: `ENGINE_WATCHDOG_TIMEOUT=3.6s` default, `ENGINE_WATCHDOG_OVERRIDE` per-engine (open_library 6.0, semantic_scholar 5.0, crossref 6.0, startpage 6.0, brave 6.0) — `bing`, `yandex`, and `marginalia` deliberately have NO override entry: all three probed well under the default (yandex additionally short-circuits its own blocked-query path via an upfront `showcaptcha`-URL check; marginalia's httpx-API round-trip never approaches 3.6s regardless of rate-limit outcome). `RATE_WAIT_TIMEOUT=60.0s` acquire cap → RATE_SKIP. `_engine_with_timing` returns a 5-tuple `(results, rate_wait_ms, search_ms, status, drop_reason)` with sub-classified TIMEOUT/ERROR statuses. Two-record logging: `engine_run` after fanout, `workflow_summary` after pool-build — as of 2026-08-05, `workflow_summary` also carries `search_key` (the same value `cache_key(...)` computed for this call, threaded into `_build_query_log_entry`) — the join key a `cli.py` "drilldown" log record correlates back to; see query_logger.py. `fetch_search_results` is a sync dev wrapper (raw list, no pools).
+**Purpose:** Search orchestrator. Fans out across the 14 active engines via `asyncio.gather`, then builds pools → caps → formats → caches. Post-dedup pool cap: K = `len(pools['google'])` if >0 else 10, each pool trimmed to `pool[:K]` (prevents CrossRef/OpenAlex/StackExchange/OpenLibrary drilldown floods). Three-tier timeout: `ENGINE_WATCHDOG_TIMEOUT=3.6s` default, `ENGINE_WATCHDOG_OVERRIDE` per-engine (open_library 6.0, semantic_scholar 5.0, crossref 6.0, startpage 6.0, brave 6.0) — `bing`, `yandex`, and `marginalia` deliberately have NO override entry: all three probed well under the default (yandex additionally short-circuits its own blocked-query path via an upfront `showcaptcha`-URL check; marginalia's httpx-API round-trip never approaches 3.6s regardless of rate-limit outcome). `RATE_WAIT_TIMEOUT=60.0s` acquire cap → RATE_SKIP. `_engine_with_timing` returns a 5-tuple `(results, rate_wait_ms, search_ms, status, drop_reason)` with sub-classified TIMEOUT/ERROR statuses. Two-record logging: `engine_run` after fanout, `workflow_summary` after pool-build — as of 2026-08-05, `workflow_summary` also carries `search_key` (the same value `cache_key(...)` computed for this call, threaded into `_build_query_log_entry`) — the join key a `cli.py` "drilldown" log record correlates back to; see query_logger.py. `fetch_search_results` is a sync dev wrapper (raw list, no pools). `_DEFAULT_ENGINES` (the 14-engine default set) is defined locally in this module's INFRASTRUCTURE section.
 **Reads:** query + params; per-engine caps in `ENGINE_MAX_RESULTS`; default set via `_DEFAULT_ENGINES`.
 **Writes:** disk cache `~/.cache/websearch/<key>.json` (via cache_write); query log (via log_query).
 **Called by:** `cli.py` (search_web_workflow); dev scripts (fetch_search_results).
-**Calls out:** `httpx`, `pydoll.exceptions`, `websockets.exceptions`, `mcp.types.TextContent`; `engines/` (all 14 engine classes); `cache` (cache_key, cache_write), `rate_limiter` (get_limiter), `merge` (build_engine_pools), `result` (SearchResult), `status`, `query_logger` (log_query), `filter_modes` (apply_filter_mode, filter_urls_by_mode, _DEFAULT_ENGINES).
+**Calls out:** `httpx`, `pydoll.exceptions`, `websockets.exceptions`, `mcp.types.TextContent`; `engines/` (all 14 engine classes); `cache` (cache_key, cache_write), `rate_limiter` (get_limiter), `merge` (build_engine_pools), `result` (SearchResult), `status`, `query_logger` (log_query).
 
 ### merge.py (37 LOC)
 
@@ -36,38 +36,9 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 **Called by:** `search_web.py`.
 **Calls out:** `result` (SearchResult).
 
-### filter_modes.py (78 LOC)
+### cache.py (118 LOC)
 
-**Purpose:** Engine restriction + URL filtering for the `--books`/`--pdf`/`--docs` flags, plus `_DEFAULT_ENGINES`. `apply_filter_mode(...)` resolves the 3-way mutex (`pdf > docs > books`), sets the per-engine query-modifier map, returns `(selected, qmm, mode_id, excluded)`. `filter_urls_by_mode(raw_results, mode)` applies the post-fanout URL filter on the flat list BEFORE pool-build. Engine subsets are modifier-target sets, not restriction sets — all engines still fire on every query.
-**Reads:** selected engines + flag booleans.
-**Writes:** none.
-**Called by:** `search_web.py`.
-**Calls out:** `book_whitelist` (is_book_url), `pdf_filter` (is_pdf_url), `docs_filter` (is_docs_url).
-
-### book_whitelist.py (145 LOC)
-
-**Purpose:** `is_book_url(url)` — book-domain whitelist match for the `--books` filter.
-**Reads:** URL string.
-**Called by:** `filter_modes.py`.
-**Calls out:** none (stdlib `urllib` only).
-
-### pdf_filter.py (88 LOC)
-
-**Purpose:** `is_pdf_url(url)` — PDF-host / `.pdf`-path match for the `--pdf` filter.
-**Reads:** URL string.
-**Called by:** `filter_modes.py`.
-**Calls out:** none (stdlib `urllib` only).
-
-### docs_filter.py (73 LOC)
-
-**Purpose:** `is_docs_url(url)` — documentation-host match + noise blacklist for the `--docs` filter.
-**Reads:** URL string.
-**Called by:** `filter_modes.py`.
-**Calls out:** none (stdlib `urllib` only).
-
-### cache.py (121 LOC)
-
-**Purpose:** Disk cache for per-engine pools, backing `search_engine_drilldown`. Cache key `sha256(query|language|engines|time_range[|modifier_id])[:16]`; path `~/.cache/websearch/<key>.json`; 1h mtime TTL; atomic write via `tempfile.mkstemp` + `os.replace`. JSON holds the full per-engine pool dict with native positions. `format_engine_pool(pool, engine_name, query)` renders one engine's pool as a numbered list with snippet cleanup applied. `date` (ISO-8601 partial: `"YYYY"`/`"YYYY-MM"`/`"YYYY-MM-DD"`, or `None`) is serialized per entry and rendered as a `Date: <value>` line when present; read via `entry.get("date")` so cache files written before this field existed (no `date` key at all) still render without error.
+**Purpose:** Disk cache for per-engine pools, backing `search_engine_drilldown`. Cache key `sha256(query|language|engines|time_range)[:16]`; path `~/.cache/websearch/<key>.json`; 1h mtime TTL; atomic write via `tempfile.mkstemp` + `os.replace`. JSON holds the full per-engine pool dict with native positions. `format_engine_pool(pool, engine_name, query)` renders one engine's pool as a numbered list with snippet cleanup applied. `date` (ISO-8601 partial: `"YYYY"`/`"YYYY-MM"`/`"YYYY-MM-DD"`, or `None`) is serialized per entry and rendered as a `Date: <value>` line when present; read via `entry.get("date")` so cache files written before this field existed (no `date` key at all) still render without error.
 **Reads:** cache files under `~/.cache/websearch/`.
 **Writes:** `~/.cache/websearch/<key>.json`.
 **Called by:** `cli.py` (cache_key, cache_read, format_engine_pool); `search_web.py` (cache_key, cache_write).
@@ -80,9 +51,9 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 **Called by:** `cache.py` (format_engine_pool).
 **Calls out:** none (stdlib `html`, `re`).
 
-### query_logger.py (103 LOC)
+### query_logger.py (106 LOC)
 
-**Purpose:** Append-only JSONL query log. `log_query(record)` writes one line. Three record types: `engine_run` (per fanout), `workflow_summary` (after pool-build), and `drilldown` (as of 2026-08-05, written by `cli.py`'s `search_engine_drilldown` branch on every call — hit, cache-miss-then-searched, cache-miss-then-still-failed, and engine-not-in-pools all log). `workflow_summary`/`drilldown` share a `search_key` field (`= cache.cache_key(...)`'s output for that search) — the exact join key correlating a drilldown back to the search it came from (or the fresh search it triggered on a cache miss); NOT a random per-run id — two separate searches of the same query+mode correctly share one value. LIMIT, stated in the schema comment itself: this file is lazily pruned on a 14-day window, so a `drilldown` record can outlive the `workflow_summary` it points at — an unresolvable `search_key` is ordinary retention, not corruption. Correlation does NOT extend to `src/logs/scrape_log.jsonl` (separate file, no shared identifier) — a scraped URL still cannot be mechanically tied to the drilldown that offered it.
+**Purpose:** Append-only JSONL query log. `log_query(record)` writes one line. Three record types: `engine_run` (per fanout), `workflow_summary` (after pool-build), and `drilldown` (as of 2026-08-05, written by `cli.py`'s `search_engine_drilldown` branch on every call — hit, cache-miss-then-searched, cache-miss-then-still-failed, and engine-not-in-pools all log; the `mode` field this record used to carry was dropped when the `--books`/`--pdf`/`--docs` flags were removed — absence means the record predates or postdates the field). `workflow_summary`/`drilldown` share a `search_key` field (`= cache.cache_key(...)`'s output for that search) — the exact join key correlating a drilldown back to the search it came from (or the fresh search it triggered on a cache miss); NOT a random per-run id — two separate searches of the same query correctly share one value. LIMIT, stated in the schema comment itself: this file is lazily pruned on a 14-day window, so a `drilldown` record can outlive the `workflow_summary` it points at — an unresolvable `search_key` is ordinary retention, not corruption. Correlation does NOT extend to `src/logs/scrape_log.jsonl` (separate file, no shared identifier) — a scraped URL still cannot be mechanically tied to the drilldown that offered it.
 **Reads:** `WEBSEARCH_QUERY_LOG_PATH` env (fallback `src/logs/query_log.jsonl`).
 **Writes:** `src/logs/query_log.jsonl`.
 **Called by:** `search_web.py` (engine_run, workflow_summary); `cli.py` (drilldown, as of 2026-08-05).
@@ -122,9 +93,8 @@ Two module-owned states. `rate_limiter._limiters` — the per-engine token-bucke
 ## Gotchas
 
 - Active engines (9): google, duckduckgo, mojeek, lobsters, semantic_scholar (pydoll); crossref, openalex, stack_exchange, open_library (HTTP). Google Scholar (`engines/scholar.py`) is decoupled from the default pool. brave / startpage / bing were dropped.
-- Two-call architecture: `search_web` returns counts only (no URLs); URLs come from `search_engine_drilldown` reading the cache. The drilldown query + filter flags MUST match the prior `search_web` call or the cache key misses.
+- Two-call architecture: `search_web` returns counts only (no URLs); URLs come from `search_engine_drilldown` reading the cache. The drilldown query MUST match the prior `search_web` call or the cache key misses.
 - Post-dedup pool cap keys off Google's pool size — if Google was CAPTCHA'd or excluded, K falls back to 10.
-- All engines fire on every query regardless of filter flag — the flags add a query modifier + post-fanout URL filter, they do NOT restrict the engine set.
 - Stealth config lives in `browser.py` (headed-backgrounded launch, `--disable-blink-features=AutomationControlled`, `BACKGROUNDING_FLAGS`, browser preferences) + per-engine files (SOCS cookie for Google) — no config file, no JS fingerprint patches or UA override (removed — see `browser.py`'s module history via `process-docs/browser_posture/`).
 - `WEBSEARCH_HEADLESS` env var forces headless (debugging, or a machine with no display) — unset means headed, backgrounded, the default. Documented in `.env.example`.
 - pydoll tab cleanup uses `kill_tab` (browser-level close), NOT `tab.close()` — the latter hung 65s on non-cooperative renderers.

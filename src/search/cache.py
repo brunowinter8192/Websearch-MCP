@@ -20,16 +20,13 @@ DEFAULT_TTL = 3600  # 1 hour
 # FUNCTIONS
 
 # SHA-256 hex of canonical input string, first 16 chars.
-# modifier_id appended when set (e.g. 'books', 'pdf', 'docs') for cross-flag cache separation.
 def cache_key(
     query: str,
     language: str,
     engines: str | None,
     time_range: str | None,
-    modifier_id: str | None = None,
 ) -> str:
-    mid = f"|{modifier_id}" if modifier_id else ""
-    canonical = f"{query.lower().strip()}|{language}|{engines or ''}|{time_range or ''}{mid}"
+    canonical = f"{query.lower().strip()}|{language}|{engines or ''}|{time_range or ''}"
     return hashlib.sha256(canonical.encode()).hexdigest()[:16]
 
 

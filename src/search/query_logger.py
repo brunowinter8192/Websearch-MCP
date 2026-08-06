@@ -51,7 +51,6 @@ logger = logging.getLogger(__name__)
 #   "ts": str (ISO-8601 UTC),
 #   "query": str,
 #   "language": str,
-#   "mode": "books" | "pdf" | "docs" | null,
 #   "engine": str,            # the --engine value requested
 #   "search_key": str,        # see "search_key" note below
 #   "cache_status": str,      # "hit" | "miss_then_searched" (cache miss triggered a fresh search
@@ -69,8 +68,12 @@ logger = logging.getLogger(__name__)
 #                             # 1h TTL) if ever needed
 # }
 #
-# search_key: the SAME value cache.cache_key(query, language, engines, time_range, modifier_id=mode)
-# computes — not a random per-run id. Two separate searches of the same query under the same mode
+# SCHEMA CHANGE: the "mode" field (books/pdf/docs) was dropped from "drilldown" records when the
+# --books/--pdf/--docs flags were removed — absence of the key means the record predates or
+# postdates the field, not corruption.
+#
+# search_key: the SAME value cache.cache_key(query, language, engines, time_range)
+# computes — not a random per-run id. Two separate searches of the same query
 # correctly share one search_key; that is deterministic hashing working as intended, not a
 # collision. It is the join key: any "workflow_summary" and any "drilldown" record sharing the same
 # search_key are provably about the same search. LIMIT: this file is lazily pruned by
