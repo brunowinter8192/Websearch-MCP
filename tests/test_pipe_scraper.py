@@ -691,3 +691,182 @@ async def test_own_fallback_rescue_no_cross_contamination_across_concurrent_urls
     by_url = {r["url"]: r for r in records}
     for requested, landed in landed_by_request.items():
         assert by_url[requested]["landed_url"] == landed
+
+
+# ---------------------------------------------------------------------------
+# Engine switch — milestone 3 of the camoufox_lane area: a per-RUN choice between the chromium
+# engine (default, unchanged) and the camoufox engine (try_scrape_camoufox), never per-URL, never
+# auto-selected. pipe_scraper.try_scrape_camoufox is faked at the module boundary (same convention
+# as camoufox_scrape's own tests faking AsyncCamoufox) — no real browser launched here either.
+# ---------------------------------------------------------------------------
+
+def _camoufox_meta(**overrides):
+    base = {
+        "acquisition_error": None, "status_code": 200, "landed_url": "https://x.test/a",
+        "raw_markdown_bytes": 100, "markdown_conversion_error": None, "content_is_raw_html": False,
+        "config": {"headless": False, "os": "macos"}, "config_hash": "cafef00d00",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_camoufox_concurrency_default_is_conservative():
+    """No measurement exists yet for how many concurrent Camoufox instances this machine
+    tolerates — the default must be the most conservative value (fully serialized), unlike the
+    chromium engine's measured/validated 8."""
+    assert pipe_scraper.CAMOUFOX_CONCURRENCY_PER_DOMAIN == 1
+    assert pipe_scraper.CAMOUFOX_CONCURRENCY_PER_DOMAIN < pipe_scraper.CONCURRENCY_PER_DOMAIN
+
+
+@pytest.mark.asyncio
+async def test_scrape_all_default_engine_is_chromium_and_unchanged(tmp_path, monkeypatch):
+    """engine defaulted/omitted -> the existing chromium path runs, untouched: AsyncWebCrawler is
+    used, try_scrape_camoufox is never called at all."""
+    log_file = tmp_path / "pipe_scrape_log.jsonl"
+    monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
+    monkeypatch.setattr(pipe_scraper, "AsyncWebCrawler", _FakeCrawler)
+
+    called = []
+    async def _fake_try_scrape_camoufox(url, block_images=False):
+        called.append(url)
+        return "should never be reached", _camoufox_meta()
+    monkeypatch.setattr(pipe_scraper, "try_scrape_camoufox", _fake_try_scrape_camoufox)
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    await pipe_scraper._scrape_all(["https://x.test/a"], output_dir,
+                                    download_delay=0.01, concurrency_per_domain=8)
+
+    assert called == []
+    records = [json.loads(l) for l in log_file.read_text(encoding="utf-8").splitlines()]
+    assert records[0]["engine"] == "chromium"
+
+
+@pytest.mark.asyncio
+async def test_scrape_all_camoufox_engine_dispatches_to_try_scrape_camoufox(tmp_path, monkeypatch):
+    """engine="camoufox" -> try_scrape_camoufox is called per URL; AsyncWebCrawler/AsyncCamoufox
+    (the chromium engine's own machinery) is never touched."""
+    log_file = tmp_path / "pipe_scrape_log.jsonl"
+    monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
+
+    class _UnreachableCrawler:
+        def __init__(self, *a, **kw):
+            raise AssertionError("chromium engine's AsyncWebCrawler must not be constructed")
+    monkeypatch.setattr(pipe_scraper, "AsyncWebCrawler", _UnreachableCrawler)
+
+    called = []
+    async def _fake_try_scrape_camoufox(url, block_images=False):
+        called.append((url, block_images))
+        return "# real markdown, deliberately padded well past the 100-byte empty threshold" * 2, _camoufox_meta()
+    monkeypatch.setattr(pipe_scraper, "try_scrape_camoufox", _fake_try_scrape_camoufox)
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    results = await pipe_scraper._scrape_all(
+        ["https://x.test/a"], output_dir, download_delay=0.01,
+        concurrency_per_domain=None, engine="camoufox", block_images=True,
+    )
+
+    assert called == [("https://x.test/a", True)]
+    assert results[0]["outcome"] == "ok"
+    assert (output_dir / pipe_scraper._url_to_filename("https://x.test/a")).exists()
+
+
+@pytest.mark.asyncio
+async def test_scrape_all_camoufox_engine_resolves_own_concurrency_default(tmp_path, monkeypatch):
+    """concurrency_per_domain=None + engine="camoufox" -> resolves to
+    CAMOUFOX_CONCURRENCY_PER_DOMAIN, not the chromium default. Proven via timing: 3 same-domain
+    URLs at concurrency=1 must serialize through the pacing gate (spread > 0), unlike the
+    chromium default of 8 which would let them all start together."""
+    log_file = tmp_path / "pipe_scrape_log.jsonl"
+    monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
+
+    async def _fake_try_scrape_camoufox(url, block_images=False):
+        return "# content", _camoufox_meta()
+    monkeypatch.setattr(pipe_scraper, "try_scrape_camoufox", _fake_try_scrape_camoufox)
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    urls = [f"https://x.test/{i}" for i in range(3)]
+    await pipe_scraper._scrape_all(urls, output_dir, download_delay=0.05,
+                                    concurrency_per_domain=None, engine="camoufox")
+
+    records = [json.loads(l) for l in log_file.read_text(encoding="utf-8").splitlines()]
+    assert len(records) == 3
+    timestamps = [datetime.fromisoformat(r["ts"].replace("Z", "+00:00")) for r in records]
+    spread_s = (max(timestamps) - min(timestamps)).total_seconds()
+    assert spread_s > 0.05, f"records did not serialize (spread={spread_s}s) — concurrency default was not 1"
+
+
+@pytest.mark.asyncio
+async def test_scrape_all_camoufox_record_shape_engine_specific_fields(tmp_path, monkeypatch):
+    """The camoufox-engine record carries engine="camoufox", landed_url,
+    markdown_conversion_error, content_is_raw_html — and does NOT carry the chromium-only
+    crawl4ai_*/pipe_fallback_* fields at all (absent, not null/false)."""
+    log_file = tmp_path / "pipe_scrape_log.jsonl"
+    monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
+
+    async def _fake_try_scrape_camoufox(url, block_images=False):
+        return "<html>raw</html>", _camoufox_meta(
+            content_is_raw_html=True, markdown_conversion_error="Invalid IPv6 URL",
+            landed_url="https://landed.test/a",
+        )
+    monkeypatch.setattr(pipe_scraper, "try_scrape_camoufox", _fake_try_scrape_camoufox)
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    await pipe_scraper._scrape_all(["https://x.test/a"], output_dir, download_delay=0.01,
+                                    concurrency_per_domain=1, engine="camoufox")
+
+    records = [json.loads(l) for l in log_file.read_text(encoding="utf-8").splitlines()]
+    r = records[0]
+    assert r["engine"] == "camoufox"
+    assert r["landed_url"] == "https://landed.test/a"
+    assert r["markdown_conversion_error"] == "Invalid IPv6 URL"
+    assert r["content_is_raw_html"] is True
+    for chromium_only_key in ("crawl4ai_success", "crawl4ai_error_message", "crawl4ai_attempts",
+                              "crawl4ai_resolved_by", "crawl4ai_fallback_fetch_used",
+                              "pipe_fallback_used", "pipe_fallback_resolved"):
+        assert chromium_only_key not in r
+
+
+@pytest.mark.asyncio
+async def test_scrape_all_chromium_record_shape_camoufox_fields_absent(tmp_path, monkeypatch):
+    """The chromium-engine record does NOT carry the camoufox-only markdown_conversion_error/
+    content_is_raw_html fields at all (absent, not null/false) — symmetric with the test above."""
+    log_file = tmp_path / "pipe_scrape_log.jsonl"
+    monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
+    monkeypatch.setattr(pipe_scraper, "AsyncWebCrawler", _FakeCrawler)
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    await pipe_scraper._scrape_all(["https://x.test/a"], output_dir,
+                                    download_delay=0.01, concurrency_per_domain=8)
+
+    records = [json.loads(l) for l in log_file.read_text(encoding="utf-8").splitlines()]
+    r = records[0]
+    assert r["engine"] == "chromium"
+    for camoufox_only_key in ("markdown_conversion_error", "content_is_raw_html"):
+        assert camoufox_only_key not in r
+
+
+@pytest.mark.asyncio
+async def test_scrape_all_camoufox_acquisition_error_maps_to_error_outcome(tmp_path, monkeypatch):
+    """A hard acquisition failure (budget_exhausted/browser_missing/exception) must map to
+    outcome="error" — the same meaning "error" has on the chromium engine (total acquisition
+    failure) — not fall through to "empty" (which would misreport it as "browser succeeded, page
+    had nothing")."""
+    log_file = tmp_path / "pipe_scrape_log.jsonl"
+    monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
+
+    async def _fake_try_scrape_camoufox(url, block_images=False):
+        return "", _camoufox_meta(acquisition_error="browser_missing", status_code=None,
+                                   landed_url=None)
+    monkeypatch.setattr(pipe_scraper, "try_scrape_camoufox", _fake_try_scrape_camoufox)
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    results = await pipe_scraper._scrape_all(["https://x.test/a"], output_dir, download_delay=0.01,
+                                              concurrency_per_domain=1, engine="camoufox")
+
+    assert results[0]["outcome"] == "error"

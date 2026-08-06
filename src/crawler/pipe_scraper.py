@@ -16,11 +16,28 @@ from curl_cffi.requests import AsyncSession
 # From src/scraper/scrape_url.py: same config-hash algorithm + crawl4ai diagnosis extraction used
 # by the ad-hoc path's log (generic, not path-specific — reused rather than re-implemented)
 from src.scraper.scrape_url import hash_config, extract_crawl4ai_diagnosis
+# From src/scraper/camoufox_scrape.py: the second acquisition lane's core primitive — reused as-is,
+# same engine-switch relationship as the ad-hoc surface (scrape_url_camoufox_workflow), not a
+# fallback of the chromium engine
+from src.scraper.camoufox_scrape import try_scrape_camoufox
 # From src/crawler/pipe_scrape_logger.py: per-URL JSONL log with run/config stamp
 from src.crawler.pipe_scrape_logger import log_pipe_scrape
 
 DOWNLOAD_DELAY = 1.0          # Scrapy per-domain base delay (s); jitter = uniform(0.5×, 1.5×)
-CONCURRENCY_PER_DOMAIN = 8    # Scrapy per-domain in-flight cap
+CONCURRENCY_PER_DOMAIN = 8    # Scrapy per-domain in-flight cap — CHROMIUM engine default
+# Camoufox engine's own, much lower default. The chromium engine's 8 was validated (process-docs/
+# pipe_scraper_hardening/2026-08-04_stealth_concurrency_probe.md) for a model where 8 concurrent
+# in-flight requests share ONE already-launched browser process (cheap per-request marginal cost —
+# a new browser context, not a new OS process). try_scrape_camoufox launches a FRESH, real, headed
+# Firefox process per call — concurrency_per_domain=8 here would mean up to 8 SIMULTANEOUS headed
+# Firefox processes per domain (and unboundedly more across concurrently-processed domains), while
+# field evidence already on record for this lane (process-docs/camoufox_lane/) reports Camoufox's
+# memory footprint as notably heavier than patchright/undetected-chromium per instance. No
+# measurement exists yet for how many concurrent Camoufox instances this machine tolerates —
+# per this project's standing rule (a cap is not raised above a proven baseline without evidence),
+# defaults to the most conservative value, fully serialized per domain. Raise only with a measured
+# reason, the same discipline CONCURRENCY_PER_DOMAIN=8 itself was earned with, not assumed.
+CAMOUFOX_CONCURRENCY_PER_DOMAIN = 1
 PAGE_TIMEOUT_MS = 15000
 DELAY_BEFORE_RETURN_HTML = 0.5
 EMPTY_THRESHOLD_BYTES = 100
@@ -29,15 +46,26 @@ FALLBACK_FETCH_TIMEOUT_S = 15.0   # symmetric with PAGE_TIMEOUT_MS — comparabl
 # ORCHESTRATOR
 
 # Scrape URL list with Scrapy-style per-domain pacing, write per-URL md files + /tmp report.
+# engine: "chromium" (default, current/unchanged behavior) | "camoufox" — a per-RUN choice, not
+# per-URL; no auto-selection or fallback between them anywhere in this function or below.
+# concurrency_per_domain=None resolves to the ENGINE'S OWN default (CONCURRENCY_PER_DOMAIN for
+# chromium, CAMOUFOX_CONCURRENCY_PER_DOMAIN for camoufox) — an explicit value here always wins,
+# for either engine, so an operator who knows their machine can still raise it deliberately.
+# block_images: only consulted when engine="camoufox" (the chromium engine has no such param, its
+# own _build_configs() is fixed) — True by default here, NOT the ad-hoc lane's own False default;
+# see _scrape_all's comment for why the two lanes reasonably differ on this.
 async def scrape_urls_workflow(
     urls: list[str],
     output_dir: Path,
     download_delay: float = DOWNLOAD_DELAY,
-    concurrency_per_domain: int = CONCURRENCY_PER_DOMAIN,
+    concurrency_per_domain: int | None = None,
+    engine: str = "chromium",
+    block_images: bool = True,
 ) -> list[dict]:
     output_dir.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
-    results = await _scrape_all(urls, output_dir, download_delay, concurrency_per_domain)
+    results = await _scrape_all(urls, output_dir, download_delay, concurrency_per_domain,
+                                 engine, block_images)
     wall_s = time.time() - t0
     _print_summary(results, wall_s)
     _write_tmp_report(_domain_from_urls(urls), results)
@@ -216,7 +244,12 @@ def _landed_url_from_result(result, diagnosis: dict) -> str | None:
     return getattr(result, "redirected_url", None)
 
 
-# Assemble and write one JSONL record for a single URL's outcome — fail-soft via log_pipe_scrape
+# Assemble and write one JSONL record for a single URL's outcome — fail-soft via log_pipe_scrape.
+# CHROMIUM engine only — see _log_pipe_camoufox_record for the camoufox engine's own record shape
+# (deliberately NOT this same function with extra optional params: the crawl4ai-own-fallback and
+# pipe-own-rescue fields below are CHROMIUM-lane machinery that never runs on the camoufox engine
+# at all, so forcing them into every camoufox record as False/None would misrepresent a mechanism
+# that was never even in play — same "absent, not null" discipline as scrape_logger.py's schema).
 def _log_pipe_record(
     run_ctx: dict, ts: str, url: str, domain: str, outcome: str,
     status: int | None, byte_count: int, wall_ms: int, diagnosis: dict,
@@ -226,6 +259,7 @@ def _log_pipe_record(
     log_pipe_scrape({
         "ts": ts, "run_id": run_ctx["run_id"], "url": url, "domain": domain,
         "outcome": outcome, "http_status": status, "bytes": byte_count, "wall_ms": wall_ms,
+        "engine": "chromium",
         "crawl4ai_success": diagnosis.get("crawl4ai_success"),
         "crawl4ai_error_message": diagnosis.get("crawl4ai_error_message"),
         "crawl4ai_attempts": diagnosis.get("crawl4ai_attempts"),
@@ -234,6 +268,30 @@ def _log_pipe_record(
         "pipe_fallback_used": pipe_fallback_used, "pipe_fallback_resolved": pipe_fallback_resolved,
         "landed_url": landed_url,
         "config_hash": run_ctx["config_hash"], "config": run_ctx["config"],
+    })
+
+
+# Assemble and write one JSONL record for a single URL's camoufox-engine outcome — SIBLING to
+# _log_pipe_record, not a shared function with it: this engine has no crawl4ai-own-fallback, no
+# pipe-own-rescue (both are chromium-lane machinery that does not run here at all — camoufox IS
+# the deliberate alternative engine; a fallback of the alternative would be exactly the
+# auto-selection/trigger logic this whole lane exists to avoid), and has its own two facts the
+# chromium engine has no concept of (markdown_conversion_error, content_is_raw_html). config/
+# config_hash are read straight off THIS URL's own meta (try_scrape_camoufox computes them per
+# call, same as the ad-hoc lane's scrape_url_camoufox_workflow) — there is no upfront, whole-run
+# config object to stamp once the way the chromium engine's _build_configs() provides.
+def _log_pipe_camoufox_record(
+    run_ctx: dict, ts: str, url: str, domain: str, outcome: str,
+    status: int | None, byte_count: int, wall_ms: int, meta: dict,
+) -> None:
+    log_pipe_scrape({
+        "ts": ts, "run_id": run_ctx["run_id"], "url": url, "domain": domain,
+        "outcome": outcome, "http_status": status, "bytes": byte_count, "wall_ms": wall_ms,
+        "engine": "camoufox",
+        "landed_url": meta.get("landed_url"),
+        "markdown_conversion_error": meta.get("markdown_conversion_error"),
+        "content_is_raw_html": meta.get("content_is_raw_html", False),
+        "config_hash": meta.get("config_hash"), "config": meta.get("config"),
     })
 
 # Scrape one URL: acquire domain semaphore cap, gate on per-domain delay, then run crawler.
@@ -296,6 +354,62 @@ async def _scrape_one(
     landed_url = _landed_url_from_result(result, diagnosis)
     _log_pipe_record(run_ctx, ts, url, domain, outcome, status, byte_count, wall_ms, diagnosis,
                       landed_url=landed_url)
+
+    return {'url': url, 'wall_ms': wall_ms, 'bytes': byte_count,
+            'status_code': status, 'outcome': outcome}
+
+# Scrape one URL via the CAMOUFOX engine: SAME per-domain semaphore/gate as _scrape_one (the
+# pacing gate is engine-agnostic — see CAMOUFOX_CONCURRENCY_PER_DOMAIN's own comment for why the
+# VALUE differs even though the MECHANISM doesn't), but no shared browser/crawler to pass in —
+# try_scrape_camoufox launches and tears down its own per call. No crawl4ai-own-fallback, no
+# pipe-own-rescue: both are chromium-lane machinery (see _log_pipe_camoufox_record's comment) —
+# there is no except-block rescue path here at all, try_scrape_camoufox is already fail-soft on
+# its own (acquisition_error covers everything that would otherwise need a rescue).
+async def _scrape_one_camoufox(
+    url: str,
+    domain_states: dict,
+    download_delay: float,
+    concurrency_per_domain: int,
+    output_dir: Path,
+    run_ctx: dict,
+    block_images: bool,
+) -> dict:
+    domain = urlparse(url).netloc
+    state = _ensure_domain_state(domain_states, domain, concurrency_per_domain)
+    async with state['sem']:
+        await _gate_domain(state, download_delay)
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        t0 = time.time()
+        content, meta = await try_scrape_camoufox(url, block_images=block_images)
+        wall_ms = int((time.time() - t0) * 1000)
+
+    status = meta.get('status_code')
+    byte_count = len(content.encode('utf-8')) if content else 0
+
+    # acquisition_error checked FIRST and maps to outcome='error' — the same meaning 'error' has
+    # on the chromium engine (total acquisition failure, nothing usable at all): budget_exhausted/
+    # browser_missing/exception all leave status_code=None and content empty, which would
+    # otherwise fall through to 'empty' below and misreport a hard acquisition failure as merely
+    # "browser succeeded, page had nothing."
+    if meta.get('acquisition_error'):
+        outcome = 'error'
+    elif status == 429:
+        outcome = 'waf_429'
+    elif status and status >= 400:
+        outcome = 'http_error'
+    elif byte_count < EMPTY_THRESHOLD_BYTES:
+        outcome = 'empty'
+    else:
+        outcome = 'ok'
+
+    # Written to the SAME .md filename convention regardless of content_is_raw_html (matching the
+    # ad-hoc lane's own sidecar precedent) — format ambiguity is resolved via the LOG record
+    # (content_is_raw_html), not by the filename lying about what it contains either way.
+    if content:
+        fname = _url_to_filename(url)
+        (output_dir / fname).write_text(f"<!-- source: {url} -->\n\n{content}", encoding='utf-8')
+
+    _log_pipe_camoufox_record(run_ctx, ts, url, domain, outcome, status, byte_count, wall_ms, meta)
 
     return {'url': url, 'wall_ms': wall_ms, 'bytes': byte_count,
             'status_code': status, 'outcome': outcome}
@@ -386,28 +500,53 @@ def _build_configs() -> tuple[BrowserConfig, CrawlerRunConfig]:
     )
     return browser_cfg, run_cfg
 
-# Scrape all URLs under a single crawler with per-domain Scrapy-style pacing.
+# Scrape all URLs with per-domain Scrapy-style pacing — dispatches to ONE of two engines per RUN
+# (never per-URL, never auto-selected). concurrency_per_domain=None resolves to the ENGINE's own
+# default here (not in scrape_urls_workflow) so any direct caller of this function gets the same
+# engine-aware default scrape_urls_workflow provides.
+#
+# CHROMIUM: one shared AsyncWebCrawler across all in-flight requests (cheap per-request marginal
+# cost), one upfront config stamp for the whole run (_extract_pipe_config_stamp).
+# CAMOUFOX: no shared browser to construct — try_scrape_camoufox launches/tears down its own per
+# call — so there is no upfront config object to stamp either; each URL's own record reads
+# config/config_hash off THAT call's own meta (see _log_pipe_camoufox_record). block_images is
+# only meaningful here (chromium's _build_configs() has no such param at all).
 async def _scrape_all(
     urls: list[str],
     output_dir: Path,
     download_delay: float,
-    concurrency_per_domain: int,
+    concurrency_per_domain: int | None,
+    engine: str = "chromium",
+    block_images: bool = True,
 ) -> list[dict]:
-    browser_cfg, run_cfg = _build_configs()
-    config_stamp = _extract_pipe_config_stamp(browser_cfg, run_cfg, download_delay, concurrency_per_domain)
-    run_ctx = {
-        "run_id": str(uuid.uuid4()),
-        "config_hash": hash_config(config_stamp),
-        "config": config_stamp,
-    }
+    resolved_concurrency = concurrency_per_domain if concurrency_per_domain is not None else (
+        CAMOUFOX_CONCURRENCY_PER_DOMAIN if engine == "camoufox" else CONCURRENCY_PER_DOMAIN
+    )
     domain_states: dict = {}
-    async with AsyncWebCrawler(config=browser_cfg) as crawler:
+
+    if engine == "camoufox":
+        run_ctx = {"run_id": str(uuid.uuid4())}
         raw = await asyncio.gather(
-            *[_scrape_one(crawler, url, run_cfg, domain_states,
-                          download_delay, concurrency_per_domain, output_dir, run_ctx)
+            *[_scrape_one_camoufox(url, domain_states, download_delay, resolved_concurrency,
+                                    output_dir, run_ctx, block_images)
               for url in urls],
             return_exceptions=True,
         )
+    else:
+        browser_cfg, run_cfg = _build_configs()
+        config_stamp = _extract_pipe_config_stamp(browser_cfg, run_cfg, download_delay, resolved_concurrency)
+        run_ctx = {
+            "run_id": str(uuid.uuid4()),
+            "config_hash": hash_config(config_stamp),
+            "config": config_stamp,
+        }
+        async with AsyncWebCrawler(config=browser_cfg) as crawler:
+            raw = await asyncio.gather(
+                *[_scrape_one(crawler, url, run_cfg, domain_states,
+                              download_delay, resolved_concurrency, output_dir, run_ctx)
+                  for url in urls],
+                return_exceptions=True,
+            )
     return [
         r if isinstance(r, dict)
         else {'url': urls[i], 'outcome': 'error', 'wall_ms': 0, 'bytes': 0, 'status_code': None}
@@ -452,12 +591,25 @@ if __name__ == '__main__':
     parser.add_argument('--output-dir', required=True, help='Directory to write per-URL markdown files')
     parser.add_argument('--download-delay', type=float, default=DOWNLOAD_DELAY,
                         help=f'Scrapy per-domain base delay in seconds (default: {DOWNLOAD_DELAY}); actual jitter = uniform(0.5×, 1.5×)')
-    parser.add_argument('--concurrency-per-domain', type=int, default=CONCURRENCY_PER_DOMAIN,
-                        help=f'Per-domain in-flight request cap (default: {CONCURRENCY_PER_DOMAIN})')
+    # No literal default here (None) — scrape_urls_workflow/_scrape_all resolve the ENGINE'S OWN
+    # default (8 chromium, 1 camoufox) when this flag is absent; an explicit value always wins.
+    parser.add_argument('--concurrency-per-domain', type=int, default=None,
+                        help=f'Per-domain in-flight request cap (default: {CONCURRENCY_PER_DOMAIN} '
+                             f'chromium / {CAMOUFOX_CONCURRENCY_PER_DOMAIN} camoufox — resolved by --engine when omitted)')
+    parser.add_argument('--engine', choices=['chromium', 'camoufox'], default='chromium',
+                        help='Acquisition engine, chosen per RUN not per URL: "chromium" (crawl4ai, '
+                             'default, current behavior) or "camoufox" (Playwright-Firefox, a '
+                             'deliberate second lane — not a fallback of chromium)')
+    parser.add_argument('--block-images', dest='block_images', action='store_true', default=True,
+                        help='camoufox engine only: block image requests (default: on — raw mass '
+                             'capture for Phase-3 LLM cleanup never consumes images)')
+    parser.add_argument('--no-block-images', dest='block_images', action='store_false',
+                        help='camoufox engine only: allow image requests')
     args = parser.parse_args()
 
     urls = [ln.strip() for ln in Path(args.url_file).read_text(encoding='utf-8').splitlines()
             if ln.strip()]
     asyncio.run(scrape_urls_workflow(
         urls, Path(args.output_dir), args.download_delay, args.concurrency_per_domain,
+        args.engine, args.block_images,
     ))
