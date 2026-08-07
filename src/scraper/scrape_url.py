@@ -29,12 +29,13 @@ HTMLDATE_TIMEOUT_S = 5.0
 # path (page_timeout=30000 only bounds Playwright's page.goto; everything after a successful
 # goto — crawl4ai's own two internal, non-configurable 30s render waits, consent handling, date
 # extraction — is otherwise unbounded from our side). Composed of: browser cold start 1.1s +
-# navigation cap 30s (page_timeout) + render wait 2.0s (delay_before_return_html) + consent
-# handling 1.3s (remove_consent_popups, worst case: one unconditional 500ms sleep in
-# remove_consent_popups.js + 500ms Python-side + at most one 300ms post-click sleep, the rest
-# mutually exclusive behind break/return) + date extraction 5.0s (HTMLDATE_TIMEOUT_S) = 39.4.
-# Unbounded synchronous work such as markdown generation gets no reserved share of its own — it
-# is simply covered by this same outer guard.
+# navigation cap 30s (page_timeout) + render wait 5.0s (delay_before_return_html — raised from
+# 2.0 for self-resolving Cloudflare challenge pages; see delay_before_return_html's own comment
+# for the Cloudflare-documented source) + consent handling 1.3s (remove_consent_popups, worst
+# case: one unconditional 500ms sleep in remove_consent_popups.js + 500ms Python-side + at most
+# one 300ms post-click sleep, the rest mutually exclusive behind break/return) + date extraction
+# 5.0s (HTMLDATE_TIMEOUT_S) = 42.4. Unbounded synchronous work such as markdown generation gets no
+# reserved share of its own — it is simply covered by this same outer guard.
 # Two honesty caveats on what this guard does NOT do:
 #  - asyncio.wait_for only cancels at await points. Markdown generation + PruningContentFilter
 #    run as synchronous CPU work inside crawl4ai's arun() — a pathological synchronous parse can
@@ -46,7 +47,7 @@ HTMLDATE_TIMEOUT_S = 5.0
 #    formatting) sits outside the guarded span, so a budget-exhausted record is still writable.
 #    The logged total_wall in scrape_log.jsonl can therefore exceed this value by that
 #    post-processing cost.
-TOTAL_SCRAPE_BUDGET_S = 39.4
+TOTAL_SCRAPE_BUDGET_S = 42.4
 
 # Used by is_garbage_content, kept for src/crawler/crawl_site.py's unattended batch-crawl filter
 # (a different consumer than this module's own workflow — no agent looking at that output, so an
@@ -188,17 +189,18 @@ async def try_scrape(url: str) -> tuple[str, dict]:
         # across 10000/30000/60000/80000/120000/200000, no consistent evidence either way. No
         # evidence for the raise -> falls back to the executing layer's own default.
         page_timeout=30000,
-        # Explicit, not the library's 0.1s default. crawl4ai issue #1665: third-party measurement
-        # on a JS-heavy page — 0s -> 12,376 chars (partial), 3s -> 33,874 chars (full), 5s and 20s
-        # -> identical 33,874 (saturation knee at 3s, flat above it across ~an order of magnitude
-        # of extra wait, so going higher only costs). Set to 2.0, not 3.0, because
-        # remove_consent_popups below already spends ~1s of render wait on every page before HTML
-        # capture (two unconditional 500ms sleeps, see its comment) — this project already
-        # reproduced that as a render-wait effect, not a consent-removal effect (identical 126-byte
-        # raw_markdown diff on rfc-editor.org from delay_before_return_html=1.1 ALONE, with
-        # remove_consent_popups=False). The two windows are counted against each other, not added:
-        # ~1s consent-forced wait + 2.0s here = ~3s effective render window, matching the knee.
-        delay_before_return_html=2.0,
+        # 5.0, raised from an earlier 2.0 (crawl4ai issue #1665's JS-heavy-page saturation knee at
+        # 3s, discounted for remove_consent_popups' own ~1s forced render wait below) — the
+        # earlier value captured self-resolving Cloudflare challenge pages too early: measured on
+        # guenstiger.de (2026-08-05, varying only this wait), 2.0s captured the interstitial, 6.0s
+        # the real product page, 12.0s/20.0s added ~50 bytes over 6.0s. That single-domain
+        # measurement is corroborating evidence, not the basis for the value: the basis is
+        # Cloudflare's own docs (developers.cloudflare.com/cloudflare-challenges/challenge-types/
+        # challenge-pages/, section "Non-Interactive Challenges", page last updated 2026-07-06),
+        # which state the visitor must wait until the browser finishes processing the challenge
+        # JavaScript, "typically ... less than five seconds" — taken AS-IS, no invented safety
+        # margin added on top.
+        delay_before_return_html=5.0,
         max_retries=0,
         cache_mode=CacheMode.BYPASS,
         markdown_generator=DefaultMarkdownGenerator(
