@@ -36,20 +36,44 @@ logger = logging.getLogger(__name__)
 # justify departing from Playwright's own number for either phase.
 _PLAYWRIGHT_DEFAULT_TIMEOUT_MS = 30000
 
+# wait_until for page.goto — domcontentloaded, NOT Playwright's own "load" default. A Cloudflare
+# challenge page holds the request open and serves its OWN full page while it runs; the real
+# destination's "load" event cannot fire until the challenge resolves and the browser navigates
+# onward, so "load" hangs until page_timeout — observed live as a 30s Page.goto timeout on
+# guenstiger.de. "domcontentloaded" fires once the challenge page's own DOM is ready, letting goto
+# return; the post-navigation render wait below (CAMOUFOX_RENDER_WAIT_S) is what actually gives
+# the challenge JS time to finish and the browser to land on the real page before capture.
+# pipe_scraper.py's engine already uses "domcontentloaded" for its own goto calls.
+_GOTO_WAIT_UNTIL = "domcontentloaded"
+
+# Post-navigation render wait, applied via page.wait_for_timeout after goto (this lane has no
+# analog to crawl4ai's delay_before_return_html — raw Playwright, not crawl4ai — so the wait is
+# applied directly). Same source and same value as scrape_url.py's delay_before_return_html: a
+# self-resolving Cloudflare challenge page needs the browser to finish executing the challenge
+# JavaScript before the real destination page is captured. Cloudflare's own docs
+# (developers.cloudflare.com/cloudflare-challenges/challenge-types/challenge-pages/, section
+# "Non-Interactive Challenges", page last updated 2026-07-06) state the visitor must wait until
+# the browser finishes processing the challenge JavaScript, "typically ... less than five seconds"
+# — taken AS-IS, no invented safety margin added on top. Real-page measurement on guenstiger.de
+# (2026-08-05) corroborates it (2.0s -> interstitial, 6.0s -> real product page, 12.0s/20.0s ->
+# ~50 bytes over 6.0s) but is not itself the basis for this value.
+CAMOUFOX_RENDER_WAIT_S = 5.0
+
 # Hard wall-clock budget for the entire Camoufox acquisition — the only outer guard on this path,
 # analog to scrape_url.py's TOTAL_SCRAPE_BUDGET_S. Composed of: Camoufox browser launch 30.0s
 # (_PLAYWRIGHT_DEFAULT_TIMEOUT_MS, Playwright's own BrowserType.launch() default — no
 # Camoufox-specific evidence to lower it) + page navigation 30.0s
-# (_PLAYWRIGHT_DEFAULT_TIMEOUT_MS, Playwright's own Frame.goto() default, wait_until="load" is
-# also left at Playwright's own default — no evidence to override) + markdown-conversion browser
-# cold start 1.1s (reused from scrape_url.py's own measured chromium/patchright cold-start figure,
-# TOTAL_SCRAPE_BUDGET_S's comment — a legitimate proxy here since raw: markdown conversion below
-# ALSO launches a fresh chromium instance via crawl4ai, the same class of cost, not a fresh
-# unmeasured guess) = 61.1. Markdown GENERATION itself (DefaultMarkdownGenerator's own synchronous
-# CPU work, and page.content()/set_content() parsing a potentially large HTML string) gets no
-# reserved share of its own, same honesty caveat as TOTAL_SCRAPE_BUDGET_S — it is simply covered
-# by this same outer guard, not separately bounded.
-TOTAL_CAMOUFOX_BUDGET_S = 61.1
+# (_PLAYWRIGHT_DEFAULT_TIMEOUT_MS, Playwright's own Frame.goto() timeout — wait_until is
+# "domcontentloaded", not Playwright's own "load" default, see _GOTO_WAIT_UNTIL) + post-navigation
+# render wait 5.0s (CAMOUFOX_RENDER_WAIT_S, the Cloudflare-documented figure, see its own comment)
+# + markdown-conversion browser cold start 1.1s (reused from scrape_url.py's own measured
+# chromium/patchright cold-start figure, TOTAL_SCRAPE_BUDGET_S's comment — a legitimate proxy here
+# since raw: markdown conversion below ALSO launches a fresh chromium instance via crawl4ai, the
+# same class of cost, not a fresh unmeasured guess) = 66.1. Markdown GENERATION itself
+# (DefaultMarkdownGenerator's own synchronous CPU work, and page.content()/set_content() parsing a
+# potentially large HTML string) gets no reserved share of its own, same honesty caveat as
+# TOTAL_SCRAPE_BUDGET_S — it is simply covered by this same outer guard, not separately bounded.
+TOTAL_CAMOUFOX_BUDGET_S = 66.1
 
 # Short descriptions for the acquisition-error states this lane can render, same pattern and same
 # two entries as scrape_url.py's _ACQUISITION_ERROR_MESSAGES ("exception" has no entry there either
@@ -184,7 +208,10 @@ async def try_scrape_camoufox(url: str, block_images: bool = False) -> tuple[str
 
         async with AsyncCamoufox(from_options=resolved) as browser:
             page = await browser.new_page()
-            response = await page.goto(url, timeout=_PLAYWRIGHT_DEFAULT_TIMEOUT_MS)
+            response = await page.goto(
+                url, timeout=_PLAYWRIGHT_DEFAULT_TIMEOUT_MS, wait_until=_GOTO_WAIT_UNTIL
+            )
+            await page.wait_for_timeout(CAMOUFOX_RENDER_WAIT_S * 1000)
             landed_url = page.url
             status_code = response.status if response else None
             html = await page.content()

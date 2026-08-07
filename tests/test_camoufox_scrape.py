@@ -36,9 +36,12 @@ class _FakePage:
         self._html = html
         self.url = "about:blank"
 
-    async def goto(self, url, timeout=None):
+    async def goto(self, url, timeout=None, wait_until=None):
         self.url = self._landed_url
         return _FakeResponse(self._status)
+
+    async def wait_for_timeout(self, timeout_ms):
+        pass
 
     async def content(self):
         return self._html
