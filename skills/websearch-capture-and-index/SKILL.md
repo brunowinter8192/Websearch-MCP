@@ -82,11 +82,14 @@ The scraper prints one console line (success count, error count, duration) and w
 
 Diagnose first. Don't write cleanup regex before classifying shape.
 
+**Detection is non-destructive. A signature match NEVER deletes a file — it prints a candidate for YOU to read.**
+Every script here either prints candidates or strips chrome from a confirmed shape. Deleting a file is YOUR judgment after reading the printed sample, and it enters the Completion Report as a decision with its reason — never as the automatic consequence of a match. Same posture as `scrape_url`'s contract: the tooling reports facts, the agent judges.
+
 ### Diagnose pass
 
-One small script (~50 LOC) scanning ALL `.md` files in OUTPUT_DIR: per-file fingerprints (h1/h2 count, prose density, table presence, source domain from the `<!-- source: URL -->` comment, LOC), clustered into 4-5 shape groups.
+One small script scanning ALL `.md` files in OUTPUT_DIR: per-file fingerprints (h1/h2 count, prose density, table presence, source domain from the `<!-- source: URL -->` comment, LOC), clustered into shape groups.
 
-In the same pass, match each file against a BROAD block-signature list (case-insensitive substrings, extend freely):
+In the same pass, match each file against a BROAD block-signature list (case-insensitive substrings, extend freely) — a SEARCH AID for finding candidates, not a verdict on them:
 
 ```
 cookie/consent : "accept cookies", "we use cookies", "cookie policy", "consent", "gdpr", "manage preferences"
@@ -94,9 +97,15 @@ paywall/sub    : "subscribe to", "sign in to continue", "members only", "create 
 js/bot wall    : "enable javascript", "javascript is required", "verify you are human", "captcha", "checking your browser", "access denied"
 ```
 
-A CANDIDATE = signature match AND small (thin-page byte range). The script prints each candidate's source URL + first ~15 lines — confirm real-block vs false-positive from that output. Candidate set in the dozens → STOP and report to Opus. A confirmed block page is garbage → **DELETE it**, no content-stripping.
+### Per-class detection + action
 
-Also delete **thin successful pages** (HTTP 200, tiny byte size — stubs, redirect landings, pure nav). Re-read only the small files, not every page.
+- **A — block/interstitial page** (signature hit AND small): SURFACE ONLY. Print source URL, byte size, first ~15 lines, and READ them. Real block page → delete, recording URL + reason. False positive (a page that legitimately discusses cookies, CAPTCHAs or bot walls — common in vendor/API docs) → keep. Candidate set in the dozens → STOP and report to Opus.
+- **B — thin page** (HTTP 200, tiny byte size): SURFACE ONLY. Print byte size + the full content of the small files, and READ. Stub / redirect landing / pure nav → delete with reason; legitimately short page → keep.
+- **C — chrome + footer** (the five shapes below): RECOVERABLE → strip. Invariants: the `<!-- source: URL -->` comment survives; body content outside the stripped span is unchanged.
+- **D — index/aggregator page** (mostly link list, no prose): SURFACE ONLY, never delete. Flag it in the report; indexing it is Opus's call.
+- **E — raw HTML instead of markdown** (`content_is_raw_html` in the pipe log): CONDITIONAL → report the URLs and WAIT. A re-run on the other engine is Opus's decision, not yours.
+
+**Content window (every md).** Pull 1–2 body lines (len > 70, starts alpha, > 10 spaces, high alpha-ratio) from the middle third and READ them. Coherent → pass. Garbled → surface as class A, do not clean.
 
 ### The five shapes
 
@@ -123,8 +132,9 @@ Safety rules (CRITICAL):
 - ALWAYS `python3` (not `python`)
 - `Path(__file__).parent` — NEVER hardcode absolute paths
 - Preserve `<!-- source: URL -->` comments in every file
+- Back up to `/tmp/backup_<name>.md` BEFORE any in-place rewrite
 - Overwrite originals in-place
-- After cleaning, spot-check 2-3 files
+- After cleaning, re-scan the class (expect 0 remaining) and spot-check 2-3 files
 
 Edge cases: no `# ` heading (redirect pages) → keep content between source comment and logo line. Nearly empty after cleanup (<5 lines) → still output, don't delete. `user_None.md`/`user_{}.md` = crawled error pages, minimal content expected.
 
@@ -156,6 +166,8 @@ URLs discovered:                    N
 URLs dropped (pre-scrape, pattern): K    — which patterns + why
 URLs scraped:                       N − K
 Scrape:                             M ok, E errors   ·   duration: T
+Files deleted (your judgment):      D    — source URL + reason per file; omit the line when D = 0
+Flagged, not deleted:               F    — class D index pages, class E raw-HTML records
 Final md indexed:                   <count>
 Collection:                         <COLLECTION>
 Error URLs:                         /tmp/<domain>_error_urls.txt   (one URL per line; omit the line when E = 0)
