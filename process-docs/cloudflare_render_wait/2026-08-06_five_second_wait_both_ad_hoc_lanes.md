@@ -64,3 +64,28 @@ and `tests/test_scrape_url.py` both pass in full (53 tests) after the change; co
 assertions read the constants dynamically off the module, so they track the new values without being
 individually updated. 9 pre-existing failures in `test_proxy_pool.py`/`test_query_logger.py`
 (unrelated `src.search.search_web` API drift) were present before this change too, left untouched.
+
+### Live run against the motivating page, orchestrator-side (2026-08-06)
+
+Both lanes run through the real CLI against `guenstiger.de/Produkt/AEG/VX9_2_OeKO.html` after the
+change — the interstitial is gone from both:
+
+| Lane | before | after |
+|---|---|---|
+| chromium (`scrape_url`) | 480 bytes raw markdown, interstitial text | 36681 raw / 21659 filtered, 43 `€`, 0 interstitial markers |
+| camoufox (`scrape_url_camoufox`) | run 1 `Page.goto` timeout at 31.2s, run 2 interstitial | 33196 bytes markdown, 51 `€`, 0 markers, no timeout |
+
+Two behaviours observed as unchanged, both already known and both treated as observations rather
+than verdicts: the recorded HTTP status stays `403` even though the complete product page came back
+(crawl4ai keeps the FIRST response's status, and the Camoufox lane reads the status off the `goto`
+Response, which is the challenge page's), and crawl4ai's own anti-bot detector still reports
+"Blocked by anti-bot protection: HTTP 403 with HTML content (240209 bytes)" on a page that is fully
+present.
+
+Effective render window on the chromium lane is ~6s, not 5s: `remove_consent_popups` spends ~1s of
+unconditional wait before HTML capture on every page, and that time adds to the 5.0s here. That
+happens to land exactly on the guenstiger.de knee measured on 2026-08-05.
+
+On the Camoufox lane the new wait also moved `landed_url` behind any challenge-driven redirect —
+`page.url` is read after the wait, so it reports where the browser ended up rather than where the
+challenge page sat.
