@@ -2,7 +2,7 @@
 
 ## Context
 
-Prior camoufox_lane entries (`calibrated_core_module_2026-08-16.md` and later) documented crawl4ai's
+Prior entries in this area documented crawl4ai's
 `raw://<html>` pseudo-URL crashing on HTML containing a bare `[` before the first `/` (e.g. an early
 inline `<script>` with a JS array literal) as an observed-but-unfixed crawl4ai robustness bug, present
 at both `camoufox_scrape.py`'s `_html_to_markdown` and `pipe_scraper.py`'s `_own_fallback_rescue`. This
