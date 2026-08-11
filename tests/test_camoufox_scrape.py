@@ -40,9 +40,6 @@ class _FakePage:
         self.url = self._landed_url
         return _FakeResponse(self._status)
 
-    async def wait_for_timeout(self, timeout_ms):
-        pass
-
     async def content(self):
         return self._html
 
@@ -159,6 +156,9 @@ async def test_try_scrape_camoufox_normal_fetch(monkeypatch):
     monkeypatch.setattr(camoufox_scrape, "AsyncCamoufox",
                          _make_fake_camoufox(landed_url="https://x.test/a", status=200))
     monkeypatch.setattr(camoufox_scrape, "AsyncWebCrawler", _FakeAsyncWebCrawler)
+    # asyncio.sleep(CAMOUFOX_RENDER_WAIT_S) is a real stdlib sleep, not interceptable by the fakes
+    # above — zeroed so this test doesn't actually wait 5s.
+    monkeypatch.setattr(camoufox_scrape, "CAMOUFOX_RENDER_WAIT_S", 0)
 
     content, meta = await camoufox_scrape.try_scrape_camoufox("https://x.test/a")
 
@@ -181,6 +181,7 @@ async def test_try_scrape_camoufox_captures_landed_url_raw_on_redirect(monkeypat
         _make_fake_camoufox(landed_url="https://platform.claude.com/docs/en/api/overview", status=301),
     )
     monkeypatch.setattr(camoufox_scrape, "AsyncWebCrawler", _FakeAsyncWebCrawler)
+    monkeypatch.setattr(camoufox_scrape, "CAMOUFOX_RENDER_WAIT_S", 0)
 
     content, meta = await camoufox_scrape.try_scrape_camoufox(
         "https://docs.anthropic.com/en/api/getting-started")
@@ -284,6 +285,7 @@ async def test_try_scrape_camoufox_preserves_html_when_markdown_conversion_raise
         _make_fake_camoufox(landed_url="https://x.test/a", status=200,
                              html="<html><body>real captured page</body></html>"),
     )
+    monkeypatch.setattr(camoufox_scrape, "CAMOUFOX_RENDER_WAIT_S", 0)
 
     async def _raising_html_to_markdown(html):
         raise ValueError("Invalid IPv6 URL")
@@ -311,6 +313,7 @@ async def test_try_scrape_camoufox_preserves_html_when_crawl4ai_swallows_convers
         _make_fake_camoufox(landed_url="https://x.test/a", status=200,
                              html="<html><body>real captured page</body></html>"),
     )
+    monkeypatch.setattr(camoufox_scrape, "CAMOUFOX_RENDER_WAIT_S", 0)
 
     class _FakeFailedResult:
         markdown = None
@@ -392,6 +395,7 @@ async def test_config_hash_stable_for_identical_kwargs(monkeypatch):
     monkeypatch.setattr(camoufox_scrape, "AsyncCamoufox",
                          _make_fake_camoufox(landed_url="https://x.test/a", status=200))
     monkeypatch.setattr(camoufox_scrape, "AsyncWebCrawler", _FakeAsyncWebCrawler)
+    monkeypatch.setattr(camoufox_scrape, "CAMOUFOX_RENDER_WAIT_S", 0)
 
     _, meta1 = await camoufox_scrape.try_scrape_camoufox("https://x.test/a")
     _, meta2 = await camoufox_scrape.try_scrape_camoufox("https://x.test/b")
