@@ -4,9 +4,9 @@ Milestone 2 of grounding the Camoufox acquisition budget, continuing the same-da
 (launch-timeout enforcement probe + cold-start ceiling source read). Applies those findings: the
 1.1s cold-start summand in both `TOTAL_CAMOUFOX_BUDGET_S` (`src/scraper/camoufox_scrape.py`) and
 `TOTAL_SCRAPE_BUDGET_S` (`src/scraper/scrape_url.py`) was a measured TYPICAL duration transferred
-from a different lane (`src/search/browser.py`), not a countable maximum — violating R9
-(process-docs/time_budget/2026-08-04_config_rules_and_the_promised_maximum.md: "the total cap is
-the sum of the countable maxima"). Replaced with the proven ceiling from milestone 1:
+from a different lane (`src/search/browser.py`), not a countable maximum — violating R9 of the
+time-budget config rules (`process-docs/time_budget/`: "the total cap is the sum of the countable
+maxima"). Replaced with the proven ceiling from milestone 1:
 `DEFAULT_PLAYWRIGHT_LAUNCH_TIMEOUT_IN_MILLISECONDS=180000` — Playwright's own enforced fallback
 when no `timeout` kwarg is passed to a browser launch, which is exactly what both lanes' throwaway
 markdown/acquisition browsers do (`crawl4ai/browser_manager.py`'s `_build_browser_args()` never
@@ -37,10 +37,10 @@ prior comment text was imprecise).
 ## Render-wait mechanism swap: `page.wait_for_timeout` -> `asyncio.sleep`
 
 `camoufox_scrape.py`'s post-navigation render wait switched from Playwright's own
-`page.wait_for_timeout` (vendor-marked "Discouraged": "Never wait for timeout in production" — see
-process-docs/cloudflare_render_wait/2026-08-06_playwright_timeout_defaults_verified.md, which first
-recorded this warning without acting on it) to `asyncio.sleep`. R3
-(process-docs/time_budget/2026-08-04_config_rules_and_the_promised_maximum.md: "only
+`page.wait_for_timeout` (vendor-marked "Discouraged": "Never wait for timeout in production" — the
+warning was first recorded, without being acted on, in the `cloudflare_render_wait` area
+(`process-docs/cloudflare_render_wait/`)) to `asyncio.sleep`. R3 of the time-budget config rules
+(`process-docs/time_budget/`: "only
 deterministically bounded waiting is admissible") does not prefer one mechanism over the other — both
 are fixed sleeps, not event-based waits. Trade-off weighed and accepted: `page.wait_for_timeout` is
 a page-bound RPC that raises immediately on a mid-wait browser crash; `asyncio.sleep` has no page
