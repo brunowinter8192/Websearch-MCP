@@ -28,14 +28,30 @@ HTMLDATE_TIMEOUT_S = 5.0
 # Hard wall-clock budget for the entire ad-hoc scrape acquisition — the only outer guard on this
 # path (page_timeout=30000 only bounds Playwright's page.goto; everything after a successful
 # goto — crawl4ai's own two internal, non-configurable 30s render waits, consent handling, date
-# extraction — is otherwise unbounded from our side). Composed of: browser cold start 1.1s +
-# navigation cap 30s (page_timeout) + render wait 5.0s (delay_before_return_html — raised from
-# 2.0 for self-resolving Cloudflare challenge pages; see delay_before_return_html's own comment
-# for the Cloudflare-documented source) + consent handling 1.3s (remove_consent_popups, worst
-# case: one unconditional 500ms sleep in remove_consent_popups.js + 500ms Python-side + at most
-# one 300ms post-click sleep, the rest mutually exclusive behind break/return) + date extraction
-# 5.0s (HTMLDATE_TIMEOUT_S) = 42.4. Unbounded synchronous work such as markdown generation gets no
-# reserved share of its own — it is simply covered by this same outer guard.
+# extraction — is otherwise unbounded from our side). Per R9 (process-docs/time_budget/
+# 2026-08-04_config_rules_and_the_promised_maximum.md): the sum of countable maxima. Composed of:
+#   + browser cold start 180.0s (this path's own browser — enable_stealth=True below selects
+#     UndetectedAdapter, crawl4ai/async_crawler_strategy.py's use_undetected switch, so this launch
+#     runs via patchright.async_api's chromium.launch(), not plain playwright; crawl4ai's own
+#     _build_browser_args() never sets a "timeout" kwarg regardless of undetected/not, so
+#     Playwright/patchright's own enforced launch-timeout fallback governs:
+#     DEFAULT_PLAYWRIGHT_LAUNCH_TIMEOUT_IN_MILLISECONDS=180000, installed
+#     patchright/_impl/_helper.py:253-263, identical mechanism/value to plain playwright's own
+#     _impl/_helper.py:290. Source-read and probe-confirmed this session
+#     (dev/camoufox_lane/01_launch_timeout_probe.py, process-docs/camoufox_lane/
+#     2026-08-11_launch_timeout_enforcement_and_coldstart_ceiling.md) — replaces the earlier 1.1s
+#     figure, which was a measured TYPICAL duration transferred from a different lane
+#     (src/search/browser.py), not a ceiling; R9 only admits counted maxima)
+#   + navigation cap 30s (page_timeout)
+#   + render wait 5.0s (delay_before_return_html — raised from 2.0 for self-resolving Cloudflare
+#     challenge pages; see delay_before_return_html's own comment for the Cloudflare-documented
+#     source)
+#   + consent handling 1.3s (remove_consent_popups, worst case: one unconditional 500ms sleep in
+#     remove_consent_popups.js + 500ms Python-side + at most one 300ms post-click sleep, the rest
+#     mutually exclusive behind break/return)
+#   + date extraction 5.0s (HTMLDATE_TIMEOUT_S)
+# = 221.3. Unbounded synchronous work such as markdown generation gets no reserved share of its
+# own — it is simply covered by this same outer guard.
 # Two honesty caveats on what this guard does NOT do:
 #  - asyncio.wait_for only cancels at await points. Markdown generation + PruningContentFilter
 #    run as synchronous CPU work inside crawl4ai's arun() — a pathological synchronous parse can
@@ -47,7 +63,7 @@ HTMLDATE_TIMEOUT_S = 5.0
 #    formatting) sits outside the guarded span, so a budget-exhausted record is still writable.
 #    The logged total_wall in scrape_log.jsonl can therefore exceed this value by that
 #    post-processing cost.
-TOTAL_SCRAPE_BUDGET_S = 42.4
+TOTAL_SCRAPE_BUDGET_S = 221.3
 
 # Used by is_garbage_content, kept for src/crawler/crawl_site.py's unattended batch-crawl filter
 # (a different consumer than this module's own workflow — no agent looking at that output, so an

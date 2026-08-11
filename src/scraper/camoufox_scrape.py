@@ -27,13 +27,26 @@ from src.scraper.scrape_logger import log_scrape, write_sidecar
 
 logger = logging.getLogger(__name__)
 
-# Playwright's own BrowserType.launch() AND Frame.goto() both default to this value (confirmed in
-# the installed playwright package's generated stubs, playwright/async_api/_generated.py) — used
-# EXPLICITLY here (not left implicit) so the calibration decision is visible, same style as
-# scrape_url.py's page_timeout=30000. Per this project's standing rule, a phase cap is not raised
-# above the default of the layer that actually executes it without evidence for the raise — no
-# Camoufox-specific measurement exists yet (this milestone's own real runs are the first) to
-# justify departing from Playwright's own number for either phase.
+# Explicit ceiling used for BOTH camoufox's launch-timeout kwarg (forwarded through
+# launch_options()/AsyncCamoufox, see _build_camoufox_kwargs' "timeout" entry) and page.goto's own
+# timeout below — the two uses have different provenance. GOTO: matches Playwright's own page-level
+# default exactly (DEFAULT_PLAYWRIGHT_TIMEOUT_IN_MILLISECONDS=30000, installed
+# playwright/_impl/_helper.py:289) — the generated stub's docstring (playwright/async_api/
+# _generated.py) states the same figure accurately for this one. LAUNCH: this value is an explicit,
+# deliberate override, NOT a fallback to any default — Playwright's own IMPLICIT launch-timeout
+# fallback (used only when no timeout kwarg is passed) is actually
+# DEFAULT_PLAYWRIGHT_LAUNCH_TIMEOUT_IN_MILLISECONDS=180000 (_impl/_helper.py:290); the generated
+# stub's docstring claims 30000 for launch too, which does NOT match the enforced implementation —
+# two disagreeing sources inside the same installed package (see process-docs/camoufox_lane/
+# 2026-08-11_launch_timeout_enforcement_and_coldstart_ceiling.md). Kept at 30000 for launch anyway,
+# deliberately below the 180000 fallback: a browser failing to start is a fast binary/environment
+# failure, not a phase that benefits from 3 minutes of headroom, and per this project's own R7
+# (process-docs/time_budget/2026-08-04_config_rules_and_the_promised_maximum.md) staying at or
+# below an executing layer's own default needs no extra justification — only RAISING above one
+# does. Enforcement of this override is no longer assumed: a live probe
+# (dev/camoufox_lane/01_launch_timeout_probe.py, 2026-08-11) sent timeout=1ms through this exact
+# chain and observed playwright._impl._errors.TimeoutError: "BrowserType.launch: Timeout 1ms
+# exceeded."; timeout=30000 launches cleanly in the same probe's control run.
 _PLAYWRIGHT_DEFAULT_TIMEOUT_MS = 30000
 
 # wait_until for page.goto — domcontentloaded, NOT Playwright's own "load" default. A Cloudflare
@@ -46,9 +59,21 @@ _PLAYWRIGHT_DEFAULT_TIMEOUT_MS = 30000
 # pipe_scraper.py's engine already uses "domcontentloaded" for its own goto calls.
 _GOTO_WAIT_UNTIL = "domcontentloaded"
 
-# Post-navigation render wait, applied via page.wait_for_timeout after goto (this lane has no
-# analog to crawl4ai's delay_before_return_html — raw Playwright, not crawl4ai — so the wait is
-# applied directly). Same source and same value as scrape_url.py's delay_before_return_html: a
+# Post-navigation render wait, applied via asyncio.sleep after goto (this lane has no analog to
+# crawl4ai's delay_before_return_html — raw Playwright, not crawl4ai — so the wait is applied
+# directly). Deliberately asyncio.sleep, NOT Playwright's own page.wait_for_timeout — Playwright's
+# own reference doc marks wait_for_timeout "Discouraged": "Never wait for timeout in production."
+# (process-docs/cloudflare_render_wait/2026-08-06_playwright_timeout_defaults_verified.md). R3
+# (process-docs/time_budget/2026-08-04_config_rules_and_the_promised_maximum.md) only requires
+# deterministically bounded waiting, not a specific call — asyncio.sleep satisfies it identically,
+# host-side, with no dependency on the page/browser connection during the wait. Trade-off weighed
+# and accepted: page.wait_for_timeout is a page-bound RPC that raises IMMEDIATELY if the browser
+# crashes mid-wait; asyncio.sleep has none of that page dependency, so a mid-wait crash is not
+# detected until the next call that touches the page (page.url below) — worst case, up to
+# CAMOUFOX_RENDER_WAIT_S of wasted wall time before the failure surfaces. Accepted as negligible:
+# this whole span sits inside TOTAL_CAMOUFOX_BUDGET_S's much larger outer guard and the same broad
+# exception handling either way — the failure is still caught, only its timing shifts by at most 5s.
+# Same source and same value as scrape_url.py's delay_before_return_html: a
 # self-resolving Cloudflare challenge page needs the browser to finish executing the challenge
 # JavaScript before the real destination page is captured. Cloudflare's own docs
 # (developers.cloudflare.com/cloudflare-challenges/challenge-types/challenge-pages/, section
@@ -60,20 +85,32 @@ _GOTO_WAIT_UNTIL = "domcontentloaded"
 CAMOUFOX_RENDER_WAIT_S = 5.0
 
 # Hard wall-clock budget for the entire Camoufox acquisition — the only outer guard on this path,
-# analog to scrape_url.py's TOTAL_SCRAPE_BUDGET_S. Composed of: Camoufox browser launch 30.0s
-# (_PLAYWRIGHT_DEFAULT_TIMEOUT_MS, Playwright's own BrowserType.launch() default — no
-# Camoufox-specific evidence to lower it) + page navigation 30.0s
-# (_PLAYWRIGHT_DEFAULT_TIMEOUT_MS, Playwright's own Frame.goto() timeout — wait_until is
-# "domcontentloaded", not Playwright's own "load" default, see _GOTO_WAIT_UNTIL) + post-navigation
-# render wait 5.0s (CAMOUFOX_RENDER_WAIT_S, the Cloudflare-documented figure, see its own comment)
-# + markdown-conversion browser cold start 1.1s (reused from scrape_url.py's own measured
-# chromium/patchright cold-start figure, TOTAL_SCRAPE_BUDGET_S's comment — a legitimate proxy here
-# since raw: markdown conversion below ALSO launches a fresh chromium instance via crawl4ai, the
-# same class of cost, not a fresh unmeasured guess) = 66.1. Markdown GENERATION itself
-# (DefaultMarkdownGenerator's own synchronous CPU work, and page.content()/set_content() parsing a
-# potentially large HTML string) gets no reserved share of its own, same honesty caveat as
-# TOTAL_SCRAPE_BUDGET_S — it is simply covered by this same outer guard, not separately bounded.
-TOTAL_CAMOUFOX_BUDGET_S = 66.1
+# analog to scrape_url.py's TOTAL_SCRAPE_BUDGET_S. Per R9 (process-docs/time_budget/
+# 2026-08-04_config_rules_and_the_promised_maximum.md): the sum of countable maxima — every summand
+# below is a proven ceiling, not a typical/measured duration. Composed of:
+#   + Camoufox browser launch 30.0s (_PLAYWRIGHT_DEFAULT_TIMEOUT_MS — explicit override of
+#     Playwright's own implicit launch-timeout fallback, proven enforced by a live probe; see
+#     _PLAYWRIGHT_DEFAULT_TIMEOUT_MS's own comment for the full provenance and the
+#     docstring-vs-implementation discrepancy this uncovered)
+#   + page navigation 30.0s (_PLAYWRIGHT_DEFAULT_TIMEOUT_MS, Playwright's own Frame.goto() default,
+#     accurately vendor-documented — wait_until is "domcontentloaded", not Playwright's own "load"
+#     default, see _GOTO_WAIT_UNTIL)
+#   + post-navigation render wait 5.0s (CAMOUFOX_RENDER_WAIT_S, the Cloudflare-documented figure,
+#     see its own comment)
+#   + markdown-conversion browser cold start 180.0s (crawl4ai's chromium.launch() for the raw:
+#     conversion below never passes a "timeout" kwarg — crawl4ai/browser_manager.py's own
+#     _build_browser_args() has no "timeout" key — so Playwright's own enforced launch-timeout
+#     fallback governs: DEFAULT_PLAYWRIGHT_LAUNCH_TIMEOUT_IN_MILLISECONDS=180000, installed
+#     playwright/_impl/_helper.py:290; source-read and probe-confirmed this session
+#     (dev/camoufox_lane/01_launch_timeout_probe.py, process-docs/camoufox_lane/
+#     2026-08-11_launch_timeout_enforcement_and_coldstart_ceiling.md) — replaces the earlier 1.1s
+#     figure, which was a measured TYPICAL duration transferred from a different lane
+#     (src/search/browser.py), not a ceiling; R9 only admits counted maxima)
+# = 245.0. Markdown GENERATION itself (DefaultMarkdownGenerator's own synchronous CPU work, and
+# page.content()/set_content() parsing a potentially large HTML string) gets no reserved share of
+# its own, same honesty caveat as TOTAL_SCRAPE_BUDGET_S — it is simply covered by this same outer
+# guard, not separately bounded.
+TOTAL_CAMOUFOX_BUDGET_S = 245.0
 
 # Short descriptions for the acquisition-error states this lane can render, same pattern and same
 # two entries as scrape_url.py's _ACQUISITION_ERROR_MESSAGES ("exception" has no entry there either
@@ -211,7 +248,7 @@ async def try_scrape_camoufox(url: str, block_images: bool = False) -> tuple[str
             response = await page.goto(
                 url, timeout=_PLAYWRIGHT_DEFAULT_TIMEOUT_MS, wait_until=_GOTO_WAIT_UNTIL
             )
-            await page.wait_for_timeout(CAMOUFOX_RENDER_WAIT_S * 1000)
+            await asyncio.sleep(CAMOUFOX_RENDER_WAIT_S)
             landed_url = page.url
             status_code = response.status if response else None
             html = await page.content()
@@ -417,9 +454,13 @@ def _extract_camoufox_config_stamp(kwargs: dict, resolved: dict) -> dict:
 # HTML-to-markdown, no new library). Uses raw_markdown, not fit_markdown — no content filter is
 # configured, matching _own_fallback_rescue's own shape exactly (no content SELECTION here either,
 # consistent with this module's "no content judgment" contract). Launches its own throwaway
-# AsyncWebCrawler (a second, unrelated chromium instance via crawl4ai/patchright) since this
+# AsyncWebCrawler (a second, unrelated chromium instance via crawl4ai — plain playwright here, NOT
+# patchright: enable_stealth defaults False and is left unset by the BrowserConfig below, so
+# crawl4ai's own use_undetected switch stays off, crawl4ai/async_crawler_strategy.py) since this
 # module has no long-lived crawler to reuse the way pipe_scraper's shared instance does — that
-# per-call cost is exactly what TOTAL_CAMOUFOX_BUDGET_S's 1.1s cold-start summand accounts for.
+# per-call cost is exactly what TOTAL_CAMOUFOX_BUDGET_S's 180.0s cold-start summand accounts for
+# (this launch never passes a "timeout" kwarg, so Playwright's own enforced launch-timeout fallback
+# of 180000ms governs it; see TOTAL_CAMOUFOX_BUDGET_S's own comment for full provenance).
 #
 # Uses the "raw:" prefix, not "raw://" — crawl4ai's own urlparse() call on a raw://<html>
 # pseudo-URL raises "Invalid IPv6 URL" whenever the HTML contains a bare "[" before the first "/"
