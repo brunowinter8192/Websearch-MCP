@@ -61,7 +61,6 @@ if (btn) { btn.click(); return true; }
 return false;
 """
 
-# Uniform 4 req/min across all engines (Google-Baseline, normalized 2026-05-04)
 _limiters["google"] = RateLimiter(max_requests=4, window_seconds=60)
 
 
@@ -194,8 +193,7 @@ async def _parse_results(tab, max_results: int) -> list[SearchResult]:
     return results
 
 
-# Diagnose why Google returned empty after _wait_for_results failed; tab is still open
-# Priority: BLOCK → CONSENT → CONCURRENT_RACE → NO_CONTAINER
+# Diagnose why Google returned empty after _wait_for_results failed (priority: BLOCK -> CONSENT -> CONCURRENT_RACE -> NO_CONTAINER)
 async def _diagnose_empty(tab) -> str:
     url = _extract_value(await tab.execute_script("return window.location.href")) or ""
     if "/sorry/" in url:

@@ -14,7 +14,7 @@ from src.search.snippet import _strip_bloat, _truncate, MAX_SNIPPET_LEN
 logger = logging.getLogger(__name__)
 
 CACHE_DIR = Path.home() / ".cache" / "websearch"
-DEFAULT_TTL = 3600  # 1 hour
+DEFAULT_TTL = 3600
 
 
 # FUNCTIONS
@@ -35,8 +35,7 @@ def cache_path(key: str) -> Path:
     return CACHE_DIR / f"{key}.json"
 
 
-# Atomic write via temp file + rename.
-# pools: {engine_name → [SearchResult, ...]} — per-engine ordered lists from build_engine_pools.
+# Atomic write via temp file + rename; pools is {engine_name: [SearchResult, ...]} from build_engine_pools
 def cache_write(
     key: str,
     pools: dict[str, list[SearchResult]],

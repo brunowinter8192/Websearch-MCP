@@ -37,8 +37,6 @@ from src.search.query_logger import log_query
 
 logger = logging.getLogger(__name__)
 
-# Default engine set — all 14 active engines. Scholar fully removed (not just dormant) until
-# Pooling-Rework assigns it a Google-free pool.
 _DEFAULT_ENGINES: frozenset[str] = frozenset({
     "google", "crossref", "duckduckgo", "mojeek", "lobsters",
     "openalex", "stack_exchange", "semantic_scholar", "open_library", "startpage", "brave", "bing", "yandex",
@@ -48,29 +46,28 @@ _DEFAULT_ENGINES: frozenset[str] = frozenset({
 ENGINE_WATCHDOG_TIMEOUT: float = 3.6
 RATE_WAIT_TIMEOUT: float = 60.0
 ENGINE_WATCHDOG_OVERRIDE: dict[str, float] = {
-    "open_library": 6.0,        # Server-dominated 1.4-5.8s latency; 3.6s cap caused ~35% timeouts
-    "semantic_scholar": 5.0,    # CSR hydration 0.5-2.5s + go_to budget post-DOM-drift fix
-    "crossref": 6.0,            # API response 1-5s range; 3.6s httpx cap races watchdog deadline
-    "startpage": 6.0,           # 2-step homepage+submit flow measured 2.7-4.1s (25_startpage_probe.py); 3.6s cap too tight
-    "brave": 6.0,               # probe latency max ~3.9s (26_brave_probe.py); 3.6s cap too tight, same reasoning as startpage
+    "open_library": 6.0,
+    "semantic_scholar": 5.0,
+    "crossref": 6.0,
+    "startpage": 6.0,
+    "brave": 6.0,
 }
 
-# Empirical per-engine ceilings (max_results_probe_20260507_024429.md)
 ENGINE_MAX_RESULTS: dict[str, int] = {
-    "google": 100,          # server cap via num= URL param; DOM renders ~9-11
-    "duckduckgo": 10,       # no count param; post-fetch DOM slice only
-    "mojeek": 10,           # no count param; post-fetch DOM slice only
-    "lobsters": 20,         # no count param; pool is query-dependent
-    "openalex": 200,        # per_page= API param; documented max 200
-    "crossref": 200,        # rows= API param; documented max 1000, practical 200
-    "stack_exchange": 100,  # pagesize= API param; hard cap 100
-    "semantic_scholar": 10, # 10/page hardcoded by SS UI; no override param
-    "open_library": 100,   # limit= API param; supports 1000+ but latency server-dominated (1.4-5.8s at 100)
-    "startpage": 10,        # no count param; 10/page fixed by DOM (25_startpage_probe.py)
-    "brave": 10,            # no count param; 10/page fixed by DOM (26_brave_probe.py)
-    "bing": 10,             # no count param; 10/page fixed by DOM (28_bing_probe.py)
-    "yandex": 10,           # no count param; 10/page fixed by DOM (29_yandex_probe.py)
-    "marginalia": 10,       # count= API param (30_marginalia_probe.py)
+    "google": 100,
+    "duckduckgo": 10,
+    "mojeek": 10,
+    "lobsters": 20,
+    "openalex": 200,
+    "crossref": 200,
+    "stack_exchange": 100,
+    "semantic_scholar": 10,
+    "open_library": 100,
+    "startpage": 10,
+    "brave": 10,
+    "bing": 10,
+    "yandex": 10,
+    "marginalia": 10,
 }
 
 ENGINES = {
@@ -174,8 +171,7 @@ def _cap_pools(pools: dict) -> dict:
     return {eng: pool[:K] for eng, pool in pools.items()}
 
 
-# Filter engine registry; default path returns full 9-engine set
-# Returns (selected, excluded) — excluded maps engine.name → reason for engines not included
+# Filter engine registry; return (selected, excluded) — excluded maps engine.name to reason for engines not included
 def _select_engines(engines: str | None) -> tuple[dict, dict[str, str]]:
     if not engines:
         selected = {k: v for k, v in ENGINES.items() if k in _DEFAULT_ENGINES}
@@ -332,9 +328,7 @@ def _format_breakdown(query: str, pools: dict[str, list[SearchResult]], all_engi
     return "\n".join(lines)
 
 
-# Build and write workflow_summary log entry after each search_web_workflow call. search_key is
-# the same cache_key(...) value cache_write used for this call — the join key a later
-# search_engine_drilldown record correlates back to; see query_logger.py's schema comment.
+# Build and write workflow_summary log entry after each search_web_workflow call
 def _build_query_log_entry(
     query: str,
     language: str,

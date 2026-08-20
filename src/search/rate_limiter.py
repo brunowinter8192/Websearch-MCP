@@ -11,25 +11,21 @@ WINDOW_SECONDS = 60.0
 _limiters: dict[str, "RateLimiter"] = {}
 
 
+# Token bucket rate limiter
 class RateLimiter:
-    """Token bucket rate limiter."""
-
     def __init__(self, max_requests: int = MAX_REQUESTS, window_seconds: float = WINDOW_SECONDS):
         self._max_requests = max_requests
         self._window_seconds = window_seconds
         self._tokens: list[float] = []
         self._lock = asyncio.Lock()
 
+    # Wait until a request can be made, respecting rate limits
     async def acquire(self) -> None:
-        """Wait until a request can be made, respecting rate limits."""
         logger.debug("Rate limit: acquiring token")
         async with self._lock:
             now = time.monotonic()
-
-            # Remove tokens older than the window
             self._tokens = [t for t in self._tokens if now - t < self._window_seconds]
 
-            # If at capacity, wait until the oldest token expires
             if len(self._tokens) >= self._max_requests:
                 oldest = self._tokens[0]
                 wait = self._window_seconds - (now - oldest)

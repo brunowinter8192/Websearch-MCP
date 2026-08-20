@@ -38,7 +38,6 @@ for (var _i = 0; _i < _cs.length; _i++) {
 return JSON.stringify(_out);
 """
 
-# Uniform 4 req/min across all engines (Google-Baseline, normalized 2026-05-04)
 _limiters["lobsters"] = RateLimiter(max_requests=4, window_seconds=60)
 
 
@@ -135,8 +134,7 @@ def _extract_date(datetime_attr: str) -> str | None:
     return None
 
 
-# Diagnose why Lobsters returned empty after _wait_for_results failed; tab is still open
-# Priority: BLOCK → CONCURRENT_RACE → NO_CONTAINER (Lobsters has no captcha selector)
+# Diagnose why Lobsters returned empty after _wait_for_results failed (priority: BLOCK -> CONCURRENT_RACE -> NO_CONTAINER)
 async def _diagnose_empty(tab) -> str:
     title = _extract_value(await tab.execute_script("return document.title.toLowerCase()")) or ""
     if any(x in title for x in ("captcha", "unusual traffic", "are you a bot", "robot", "access denied")):

@@ -14,21 +14,14 @@ logger = logging.getLogger(__name__)
 
 API_URL = "https://api.crossref.org/works"
 
-# Uniform 4 req/min across all engines (Google-Baseline, normalized 2026-05-04)
 _limiters["crossref"] = RateLimiter(max_requests=4, window_seconds=60)
 
-# Publication-date key priority, shared by _extract_date and _synthesize so the rendered date
-# and the snippet year never disagree. 'issued' is CrossRef's already-resolved publication date
-# (earliest of print/online, most consistently populated); published-online preferred over
-# published-print as second choice since online-first typically precedes print.
-# created/indexed deliberately excluded — deposit/indexing timestamps, not publication dates.
 DATE_KEY_PRIORITY = ("issued", "published-online", "published-print")
 
 
 # ORCHESTRATOR
 
-# Search CrossRef and return ranked results
-# Empty-on-success not sub-classified — HTTP API, no DOM-drift/CAPTCHA-page patterns apply
+# Search CrossRef and return ranked results — HTTP API, no DOM-drift/CAPTCHA patterns, no search_with_reason override needed
 class CrossRefEngine(BaseEngine):
     name = "crossref"
 
@@ -56,7 +49,7 @@ async def _fetch_results(query: str, rows: int) -> list[dict] | None:
     mailto = os.getenv("WEBSEARCH_CROSSREF_MAILTO")
     if mailto:
         params["mailto"] = mailto
-    async with httpx.AsyncClient(timeout=6.0) as client:  # aligned with ENGINE_WATCHDOG_OVERRIDE
+    async with httpx.AsyncClient(timeout=6.0) as client:
         response = await client.get(API_URL, params=params)
     if response.status_code in (429, 403):
         logger.warning("CrossRef rate limited: %d", response.status_code)
@@ -98,7 +91,6 @@ def _extract_date(item: dict) -> str | None:
 
 
 # Truncate at the first missing/null slot — a gap never shifts a later value into the wrong position
-# (e.g. [2019, None, 15] is year-month-day with month missing -> "2019", never "2019-15").
 def _format_date_parts(parts: list) -> str:
     year = parts[0]
     if len(parts) < 2 or parts[1] is None:
@@ -114,7 +106,7 @@ def _format_date_parts(parts: list) -> str:
 def _build_snippet(abstract: str, item: dict) -> str:
     if abstract and abstract.strip():
         stripped = re.sub(r'<[^>]+>', '', abstract)
-        stripped = re.sub(r'&[a-z]+;|&#\d+;', '', stripped)  # remove HTML entities
+        stripped = re.sub(r'&[a-z]+;|&#\d+;', '', stripped)
         return ' '.join(stripped.split())
     return _synthesize(item)
 

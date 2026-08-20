@@ -20,10 +20,10 @@ logger = logging.getLogger(__name__)
 
 PERMALINK_PATTERN = re.compile(r'\[¶\]\([^)]+\)')
 TRAILING_SLASH = re.compile(r'/$')
-DEFAULT_CONCURRENCY = 10          # parallel content crawl (crawl_urls)
-DEFAULT_DELAY_S = 3.0             # delay_before_return_html for discovery
-DEFAULT_PAGE_TIMEOUT_MS = 15000   # page_timeout per discovery page
-DEFAULT_DISCOVER_CONCURRENCY = 1  # discovery BFS concurrency (WAF-safe default)
+DEFAULT_CONCURRENCY = 10
+DEFAULT_DELAY_S = 3.0
+DEFAULT_PAGE_TIMEOUT_MS = 15000
+DEFAULT_DISCOVER_CONCURRENCY = 1
 
 
 # ORCHESTRATOR

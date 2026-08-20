@@ -10,16 +10,14 @@ from src.search.result import SearchResult
 logger = logging.getLogger(__name__)
 
 API_URL = "https://api2.marginalia-search.com/search"
-API_KEY = "public"  # shared free key, no signup — see dev/search_pipeline/30_marginalia_probe.py
+API_KEY = "public"
 
-# Uniform 4 req/min across all engines (Google-Baseline, normalized 2026-05-04)
 _limiters["marginalia"] = RateLimiter(max_requests=4, window_seconds=60)
 
 
 # ORCHESTRATOR
 
-# Search Marginalia (independent index, small/old/text-heavy web) and return structured results
-# Empty-on-success not sub-classified — HTTP API, no DOM-drift/CAPTCHA-page patterns apply
+# Search Marginalia (independent index, small/old/text-heavy web) and return structured results — HTTP API, no DOM-drift/CAPTCHA patterns
 class MarginaliaEngine(BaseEngine):
     name = "marginalia"
 
@@ -33,8 +31,7 @@ class MarginaliaEngine(BaseEngine):
 
 # FUNCTIONS
 
-# Fetch raw result items from the Marginalia public API; returns None on rate-limit (shared "public"
-# key — a real, modest, shared daily quota applies, see 30_marginalia_probe.py)
+# Fetch raw result items from the Marginalia public API; returns None on rate-limit
 async def _fetch_results(query: str, max_results: int) -> list[dict] | None:
     params: dict = {"query": query, "count": max_results}
     headers: dict = {"API-Key": API_KEY}

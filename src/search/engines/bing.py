@@ -52,14 +52,12 @@ for (var _i = 0; _i < markers.length; _i++) {
 return JSON.stringify({marker: hit, url: window.location.href, ready_state: document.readyState});
 """
 
-# Uniform 4 req/min across all engines (Google-Baseline, normalized 2026-05-04)
 _limiters["bing"] = RateLimiter(max_requests=4, window_seconds=60)
 
 
 # ORCHESTRATOR
 
-# Bing web search via pydoll stealth browser — direct path to the Bing index (DuckDuckGo is the
-# existing surrogate path); PoW/block-free in normal operation but degrades gracefully to empty+reason
+# Bing web search via pydoll stealth browser — direct path to the Bing index, degrades gracefully to empty+reason
 class BingEngine(BaseEngine):
     name = "bing"
 
@@ -98,9 +96,7 @@ def _extract_value(result):
         return None
 
 
-# Unwrap Bing's `bing.com/ck/a?...&u=<prefixed-base64>&...` tracking redirect to the real
-# destination URL — the `u` param is base64url-encoded with a 2-char prefix (observed: "a1").
-# Graceful fallback to the raw href when there is no `u` param or decoding fails for any reason.
+# Unwrap Bing's bing.com/ck/a?...&u=<prefixed-base64>&... tracking redirect to the real destination URL
 def _clean_url(href: str) -> str:
     if not href:
         return ""
@@ -155,8 +151,7 @@ _DE_DATE_RE = re.compile(r'^(\d{1,2})\.\s*([A-Za-zÄÖÜäöü]+)\s+(\d{4})$')
 _EN_DATE_RE = re.compile(r'^([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})$')
 
 
-# Parse span.news_dt's localized display string ('14. März 2023' / 'May 20, 2026') to a day-precision
-# ISO date. Absent or unrecognized formats (e.g. relative 'vor N Tagen') degrade to None — never guess.
+# Parse span.news_dt's localized display string to a day-precision ISO date; unrecognized formats degrade to None
 def _extract_date(news_dt_text: str) -> str | None:
     text = (news_dt_text or "").strip()
     if not text:
@@ -187,8 +182,7 @@ async def _parse_results(tab, max_results: int) -> list[SearchResult]:
     return _build_results(items, max_results)
 
 
-# Classify a diagnosis snapshot into an EMPTY sub-status (pure — no browser access)
-# Priority: block marker -> CONCURRENT_RACE (page still loading) -> NO_CONTAINER
+# Classify a diagnosis snapshot into an EMPTY sub-status (priority: block marker -> CONCURRENT_RACE -> NO_CONTAINER)
 def _classify_diagnosis(marker: str | None, ready_state: str) -> str:
     if marker:
         return S.EMPTY_BLOCK
