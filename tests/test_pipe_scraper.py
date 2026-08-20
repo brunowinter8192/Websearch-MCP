@@ -12,6 +12,9 @@ from datetime import datetime, timezone
 import pytest
 
 from src.crawler import pipe_scraper
+from src.crawler import pipe_scraper_config
+from src.crawler import pipe_scraper_acquisition
+from src.crawler import pipe_scraper_constants
 from src.crawler.pipe_scrape_logger import log_pipe_scrape
 
 
@@ -28,15 +31,15 @@ def _now_ts() -> str:
 def test_extract_pipe_config_stamp_reads_real_objects():
     """The config stamp reflects the actual constructed BrowserConfig/CrawlerRunConfig values,
     not hardcoded copies — changing an object's value changes the stamp."""
-    browser_cfg = pipe_scraper.BrowserConfig(headless=True, verbose=False, enable_stealth=True)
-    run_cfg = pipe_scraper.CrawlerRunConfig(
-        cache_mode=pipe_scraper.CacheMode.BYPASS,
+    browser_cfg = pipe_scraper_config.BrowserConfig(headless=True, verbose=False, enable_stealth=True)
+    run_cfg = pipe_scraper_config.CrawlerRunConfig(
+        cache_mode=pipe_scraper_config.CacheMode.BYPASS,
         wait_until="networkidle",
         delay_before_return_html=1.25,
         page_timeout=9999,
     )
-    stamp = pipe_scraper._extract_pipe_config_stamp(browser_cfg, run_cfg, download_delay=2.0,
-                                                       concurrency_per_domain=3)
+    stamp = pipe_scraper_config._extract_pipe_config_stamp(browser_cfg, run_cfg, download_delay=2.0,
+                                                             concurrency_per_domain=3)
     assert stamp["enable_stealth"] is True
     assert stamp["wait_until"] == "networkidle"
     assert stamp["page_timeout_ms"] == 9999
@@ -44,18 +47,18 @@ def test_extract_pipe_config_stamp_reads_real_objects():
     assert stamp["cache_mode"] == "bypass"
     assert stamp["download_delay_s"] == 2.0
     assert stamp["concurrency_per_domain"] == 3
-    assert stamp["empty_threshold_bytes"] == pipe_scraper.EMPTY_THRESHOLD_BYTES
+    assert stamp["empty_threshold_bytes"] == pipe_scraper_constants.EMPTY_THRESHOLD_BYTES
 
 
 def test_extract_pipe_config_stamp_reads_anti_bot_fields_off_real_objects():
     """simulate_user/override_navigator/magic/remove_consent_popups are read off the real
     CrawlerRunConfig, not re-declared — changing the object changes the stamp."""
-    browser_cfg = pipe_scraper.BrowserConfig(headless=True, verbose=False)
-    run_cfg = pipe_scraper.CrawlerRunConfig(
+    browser_cfg = pipe_scraper_config.BrowserConfig(headless=True, verbose=False)
+    run_cfg = pipe_scraper_config.CrawlerRunConfig(
         simulate_user=True, override_navigator=True, magic=False, remove_consent_popups=True,
     )
-    stamp = pipe_scraper._extract_pipe_config_stamp(browser_cfg, run_cfg, download_delay=1.0,
-                                                       concurrency_per_domain=8)
+    stamp = pipe_scraper_config._extract_pipe_config_stamp(browser_cfg, run_cfg, download_delay=1.0,
+                                                             concurrency_per_domain=8)
     assert stamp["simulate_user"] is True
     assert stamp["override_navigator"] is True
     assert stamp["magic"] is False
@@ -65,11 +68,11 @@ def test_extract_pipe_config_stamp_reads_anti_bot_fields_off_real_objects():
 def test_extract_pipe_config_stamp_reads_fallback_armed_off_real_object():
     """fallback_armed reflects whether CrawlerRunConfig.fallback_fetch_function is actually set —
     read off the real object, not a re-declared literal."""
-    browser_cfg = pipe_scraper.BrowserConfig(headless=True, verbose=False)
-    armed_cfg = pipe_scraper.CrawlerRunConfig(fallback_fetch_function=pipe_scraper._fallback_fetch)
-    unarmed_cfg = pipe_scraper.CrawlerRunConfig()
-    armed_stamp = pipe_scraper._extract_pipe_config_stamp(browser_cfg, armed_cfg, 1.0, 8)
-    unarmed_stamp = pipe_scraper._extract_pipe_config_stamp(browser_cfg, unarmed_cfg, 1.0, 8)
+    browser_cfg = pipe_scraper_config.BrowserConfig(headless=True, verbose=False)
+    armed_cfg = pipe_scraper_config.CrawlerRunConfig(fallback_fetch_function=pipe_scraper_acquisition._fallback_fetch)
+    unarmed_cfg = pipe_scraper_config.CrawlerRunConfig()
+    armed_stamp = pipe_scraper_config._extract_pipe_config_stamp(browser_cfg, armed_cfg, 1.0, 8)
+    unarmed_stamp = pipe_scraper_config._extract_pipe_config_stamp(browser_cfg, unarmed_cfg, 1.0, 8)
     assert armed_stamp["fallback_armed"] is True
     assert unarmed_stamp["fallback_armed"] is False
 
@@ -82,15 +85,15 @@ def test_build_configs_sets_fixed_anti_bot_posture():
     """_build_configs's real BrowserConfig/CrawlerRunConfig carry the milestone's exact
     calibration: stealth + simulate_user + override_navigator on, magic explicitly off,
     consent popups dismissed, pacing/timeout values untouched."""
-    browser_cfg, run_cfg = pipe_scraper._build_configs()
+    browser_cfg, run_cfg = pipe_scraper_config._build_configs()
     assert browser_cfg.enable_stealth is True
     assert run_cfg.simulate_user is True
     assert run_cfg.override_navigator is True
     assert run_cfg.magic is False
     assert run_cfg.remove_consent_popups is True
     # Unchanged pacing/timeout values — no extraction-side settings added
-    assert run_cfg.page_timeout == pipe_scraper.PAGE_TIMEOUT_MS
-    assert run_cfg.delay_before_return_html == pipe_scraper.DELAY_BEFORE_RETURN_HTML
+    assert run_cfg.page_timeout == pipe_scraper_constants.PAGE_TIMEOUT_MS
+    assert run_cfg.delay_before_return_html == pipe_scraper_constants.DELAY_BEFORE_RETURN_HTML
     assert run_cfg.markdown_generator.content_filter is None
 
 
@@ -99,8 +102,8 @@ def test_build_configs_wires_fallback_fetch_function():
     _fallback_fetch callable (identity check), so crawl4ai's own internal invocation
     (async_webcrawler.py: getattr(config, 'fallback_fetch_function', None)) resolves to it —
     proving path (a) is actually armed, not just that some truthy value was set."""
-    _, run_cfg = pipe_scraper._build_configs()
-    assert run_cfg.fallback_fetch_function is pipe_scraper._fallback_fetch
+    _, run_cfg = pipe_scraper_config._build_configs()
+    assert run_cfg.fallback_fetch_function is pipe_scraper_acquisition._fallback_fetch
 
 
 @pytest.mark.asyncio
@@ -117,7 +120,7 @@ async def test_build_configs_produces_live_stealth_adapter():
     from crawl4ai.async_crawler_strategy import AsyncPlaywrightCrawlerStrategy
     from playwright_stealth import Stealth
 
-    browser_cfg, _ = pipe_scraper._build_configs()
+    browser_cfg, _ = pipe_scraper_config._build_configs()
     strategy = AsyncPlaywrightCrawlerStrategy(browser_config=browser_cfg)
 
     # use_undetected resolves False (default PlaywrightAdapter, pipe_scraper passes no adapter) —
@@ -130,11 +133,11 @@ async def test_build_configs_produces_live_stealth_adapter():
 
 def test_extract_pipe_config_stamp_carries_empty_threshold_off_the_constant():
     """empty_threshold_bytes is read off the module constant, not a re-declared literal."""
-    browser_cfg = pipe_scraper.BrowserConfig(headless=True, verbose=False)
-    run_cfg = pipe_scraper.CrawlerRunConfig()
-    stamp = pipe_scraper._extract_pipe_config_stamp(browser_cfg, run_cfg, download_delay=1.0,
-                                                       concurrency_per_domain=8)
-    assert stamp["empty_threshold_bytes"] == pipe_scraper.EMPTY_THRESHOLD_BYTES
+    browser_cfg = pipe_scraper_config.BrowserConfig(headless=True, verbose=False)
+    run_cfg = pipe_scraper_config.CrawlerRunConfig()
+    stamp = pipe_scraper_config._extract_pipe_config_stamp(browser_cfg, run_cfg, download_delay=1.0,
+                                                             concurrency_per_domain=8)
+    assert stamp["empty_threshold_bytes"] == pipe_scraper_constants.EMPTY_THRESHOLD_BYTES
 
 
 # ---------------------------------------------------------------------------
@@ -354,9 +357,9 @@ class _FakeCurlSession:
 
 
 def test_fallback_fetch_returns_html_on_success(monkeypatch):
-    monkeypatch.setattr(pipe_scraper, "AsyncSession",
+    monkeypatch.setattr(pipe_scraper_acquisition, "AsyncSession",
                          lambda **kw: _FakeCurlSession(response=_FakeCurlResponse(200, "<html>real content</html>")))
-    html = asyncio.run(pipe_scraper._fallback_fetch("https://x.test"))
+    html = asyncio.run(pipe_scraper_acquisition._fallback_fetch("https://x.test"))
     assert html == "<html>real content</html>"
 
 
@@ -364,27 +367,27 @@ def test_fallback_fetch_returns_none_on_non_200(monkeypatch):
     """A curl-side block (403/429/etc, possibly with a block-page body) must NOT be returned as
     if it were a rescue — crawl4ai forces status_code=200 on any non-empty fallback return, so
     passing through a block page here would fake a success."""
-    monkeypatch.setattr(pipe_scraper, "AsyncSession",
+    monkeypatch.setattr(pipe_scraper_acquisition, "AsyncSession",
                          lambda **kw: _FakeCurlSession(response=_FakeCurlResponse(403, "<html>blocked</html>")))
-    html = asyncio.run(pipe_scraper._fallback_fetch("https://x.test"))
+    html = asyncio.run(pipe_scraper_acquisition._fallback_fetch("https://x.test"))
     assert html is None
 
 
 def test_fallback_fetch_returns_none_on_exception(monkeypatch):
     """Fail-soft: a connection error must not propagate — degrades to None."""
-    monkeypatch.setattr(pipe_scraper, "AsyncSession",
+    monkeypatch.setattr(pipe_scraper_acquisition, "AsyncSession",
                          lambda **kw: _FakeCurlSession(exc=ConnectionError("connection refused")))
-    html = asyncio.run(pipe_scraper._fallback_fetch("https://x.test"))
+    html = asyncio.run(pipe_scraper_acquisition._fallback_fetch("https://x.test"))
     assert html is None
 
 
 def test_fallback_fetch_respects_timeout(monkeypatch):
     """A hanging fetch is cut off by the outer asyncio.wait_for bound, not left to run indefinitely."""
-    monkeypatch.setattr(pipe_scraper, "FALLBACK_FETCH_TIMEOUT_S", 0.05)
-    monkeypatch.setattr(pipe_scraper, "AsyncSession",
+    monkeypatch.setattr(pipe_scraper_acquisition, "FALLBACK_FETCH_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(pipe_scraper_acquisition, "AsyncSession",
                          lambda **kw: _FakeCurlSession(response=_FakeCurlResponse(200, "x"), delay=5))
     t0 = time_module.monotonic()
-    html = asyncio.run(pipe_scraper._fallback_fetch("https://x.test"))
+    html = asyncio.run(pipe_scraper_acquisition._fallback_fetch("https://x.test"))
     elapsed = time_module.monotonic() - t0
     assert html is None
     assert elapsed < 1.0, f"fallback fetch took {elapsed}s — timeout bound did not fire"
@@ -461,7 +464,7 @@ async def test_own_fallback_rescue_fires_from_scrape_one_except_block(tmp_path, 
             "<html><body>curl_cffi rescued this page — real content, long enough to pass the empty threshold</body></html>",
             url=url,
         )
-    monkeypatch.setattr(pipe_scraper, "_curl_cffi_get", _fake_curl_get)
+    monkeypatch.setattr(pipe_scraper_acquisition, "_curl_cffi_get", _fake_curl_get)
 
     output_dir = tmp_path / "out"
     output_dir.mkdir()
@@ -470,7 +473,7 @@ async def test_own_fallback_rescue_fires_from_scrape_one_except_block(tmp_path, 
 
     assert results[0]["outcome"] == "ok"
     assert results[0]["status_code"] == 200
-    assert (output_dir / pipe_scraper._url_to_filename("https://x.test/a")).exists()
+    assert (output_dir / pipe_scraper_acquisition._url_to_filename("https://x.test/a")).exists()
 
     records = [json.loads(l) for l in log_file.read_text(encoding="utf-8").splitlines()]
     assert len(records) == 1
@@ -505,7 +508,7 @@ async def test_own_fallback_rescue_survives_bracket_before_first_slash(tmp_path,
 
     async def _fake_curl_get(url):
         return _FakeCurlResponse(200, html, url=url)
-    monkeypatch.setattr(pipe_scraper, "_curl_cffi_get", _fake_curl_get)
+    monkeypatch.setattr(pipe_scraper_acquisition, "_curl_cffi_get", _fake_curl_get)
 
     output_dir = tmp_path / "out"
     output_dir.mkdir()
@@ -528,7 +531,7 @@ async def test_own_fallback_rescue_all_failed_when_curl_also_fails(tmp_path, mon
 
     async def _fake_curl_get_fails(url):
         return None
-    monkeypatch.setattr(pipe_scraper, "_curl_cffi_get", _fake_curl_get_fails)
+    monkeypatch.setattr(pipe_scraper_acquisition, "_curl_cffi_get", _fake_curl_get_fails)
 
     output_dir = tmp_path / "out"
     output_dir.mkdir()
@@ -591,7 +594,7 @@ async def test_crawl4ai_own_fallback_surfaces_in_log_distinctly_from_pipe_fallba
 
 # ---------------------------------------------------------------------------
 # landed_url on the plain success route, and on crawl4ai's own fallback route (path a, still null
-# — see below and _landed_url_from_result's comment). No same_target verdict is computed anywhere
+# — see below and pipe_scraper_acquisition._landed_url_from_result's comment). No same_target verdict is computed anywhere
 # in this module (milestone 5: removed — an agent reading a record has both "url" and "landed_url"
 # and compares them itself).
 # ---------------------------------------------------------------------------
@@ -691,7 +694,7 @@ async def test_own_fallback_rescue_records_real_landed_url_on_redirect(tmp_path,
             "<html><body>rescued content, long enough to clear the empty threshold easily</body></html>",
             url="https://platform.claude.com/docs/en/api/overview",
         )
-    monkeypatch.setattr(pipe_scraper, "_curl_cffi_get", _fake_curl_get)
+    monkeypatch.setattr(pipe_scraper_acquisition, "_curl_cffi_get", _fake_curl_get)
 
     output_dir = tmp_path / "out"
     output_dir.mkdir()
@@ -732,7 +735,7 @@ async def test_own_fallback_rescue_no_cross_contamination_across_concurrent_urls
             "<html><body>rescued content, long enough to clear the empty threshold easily</body></html>",
             url=landed_by_request[url],
         )
-    monkeypatch.setattr(pipe_scraper, "_curl_cffi_get", _fake_curl_get)
+    monkeypatch.setattr(pipe_scraper_acquisition, "_curl_cffi_get", _fake_curl_get)
 
     output_dir = tmp_path / "out"
     output_dir.mkdir()
@@ -749,7 +752,7 @@ async def test_own_fallback_rescue_no_cross_contamination_across_concurrent_urls
 # ---------------------------------------------------------------------------
 # Engine switch — milestone 3 of the camoufox_lane area: a per-RUN choice between the chromium
 # engine (default, unchanged) and the camoufox engine (try_scrape_camoufox), never per-URL, never
-# auto-selected. pipe_scraper.try_scrape_camoufox is faked at the module boundary (same convention
+# auto-selected. pipe_scraper_acquisition.try_scrape_camoufox is faked at the module boundary (same convention
 # as camoufox_scrape's own tests faking AsyncCamoufox) — no real browser launched here either.
 # ---------------------------------------------------------------------------
 
@@ -767,8 +770,8 @@ def test_camoufox_concurrency_default_is_conservative():
     """No measurement exists yet for how many concurrent Camoufox instances this machine
     tolerates — the default must be the most conservative value (fully serialized), unlike the
     chromium engine's measured/validated 8."""
-    assert pipe_scraper.CAMOUFOX_CONCURRENCY_PER_DOMAIN == 1
-    assert pipe_scraper.CAMOUFOX_CONCURRENCY_PER_DOMAIN < pipe_scraper.CONCURRENCY_PER_DOMAIN
+    assert pipe_scraper_constants.CAMOUFOX_CONCURRENCY_PER_DOMAIN == 1
+    assert pipe_scraper_constants.CAMOUFOX_CONCURRENCY_PER_DOMAIN < pipe_scraper_constants.CONCURRENCY_PER_DOMAIN
 
 
 @pytest.mark.asyncio
@@ -783,7 +786,7 @@ async def test_scrape_all_default_engine_is_chromium_and_unchanged(tmp_path, mon
     async def _fake_try_scrape_camoufox(url, block_images=False):
         called.append(url)
         return "should never be reached", _camoufox_meta()
-    monkeypatch.setattr(pipe_scraper, "try_scrape_camoufox", _fake_try_scrape_camoufox)
+    monkeypatch.setattr(pipe_scraper_acquisition, "try_scrape_camoufox", _fake_try_scrape_camoufox)
 
     output_dir = tmp_path / "out"
     output_dir.mkdir()
@@ -811,7 +814,7 @@ async def test_scrape_all_camoufox_engine_dispatches_to_try_scrape_camoufox(tmp_
     async def _fake_try_scrape_camoufox(url, block_images=False):
         called.append((url, block_images))
         return "# real markdown, deliberately padded well past the 100-byte empty threshold" * 2, _camoufox_meta()
-    monkeypatch.setattr(pipe_scraper, "try_scrape_camoufox", _fake_try_scrape_camoufox)
+    monkeypatch.setattr(pipe_scraper_acquisition, "try_scrape_camoufox", _fake_try_scrape_camoufox)
 
     output_dir = tmp_path / "out"
     output_dir.mkdir()
@@ -822,7 +825,7 @@ async def test_scrape_all_camoufox_engine_dispatches_to_try_scrape_camoufox(tmp_
 
     assert called == [("https://x.test/a", True)]
     assert results[0]["outcome"] == "ok"
-    assert (output_dir / pipe_scraper._url_to_filename("https://x.test/a")).exists()
+    assert (output_dir / pipe_scraper_acquisition._url_to_filename("https://x.test/a")).exists()
 
 
 @pytest.mark.asyncio
@@ -837,7 +840,7 @@ async def test_scrape_all_camoufox_default_block_images_is_false(tmp_path, monke
     async def _fake_try_scrape_camoufox(url, block_images=False):
         called.append((url, block_images))
         return "# real markdown, deliberately padded well past the 100-byte empty threshold" * 2, _camoufox_meta()
-    monkeypatch.setattr(pipe_scraper, "try_scrape_camoufox", _fake_try_scrape_camoufox)
+    monkeypatch.setattr(pipe_scraper_acquisition, "try_scrape_camoufox", _fake_try_scrape_camoufox)
 
     output_dir = tmp_path / "out"
     output_dir.mkdir()
@@ -860,7 +863,7 @@ async def test_scrape_all_camoufox_engine_resolves_own_concurrency_default(tmp_p
 
     async def _fake_try_scrape_camoufox(url, block_images=False):
         return "# content", _camoufox_meta()
-    monkeypatch.setattr(pipe_scraper, "try_scrape_camoufox", _fake_try_scrape_camoufox)
+    monkeypatch.setattr(pipe_scraper_acquisition, "try_scrape_camoufox", _fake_try_scrape_camoufox)
 
     output_dir = tmp_path / "out"
     output_dir.mkdir()
@@ -888,7 +891,7 @@ async def test_scrape_all_camoufox_record_shape_engine_specific_fields(tmp_path,
             content_is_raw_html=True, markdown_conversion_error="Invalid IPv6 URL",
             landed_url="https://landed.test/a",
         )
-    monkeypatch.setattr(pipe_scraper, "try_scrape_camoufox", _fake_try_scrape_camoufox)
+    monkeypatch.setattr(pipe_scraper_acquisition, "try_scrape_camoufox", _fake_try_scrape_camoufox)
 
     output_dir = tmp_path / "out"
     output_dir.mkdir()
@@ -939,7 +942,7 @@ async def test_scrape_all_camoufox_acquisition_error_maps_to_error_outcome(tmp_p
     async def _fake_try_scrape_camoufox(url, block_images=False):
         return "", _camoufox_meta(acquisition_error="browser_missing", status_code=None,
                                    landed_url=None)
-    monkeypatch.setattr(pipe_scraper, "try_scrape_camoufox", _fake_try_scrape_camoufox)
+    monkeypatch.setattr(pipe_scraper_acquisition, "try_scrape_camoufox", _fake_try_scrape_camoufox)
 
     output_dir = tmp_path / "out"
     output_dir.mkdir()
