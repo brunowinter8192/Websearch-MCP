@@ -27,7 +27,7 @@ pipe_scraper: URL list in → per-domain paced raw crawl → one `.md` per URL +
 **Called by:** `crawl_site_workflow` (CLI entry); capture-and-index workflow.
 **Calls out:** `crawl4ai` (AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, UndetectedAdapter, AsyncPlaywrightCrawlerStrategy, DefaultMarkdownGenerator, SemaphoreDispatcher); `src.scraper.scrape_url.is_garbage_content`.
 
-### pipe_scraper.py (124 LOC) — entry point
+### pipe_scraper.py (114 LOC) — entry point
 
 **Purpose:** Entry point + orchestrator for the capture-pipeline scrape step. CLI (`python -m src.crawler.pipe_scraper`): `--url-file` + `--output-dir` (both required), `--download-delay` (1.0), `--concurrency-per-domain` (default resolved per-engine when omitted — 8 chromium / 1 camoufox), `--engine {chromium,camoufox}` (default chromium), `--block-images`/`--no-block-images` (camoufox only, default off). `scrape_urls_workflow` (orchestrator) delegates to `_scrape_all`, which resolves the engine's default concurrency, builds a `run_id`/`config_hash`/`config` run context, and dispatches per-RUN (never per-URL, never auto-selected) to one of two engines: CHROMIUM (default, unchanged) shares one `AsyncWebCrawler` across all in-flight requests and calls `pipe_scraper_acquisition._scrape_one` per URL, with one upfront `pipe_scraper_config._extract_pipe_config_stamp` for the whole run; CAMOUFOX calls `pipe_scraper_acquisition._scrape_one_camoufox` per URL (own fresh browser launch/teardown per call, no shared crawler, no upfront config object — each URL's own record reads config off that call's own meta). `block_images` is only meaningful on the camoufox engine (chromium's `_build_configs()` has no such param); `False` by default, unified with the ad-hoc lane's own default (`src/scraper/DOCS.md`'s own Gotcha carries that history).
 **Reads:** URL list from `--url-file` or caller-supplied list.
@@ -35,7 +35,7 @@ pipe_scraper: URL list in → per-domain paced raw crawl → one `.md` per URL +
 **Called by:** capture-and-index skill Scrape step; importable as `scrape_urls_workflow()`.
 **Calls out:** `crawl4ai` (AsyncWebCrawler); `src.scraper.scrape_url` (hash_config); `pipe_scraper_constants.py`, `pipe_scraper_config.py`, `pipe_scraper_acquisition.py`, `pipe_scraper_report.py` (all below).
 
-### pipe_scraper_constants.py (12 LOC)
+### pipe_scraper_constants.py (9 LOC)
 
 **Purpose:** Pacing/timeout/threshold constants shared by 3+ of pipe_scraper's sibling modules (`DOWNLOAD_DELAY`, `CONCURRENCY_PER_DOMAIN`, `CAMOUFOX_CONCURRENCY_PER_DOMAIN`, `PAGE_TIMEOUT_MS`, `DELAY_BEFORE_RETURN_HTML`, `EMPTY_THRESHOLD_BYTES`, `FALLBACK_FETCH_TIMEOUT_S`) — full sourced rationale for each value lives in this file's own Purpose/Gotchas entries below, not restated per-constant.
 **Called by:** `pipe_scraper.py`, `pipe_scraper_config.py`, `pipe_scraper_acquisition.py`.
@@ -47,13 +47,13 @@ pipe_scraper: URL list in → per-domain paced raw crawl → one `.md` per URL +
 **Called by:** `pipe_scraper_acquisition.py`.
 **Calls out:** none (stdlib only).
 
-### pipe_scraper_config.py (63 LOC)
+### pipe_scraper_config.py (56 LOC)
 
 **Purpose:** `_build_configs()` (no params — the browser/run config does NOT depend on pacing values, only `_extract_pipe_config_stamp` does) sets a fixed anti-bot posture for the chromium engine, optimized purely for reachability (not extraction quality — no content filter/`preserve_tags`, that's the Cleanup-step LLM's job per the capture skill): `enable_stealth=True` (StealthAdapter, verified live against crawl4ai 0.9.2 + playwright-stealth 2.0.3, reachable because this module passes no custom adapter so `use_undetected` resolves False), `simulate_user=True` + `override_navigator=True` (mouse/scroll + navigator-override, taken individually), `magic=False` EXPLICITLY (magic would ALSO randomize the user-agent via `ValidUAGenerator` — 8 different UAs from one IP at `CONCURRENCY_PER_DOMAIN=8`, plus a UA/Chromium-version mismatch signal — rejected, not an oversight, see Gotchas), `remove_consent_popups=True` (an un-dismissed consent wall is a LOST page here, since the capture skill deletes confirmed block pages rather than cleaning them — a reachability problem, not the quality-tuning role the same switch plays in `scrape_url.py`). `UndetectedAdapter` is NOT used (crawl4ai issue #1500: crashes above concurrency 1, incompatible with `CONCURRENCY_PER_DOMAIN=8`). Wires `pipe_scraper_acquisition._fallback_fetch` as `fallback_fetch_function` (path a — see that module's entry). `_extract_pipe_config_stamp` reads the pacing/browser config actually in effect off the real constructed objects + pacing values passed in, computed once per run in `pipe_scraper._scrape_all`, not re-derived per URL — also stamps `fallback_armed` (whether path a is wired).
 **Called by:** `pipe_scraper.py` (`_scrape_all`).
 **Calls out:** `crawl4ai` (BrowserConfig, CrawlerRunConfig, CacheMode, DefaultMarkdownGenerator); `pipe_scraper_acquisition.py` (`_fallback_fetch`); `pipe_scraper_constants.py`.
 
-### pipe_scraper_acquisition.py (189 LOC)
+### pipe_scraper_acquisition.py (172 LOC)
 
 **Purpose:** Per-URL engine executors for both engines, plus the chromium engine's curl_cffi fallback routes (merged into one module — `_own_fallback_rescue` is called directly from `_scrape_one`'s except block and both need `_url_to_filename`, a real bidirectional coupling, not just a naming choice). Two independent fallback-acquisition paths for when the browser is the weaker client (crossref.org evidence: 0/23 in a capture run, empty at the ~15s page-load ceiling with no HTTP status, vs plain curl returning HTTP 200/79274 bytes in 7.2s), both built on `_curl_cffi_get` (`curl_cffi.requests.AsyncSession(impersonate="chrome")`, bounded by `FALLBACK_FETCH_TIMEOUT_S=15.0` + an outer `asyncio.wait_for`, fail-soft — returns the raw curl_cffi `Response` or `None`, no shared/module state, safe under `asyncio.gather` over hundreds of concurrent URLs):
 - **Path (a):** `_fallback_fetch` (thin wrapper over `_curl_cffi_get`, extracting `.text` after the `status_code==200` gate — never lets a curl-side block page masquerade as a rescue) is wired as `CrawlerRunConfig.fallback_fetch_function` by `pipe_scraper_config._build_configs` — crawl4ai's own mechanism, fires when the browser returns a non-exception result `is_blocked()` flags. `_fallback_fetch`'s signature (`str | None`) is a CONTRACT with crawl4ai — cannot be changed to carry extra data (e.g. the landed URL) without breaking that wiring.
@@ -67,7 +67,7 @@ pipe_scraper: URL list in → per-domain paced raw crawl → one `.md` per URL +
 **Called by:** `pipe_scraper.py` (`_scrape_all`).
 **Calls out:** `crawl4ai` (AsyncWebCrawler, CrawlerRunConfig); `curl_cffi.requests` (AsyncSession); `src.scraper.scrape_url` (extract_crawl4ai_diagnosis); `src.scraper.camoufox_scrape` (try_scrape_camoufox); `pipe_scraper_pacing.py`; `pipe_scraper_records.py`; `pipe_scraper_constants.py`.
 
-### pipe_scraper_records.py (46 LOC)
+### pipe_scraper_records.py (41 LOC)
 
 **Purpose:** Assembles and writes one JSONL record per URL via `pipe_scrape_logger.log_pipe_scrape` — `_log_pipe_record` for the chromium engine, `_log_pipe_camoufox_record` for the camoufox engine (siblings, not one shared function with extra optional params: the crawl4ai-own-fallback/pipe-own-rescue fields are chromium-lane machinery that never runs on the camoufox engine at all).
 **Called by:** `pipe_scraper_acquisition.py` (`_scrape_one`, `_scrape_one_camoufox`).
