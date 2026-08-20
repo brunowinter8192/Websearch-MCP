@@ -150,9 +150,29 @@ def _extract_frontier_links(links: list, seed_netloc: str, include_pats: list,
     return new_links
 
 
+# Classify one batch's fetch results, collect found URLs/latencies, and expand the frontier in place
+def _process_batch_results(batch: list, results: list, found: list, page_latencies: list,
+                           visited: set, frontier: deque, seed_netloc: str,
+                           include_pats: list, exclude_pats: list, max_depth: int) -> None:
+    for (url, depth), (status, links, latency_ms) in zip(batch, results):
+        page_latencies.append(latency_ms)
+        if status == 429:
+            continue
+        if status is not None and status >= 400:
+            logger.debug("HTTP %d on %s", status, url)
+            continue
+        found.append(url)
+        logger.debug("[%3d] %s (%dms)", len(found), url, latency_ms)
+        if depth >= max_depth:
+            continue
+        for norm, next_depth in _extract_frontier_links(
+            links, seed_netloc, include_pats, exclude_pats, visited, depth
+        ):
+            visited.add(norm)
+            frontier.append((norm, next_depth))
+
+
 # Playwright-per-page BFS: render each page, extract links.internal from post-JS DOM
-# Returns (found_urls, stats) where stats has stop_reason, four_two_nine_count, avg_latency_ms
-# stop_reason: "frontier_exhausted" | "max_pages_reached" | "429_persistent"
 async def discover_urls_playwright(seed: str, include_patterns: str | None,
                                    exclude_patterns: str | None, max_pages: int,
                                    max_depth: int, delay_s: float, page_timeout_ms: int,
@@ -194,22 +214,8 @@ async def discover_urls_playwright(seed: str, include_patterns: str | None,
             if batch_stop:
                 stop_reason = batch_stop
 
-            for (url, depth), (status, links, latency_ms) in zip(batch, results):
-                page_latencies.append(latency_ms)
-                if status == 429:
-                    continue
-                if status is not None and status >= 400:
-                    logger.debug("HTTP %d on %s", status, url)
-                    continue
-                found.append(url)
-                logger.debug("[%3d] %s (%dms)", len(found), url, latency_ms)
-                if depth >= max_depth:
-                    continue
-                for norm, next_depth in _extract_frontier_links(
-                    links, seed_netloc, include_pats, exclude_pats, visited, depth
-                ):
-                    visited.add(norm)
-                    frontier.append((norm, next_depth))
+            _process_batch_results(batch, results, found, page_latencies, visited, frontier,
+                                    seed_netloc, include_pats, exclude_pats, max_depth)
 
     if stop_reason is None:
         stop_reason = "frontier_exhausted" if not frontier else "max_pages_reached"
