@@ -4,10 +4,7 @@ from src.crawler.pipe_scrape_logger import log_pipe_scrape
 
 # FUNCTIONS
 
-# Assemble and write one JSONL record for a single URL's CHROMIUM-engine outcome — fail-soft via
-# log_pipe_scrape. See _log_pipe_camoufox_record for the camoufox engine's own record shape
-# (deliberately not this same function with extra optional params — full rationale in
-# src/crawler/DOCS.md).
+# Assemble and write one JSONL record for a single URL's CHROMIUM-engine outcome, fail-soft via log_pipe_scrape
 def _log_pipe_record(
     run_ctx: dict, ts: str, url: str, domain: str, outcome: str,
     status: int | None, byte_count: int, wall_ms: int, diagnosis: dict,
@@ -28,9 +25,7 @@ def _log_pipe_record(
         "config_hash": run_ctx["config_hash"], "config": run_ctx["config"],
     })
 
-# Assemble and write one JSONL record for a single URL's CAMOUFOX-engine outcome — sibling to
-# _log_pipe_record, not shared: no crawl4ai-own-fallback/pipe-own-rescue fields exist on this
-# engine at all. Full rationale in src/crawler/DOCS.md.
+# Assemble and write one JSONL record for a single URL's CAMOUFOX-engine outcome — sibling to _log_pipe_record, not shared
 def _log_pipe_camoufox_record(
     run_ctx: dict, ts: str, url: str, domain: str, outcome: str,
     status: int | None, byte_count: int, wall_ms: int, meta: dict,

@@ -8,7 +8,6 @@ from pathlib import Path
 from crawl4ai import AsyncWebCrawler
 
 # From src/scraper/scrape_url.py: same config-hash algorithm used by the ad-hoc path's log
-# (generic, not path-specific — reused rather than re-implemented)
 from src.scraper.scrape_url import hash_config
 # From src/crawler/pipe_scraper_constants.py: shared pacing constants
 from src.crawler.pipe_scraper_constants import DOWNLOAD_DELAY, CONCURRENCY_PER_DOMAIN, CAMOUFOX_CONCURRENCY_PER_DOMAIN
@@ -21,8 +20,7 @@ from src.crawler.pipe_scraper_report import _domain_from_urls, _write_tmp_report
 
 # ORCHESTRATOR
 
-# Scrape URL list with Scrapy-style per-domain pacing; engine/concurrency-per-domain defaults
-# resolved per-run (see _scrape_all) — write per-URL md files + /tmp report + JSONL log.
+# Scrape URL list with Scrapy-style per-domain pacing — write per-URL md files + /tmp report + JSONL log
 async def scrape_urls_workflow(
     urls: list[str],
     output_dir: Path,
@@ -43,10 +41,7 @@ async def scrape_urls_workflow(
 
 # FUNCTIONS
 
-# Scrape all URLs with per-domain pacing — dispatches to ONE of two engines per RUN (chromium
-# default/unchanged, or camoufox), never per-URL, never auto-selected.
-# concurrency_per_domain=None resolves to the engine's own default here (not in
-# scrape_urls_workflow) so any direct caller of this function gets the same engine-aware default.
+# Scrape all URLs with per-domain pacing, dispatching to ONE of two engines per RUN (never per-URL, never auto-selected)
 async def _scrape_all(
     urls: list[str],
     output_dir: Path,
@@ -96,8 +91,6 @@ if __name__ == '__main__':
     parser.add_argument('--output-dir', required=True, help='Directory to write per-URL markdown files')
     parser.add_argument('--download-delay', type=float, default=DOWNLOAD_DELAY,
                         help=f'Scrapy per-domain base delay in seconds (default: {DOWNLOAD_DELAY}); actual jitter = uniform(0.5×, 1.5×)')
-    # No literal default here (None) — scrape_urls_workflow/_scrape_all resolve the ENGINE'S OWN
-    # default (8 chromium, 1 camoufox) when this flag is absent; an explicit value always wins.
     parser.add_argument('--concurrency-per-domain', type=int, default=None,
                          help=f'Per-domain in-flight request cap (default: {CONCURRENCY_PER_DOMAIN} '
                               f'chromium / {CAMOUFOX_CONCURRENCY_PER_DOMAIN} camoufox — resolved by --engine when omitted)')
@@ -105,9 +98,6 @@ if __name__ == '__main__':
                          help='Acquisition engine, chosen per RUN not per URL: "chromium" (crawl4ai, '
                               'default, current behavior) or "camoufox" (Playwright-Firefox, a '
                               'deliberate second lane — not a fallback of chromium)')
-    # default=False on THIS action is what actually applies when the flag is omitted — argparse
-    # resolves a shared dest's default from the first action added that lacks a namespace value
-    # yet, so this default (not --no-block-images's) governs omission.
     parser.add_argument('--block-images', dest='block_images', action='store_true', default=False,
                          help='camoufox engine only: block image requests (default: off — stealth '
                               'wins over bandwidth; Camoufox\'s own LeakWarning documents '

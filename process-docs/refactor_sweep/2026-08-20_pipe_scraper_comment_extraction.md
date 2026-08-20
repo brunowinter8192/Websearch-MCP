@@ -81,6 +81,35 @@ substance).
   on" — that comment is now deleted, so the reference was repointed to the `pipe_scraper_hardening`
   area instead of a dangling in-file pointer.
 
+## Residual pass (same session, post-review)
+
+First pass left non-conforming comments that weren't full derivation blocks: multi-line function
+headers (2-5 lines, should be one) on `_curl_cffi_get`, `_fallback_fetch`, `_own_fallback_rescue`,
+`_landed_url_from_result`, `_log_pipe_record`/`_log_pipe_camoufox_record`, `_scrape_one`,
+`_scrape_one_camoufox`, `_build_configs`, `_extract_pipe_config_stamp`,
+`scrape_urls_workflow`/`_scrape_all`; and full comment lines inside function bodies (the
+`fallback_armed` comment inside `_extract_pipe_config_stamp`'s dict, the ts-stamp comment in
+`_scrape_one`, the `acquisition_error` comment in `_scrape_one_camoufox`, two argparse comments in
+`pipe_scraper.py`'s `__main__` block, and `pipe_scraper_constants.py`'s 3-line preamble). All
+headers condensed to one line. Body comments triaged against `src/crawler/DOCS.md` and
+`pipe_scrape_logger.py`'s schema comment specifically (narrower surface than the first pass, since
+this is cleanup of the first pass's own leftovers, not a fresh sweep):
+
+- `fallback_armed` comment → deleted, verbatim-covered by `pipe_scrape_logger.py`'s schema comment.
+- ts-stamp comment in `_scrape_one` → deleted, verbatim-covered by the existing `src/crawler/DOCS.md`
+  Gotchas bullet on `ts`/`_gate_domain` ordering.
+- argparse `--concurrency-per-domain` comment → deleted; substance (engine-conditional default) was
+  already in `src/crawler/DOCS.md`'s `pipe_scraper.py` Purpose paragraph, and the remainder
+  (explicit value always wins) is ordinary argparse `default=` behavior, not a project-specific fact.
+- `acquisition_error`-checked-first reasoning in `_scrape_one_camoufox` → genuinely NOT covered by
+  `src/crawler/DOCS.md` or the schema comment — added to `src/crawler/DOCS.md`'s
+  `pipe_scraper_acquisition.py` Engine-switch paragraph before deleting the comment.
+- argparse `--block-images`/`--no-block-images` shared-`dest` resolution comment → genuinely NOT
+  covered — added as a new `src/crawler/DOCS.md` Gotchas bullet (argparse resolves a shared dest's
+  default from the FIRST `add_argument` call added, a real re-ordering trap) before deleting.
+- `pipe_scraper_constants.py`'s 3-line preamble → deleted outright; `src/crawler/DOCS.md`'s own
+  constants-module entry already carries the "rationale lives in DOCS.md, not per-constant" pointer.
+
 ## Verification
 
 `tests/test_pipe_scraper.py` re-pointed to the new module locations for every moved symbol
