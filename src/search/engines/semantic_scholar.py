@@ -12,7 +12,6 @@ from src.search import status as S
 
 logger = logging.getLogger(__name__)
 
-# NOTE: &sort=... URL param causes HTTP 400/405 from SS backend — omit entirely
 SEARCH_URL = "https://www.semanticscholar.org/search?q={}"
 ERROR_TEST_ID = "error-message-block"
 MAX_WAIT_CYCLES = 5
@@ -20,7 +19,6 @@ WAIT_INTERVAL = 0.5
 
 _JS_WAIT = "return document.querySelectorAll('div.cl-paper-row').length"
 
-# Detect SS backend error page (400/405 rate-limit or server error — error-message-block test-id)
 _JS_ERROR = "return document.querySelectorAll('[data-test-id=\"error-message-block\"]').length"
 
 _JS_PARSE = """var _n = document.querySelectorAll('div.cl-paper-row');
@@ -42,7 +40,6 @@ if (_btn) { _btn.click(); return true; }
 return false;
 """
 
-# Uniform 4 req/min across all engines (Google-Baseline, normalized 2026-05-04)
 _limiters["semantic_scholar"] = RateLimiter(max_requests=4, window_seconds=60)
 
 
@@ -148,12 +145,10 @@ async def _parse_results(tab, max_results: int) -> list[SearchResult]:
     return results
 
 
-# Diagnose why SS returned empty after _wait_for_results failed; tab is still open
-# Priority: BLOCK → CONSENT → CONCURRENT_RACE → NO_CONTAINER
+# Diagnose why SS returned empty after _wait_for_results failed (priority: BLOCK -> CONSENT -> CONCURRENT_RACE -> NO_CONTAINER)
 async def _diagnose_empty(tab) -> str:
     if await _has_error_page(tab):
         return S.EMPTY_BLOCK
-    # CONSENT: check if accept button is still visible after _handle_consent attempt
     consent_raw = await tab.execute_script(_JS_CONSENT)
     if _extract_value(consent_raw):
         return S.EMPTY_CONSENT

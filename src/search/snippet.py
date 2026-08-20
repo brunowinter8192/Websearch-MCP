@@ -2,7 +2,7 @@
 import html
 import re
 
-MAX_SNIPPET_LEN = 500  # hard cap on displayed snippet length
+MAX_SNIPPET_LEN = 500
 
 
 # FUNCTIONS
@@ -49,15 +49,12 @@ def _truncate(text: str, max_len: int) -> str:
         return text
     sub  = text[:max_len]
     half = max_len // 2
-    # Last ". " boundary within [half, max_len-1]
     idx = sub.rfind(". ")
     if idx >= half:
         return text[:idx + 1]
-    # Last word boundary
     idx = sub.rfind(" ")
     if idx >= 0:
         return text[:idx] + "…"
-    # Hard cut
     return text[:max_len] + "…"
 
 

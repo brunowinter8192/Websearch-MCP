@@ -25,10 +25,8 @@ _HEADERS = {
     "Accept-Encoding": "gzip, deflate, br",
 }
 
-# CONSENT=YES+ bypasses Google's cookie-consent gate without browser interaction
 _COOKIES = {"CONSENT": "YES+"}
 
-# 6.0s — Scholar HTTP latency 0.7-5s range; 3.6s default would produce TIMEOUT_HTTPX
 _TIMEOUT = 6.0
 
 # ORCHESTRATOR
@@ -43,7 +41,6 @@ class ScholarEngine(BaseEngine):
         url = _build_url(query, language, max_results)
         r = await _fetch(url)
 
-        # 30x redirect → /sorry/ is the concurrent-CAPTCHA signal
         if r.status_code in (301, 302, 303, 307, 308):
             location = r.headers.get("Location", "")
             logger.warning("Scholar redirect → %s", location)

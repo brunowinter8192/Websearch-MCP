@@ -8,7 +8,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_MARKER_MAX_AGE_SECS = 3600  # 1-hour fast-path window
+_MARKER_MAX_AGE_SECS = 3600
 
 
 # FUNCTIONS

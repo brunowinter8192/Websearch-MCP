@@ -13,14 +13,12 @@ logger = logging.getLogger(__name__)
 
 API_URL = "https://api.openalex.org/works"
 
-# Uniform 4 req/min across all engines (Google-Baseline, normalized 2026-05-04)
 _limiters["openalex"] = RateLimiter(max_requests=4, window_seconds=60)
 
 
 # ORCHESTRATOR
 
-# Search OpenAlex academic graph and return structured results
-# Empty-on-success not sub-classified — HTTP API, no DOM-drift/CAPTCHA-page patterns apply
+# Search OpenAlex academic graph and return structured results — HTTP API, no DOM-drift/CAPTCHA patterns
 class OpenAlexEngine(BaseEngine):
     name = "openalex"
 

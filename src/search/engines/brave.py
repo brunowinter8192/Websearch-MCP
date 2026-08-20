@@ -52,14 +52,12 @@ return JSON.stringify({
 });
 """
 
-# Uniform 4 req/min across all engines (Google-Baseline, normalized 2026-05-04)
 _limiters["brave"] = RateLimiter(max_requests=4, window_seconds=60)
 
 
 # ORCHESTRATOR
 
-# Brave web search via pydoll stealth browser — own index, headless; PoW/CAPTCHA degrades
-# gracefully to empty+reason (never an exception) — see dev/search_pipeline/26_brave_probe.py
+# Brave web search via pydoll stealth browser — own index, headless; PoW/CAPTCHA degrades gracefully to empty+reason
 class BraveEngine(BaseEngine):
     name = "brave"
 
@@ -141,8 +139,7 @@ async def _parse_results(tab, max_results: int) -> list[SearchResult]:
     return _build_results(items, max_results)
 
 
-# Classify a diagnosis snapshot into an EMPTY sub-status (pure — no browser access)
-# Priority: PoW/CAPTCHA marker -> CONCURRENT_RACE (page still loading) -> NO_CONTAINER
+# Classify a diagnosis snapshot into an EMPTY sub-status (priority: PoW/CAPTCHA marker -> CONCURRENT_RACE -> NO_CONTAINER)
 def _classify_diagnosis(marker: str | None, pow_link: bool, ready_state: str) -> str:
     if marker or pow_link:
         return S.EMPTY_BLOCK

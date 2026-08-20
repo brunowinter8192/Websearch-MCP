@@ -42,7 +42,6 @@ for (var _i = 0; _i < _cs.length; _i++) {
 return JSON.stringify(_out);
 """
 
-# Uniform 4 req/min across all engines (Google-Baseline, normalized 2026-05-04)
 _limiters["duckduckgo"] = RateLimiter(max_requests=4, window_seconds=60)
 
 
@@ -152,8 +151,7 @@ async def _parse_results(tab, max_results: int) -> list[SearchResult]:
     return results
 
 
-# Day-precision ISO date from the bare '.result__extras__url' date span (e.g. '2026-07-29T18:00:00.0000000')
-# — truncates to YYYY-MM-DD, no invented/kept time component (consistent with lobsters/bing precision)
+# Day-precision ISO date from the bare '.result__extras__url' date span, truncated to YYYY-MM-DD
 def _extract_date(date_raw: str) -> str | None:
     text = (date_raw or "").replace("\xa0", " ").strip()
     date_part = text[:10]
@@ -162,8 +160,7 @@ def _extract_date(date_raw: str) -> str | None:
     return None
 
 
-# Diagnose why DDG returned empty after _wait_for_results failed; tab is still open
-# Priority: BLOCK → CONCURRENT_RACE → NO_CONTAINER (no consent flow for DDG)
+# Diagnose why DDG returned empty after _wait_for_results failed (priority: BLOCK -> CONCURRENT_RACE -> NO_CONTAINER)
 async def _diagnose_empty(tab) -> str:
     captcha_raw = await tab.execute_script(_JS_CAPTCHA)
     if _extract_value(captcha_raw) and int(_extract_value(captcha_raw) or 0) > 0:

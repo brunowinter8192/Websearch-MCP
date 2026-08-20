@@ -55,7 +55,6 @@ return JSON.stringify({
 });
 """
 
-# Uniform 4 req/min across all engines (Google-Baseline, normalized 2026-05-04)
 _limiters["startpage"] = RateLimiter(max_requests=4, window_seconds=60)
 
 
@@ -100,8 +99,7 @@ def _extract_value(result):
         return None
 
 
-# Build the JS snippet that sets #q via the native input setter (React controlled component —
-# plain `.value =` assignment does not update React's internal state) and fires an input event
+# Build the JS snippet that sets #q via the native input setter (React controlled component) and fires an input event
 def _js_set_query(query: str) -> str:
     return f"""
     var inp = document.querySelector('#q');
@@ -111,10 +109,7 @@ def _js_set_query(query: str) -> str:
     """
 
 
-# Drive the real homepage search form to obtain a valid per-session `sc` token; a direct GET to
-# /sp/search?query=... skips this token and silently returns zero results (empirically verified —
-# see dev/search_pipeline/25_startpage_probe.py). form.submit() does NOT work — it bypasses the
-# React submit handler and just reloads the homepage; a real .click() on the search button is required.
+# Drive the real homepage search form to obtain a valid per-session sc token — a direct GET skips it and returns zero results
 async def _submit_search(tab, query: str) -> None:
     await tab.go_to(HOME_URL, timeout=10.0)
     await asyncio.sleep(1.5)
@@ -161,8 +156,7 @@ async def _parse_results(tab, max_results: int) -> list[SearchResult]:
     return _build_results(items, max_results)
 
 
-# Classify a diagnosis snapshot into an EMPTY sub-status (pure — no browser access)
-# Priority: BLOCK marker/iframe-challenge -> CONCURRENT_RACE (page still loading) -> NO_CONTAINER
+# Classify a diagnosis snapshot into an EMPTY sub-status (priority: BLOCK marker/iframe-challenge -> CONCURRENT_RACE -> NO_CONTAINER)
 def _classify_diagnosis(marker: str | None, iframe_challenge: bool, url: str, ready_state: str) -> str:
     if marker or iframe_challenge:
         return S.EMPTY_BLOCK

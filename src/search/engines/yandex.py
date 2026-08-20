@@ -49,14 +49,12 @@ for (var _i = 0; _i < markers.length; _i++) {
 return JSON.stringify({marker: hit, url: window.location.href, ready_state: document.readyState});
 """
 
-# Uniform 4 req/min across all engines (Google-Baseline, normalized 2026-05-04)
 _limiters["yandex"] = RateLimiter(max_requests=4, window_seconds=60)
 
 
 # ORCHESTRATOR
 
-# Yandex web search via pydoll stealth browser — independent index (own crawler, new coverage,
-# not a Google/Bing frontend); SmartCaptcha blocks degrade gracefully to empty+reason
+# Yandex web search via pydoll stealth browser — independent index; SmartCaptcha blocks degrade gracefully to empty+reason
 class YandexEngine(BaseEngine):
     name = "yandex"
 
@@ -66,9 +64,6 @@ class YandexEngine(BaseEngine):
         tab = await new_tab()
         try:
             await tab.go_to(SEARCH_URL.format(query.replace(" ", "+")), timeout=10.0)
-            # Check the URL for a showcaptcha/checkcaptcha redirect BEFORE the result-wait poll —
-            # a blocked query never produces results, so diagnosing only after the poll times out
-            # burns the full ~6-8s wait budget for nothing (empirically observed in the probe).
             current_url = await tab.current_url
             if _is_block_url(current_url):
                 logger.warning("Yandex CAPTCHA redirect detected for: %s", query)
@@ -108,9 +103,7 @@ def _is_block_url(url: str) -> bool:
     return any(marker in lowered for marker in BLOCK_URL_MARKERS)
 
 
-# Yandex's own domain (self-referential cards, video-carousel previews) — not a real external result.
-# Matches on a dot-separated hostname LABEL (e.g. "yandex.com", "video.yandex.com"), not a raw
-# substring check, so a real external domain like "notyandex.com" is never misclassified.
+# Yandex's own domain (self-referential cards) — matches a dot-separated hostname LABEL, not a raw substring
 def _is_self_referential(url: str) -> bool:
     host = urlparse(url).hostname or ""
     return SELF_DOMAIN_LABEL in host.split(".")
@@ -156,8 +149,7 @@ async def _parse_results(tab, max_results: int) -> list[SearchResult]:
     return _build_results(items, max_results)
 
 
-# Classify a diagnosis snapshot into an EMPTY sub-status (pure — no browser access)
-# Priority: block marker -> CONCURRENT_RACE (page still loading) -> NO_CONTAINER
+# Classify a diagnosis snapshot into an EMPTY sub-status (priority: block marker -> CONCURRENT_RACE -> NO_CONTAINER)
 def _classify_diagnosis(marker: str | None, url: str, ready_state: str) -> str:
     if marker or _is_block_url(url):
         return S.EMPTY_BLOCK

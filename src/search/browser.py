@@ -14,23 +14,12 @@ logger = logging.getLogger(__name__)
 
 SESSION_DIR = str(Path.home() / ".websearch" / "browser-session")
 
-# Playwright's own Chromium launch defaults, set on every Chromium it starts (microsoft/playwright
-# issues #33515, #37199, #29399, #34031, #36360, macOS/Linux/Windows alike). The Chromium switch
-# reference describes them as disabling exactly the backgrounding behavior a backgrounded window
-# would otherwise be subject to. In on external evidence, not on our own measurement:
-# dev/browser_posture/01_launch_latency_probe.py's timer-drift test could NOT confirm their effect —
-# the occlusion condition never materialized on that test machine (concurrent real login sessions
-# defeated the window-stacking setup). Applied unconditionally (headed or forced-headless), matching
-# Playwright's own always-on behavior.
 BACKGROUNDING_FLAGS = [
     "--disable-background-timer-throttling",
     "--disable-backgrounding-occluded-windows",
     "--disable-renderer-backgrounding",
 ]
 
-# Obvious falsy spellings for WEBSEARCH_HEADLESS — unset, "", "0", "false", "no", "off" (any case)
-# all mean "off"; anything else means "on". A bare bool(os.environ.get(...)) would treat
-# WEBSEARCH_HEADLESS=0 as truthy (forces headless) — the opposite of what "0" means to whoever set it.
 _FALSY_ENV_VALUES = {"", "0", "false", "no", "off"}
 
 _browser = None
@@ -40,12 +29,7 @@ _init_lock = asyncio.Lock()
 
 # FUNCTIONS
 
-# Launch Chrome headed-but-backgrounded via macOS `open -g` — never steals focus. Proven mechanism
-# (dev/search_pipeline/27_brave_headed_lane_probe.py, dev/browser_posture/_lib.py, exercised against
-# this exact SESSION_DIR in dev/browser_posture/02_parallel_chrome_probe.py). Drops the resolved
-# binary_location (unused; `open -a` targets the app bundle directly). `open -g` returns immediately,
-# so the Popen handed back is the short-lived `open` wrapper, not Chrome — kill_stale_chrome() below
-# is the real teardown, not pydoll's own stop_process().
+# Launch Chrome headed-but-backgrounded via macOS `open -g` — never steals focus
 def _open_background_process_creator(command: list[str]) -> subprocess.Popen:
     args = command[1:]
     open_cmd = ["open", "-g", "-n", "-a", "Google Chrome", "--args", *args]
@@ -55,29 +39,17 @@ def _open_background_process_creator(command: list[str]) -> subprocess.Popen:
 # Build Chrome options with session persistence and anti-detection
 def build_options() -> ChromiumOptions:
     options = ChromiumOptions()
-    # WEBSEARCH_HEADLESS forces headless (debugging, or a machine with no display) — headed,
-    # backgrounded is the default (see get_tab()).
     options.headless = os.environ.get("WEBSEARCH_HEADLESS", "").strip().lower() not in _FALSY_ENV_VALUES
     options.add_argument(f"--user-data-dir={SESSION_DIR}")
     options.block_popups = True
     options.block_notifications = True
 
-    # Anti-detection flags
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.webrtc_leak_protection = True
 
     for flag in BACKGROUNDING_FLAGS:
         options.add_argument(flag)
 
-    # No explicit --window-size: measured on this machine (real screen 1728x1117 CSS px, availHeight
-    # 998), an explicit 1920x1080 gets silently clamped by Chrome to 1728x998 — the requested size is
-    # already a lie about what happens, the same reported-vs-observable contradiction Milestone 2
-    # removed from the JS patches. Chrome's own default (measured here: ~1200x954 outer) is
-    # internally consistent by construction and machine/session-dependent by design, unlike the
-    # removed hardcoded values. Not verified against any engine's viewport-dependent behavior — the
-    # dev probes ran at 900x700, production has never run at a checked, fixed size either way.
-
-    # Browser preferences — make profile look like a real user
     options.browser_preferences = {
         "profile": {
             "exit_type": "Normal",
@@ -128,8 +100,6 @@ async def new_tab():
 
 
 # Kill tab via browser-level Target.closeTarget — works even when the tab's own connection is hung
-# 5s cap on close_target guards against wedged browser channel (Chrome process unresponsive);
-# kill_stale_chrome() remains the nuclear OS-level fallback for that extreme case
 async def kill_tab(tab) -> None:
     global _browser
     target_id = getattr(tab, '_target_id', None)

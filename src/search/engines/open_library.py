@@ -11,14 +11,12 @@ logger = logging.getLogger(__name__)
 
 API_URL = "https://openlibrary.org/search.json"
 
-# Uniform 4 req/min across all engines (Google-Baseline, normalized 2026-05-04)
 _limiters["open_library"] = RateLimiter(max_requests=4, window_seconds=60)
 
 
 # ORCHESTRATOR
 
-# Search Open Library catalog and return structured book results
-# Empty-on-success not sub-classified — HTTP API, no DOM-drift/CAPTCHA-page patterns apply
+# Search Open Library catalog and return structured book results — HTTP API, no DOM-drift/CAPTCHA patterns
 class OpenLibraryEngine(BaseEngine):
     name = "open_library"
 
@@ -34,7 +32,7 @@ class OpenLibraryEngine(BaseEngine):
 # Fetch raw doc items from Open Library search API; returns None on rate-limit
 async def _fetch_results(query: str, limit: int) -> list[dict] | None:
     params: dict = {"q": query, "limit": limit}
-    async with httpx.AsyncClient(timeout=6.0) as client:  # aligned with ENGINE_WATCHDOG_OVERRIDE
+    async with httpx.AsyncClient(timeout=6.0) as client:
         response = await client.get(API_URL, params=params)
     if response.status_code in (429, 403):
         logger.warning("Open Library rate limited: %d", response.status_code)
