@@ -76,7 +76,7 @@ def _url_hash(url: str) -> str:
 # 2 URLs, 6 slots: slots 0-1 dequeue, slots 2-5 race. Both URLs done, n_ok=2.
 def test_1_surplus_slots_race_both_done() -> None:
     from src.news.engine.proxy_riding import rider as rider_mod
-    from src.news.engine.proxy_riding.rider import RiderState, RAW_SUBDIR
+    from src.news.engine.proxy_riding.state import RiderState, RAW_SUBDIR
     from src.news.engine.proxy_riding.cooldown import RidingCooldownManager as PersistentCooldownManager
 
     urls = ["https://cd.com/a", "https://cd.com/b"]
@@ -121,7 +121,7 @@ def test_1_surplus_slots_race_both_done() -> None:
 # 1 URL, 3 slots all racing — first writer wins, n_ok=1, exactly one raw file.
 def test_2_write_exactly_once_per_url() -> None:
     from src.news.engine.proxy_riding import rider as rider_mod
-    from src.news.engine.proxy_riding.rider import RiderState, RAW_SUBDIR
+    from src.news.engine.proxy_riding.state import RiderState, RAW_SUBDIR
     from src.news.engine.proxy_riding.cooldown import RidingCooldownManager as PersistentCooldownManager
 
     url_x = "https://cd.com/x"
@@ -165,7 +165,7 @@ def test_2_write_exactly_once_per_url() -> None:
 # Two sub-cases: (a) stale dequeue skipped without fetch; (b) raced-fail not re-queued.
 def test_3_no_spurious_requeue() -> None:
     from src.news.engine.proxy_riding import rider as rider_mod
-    from src.news.engine.proxy_riding.rider import RiderState, RAW_SUBDIR
+    from src.news.engine.proxy_riding.state import RiderState, RAW_SUBDIR
     from src.news.engine.proxy_riding.cooldown import RidingCooldownManager as PersistentCooldownManager
 
     # Sub-case A: url_x already in done_urls, url_x stale-queued, url_y is the open one.
@@ -254,7 +254,7 @@ def test_3_no_spurious_requeue() -> None:
 # 4 URLs, 4 slots: each slot dequeues one distinct URL. No racing. n_ok=4.
 def test_4_normal_path_no_racing() -> None:
     from src.news.engine.proxy_riding import rider as rider_mod
-    from src.news.engine.proxy_riding.rider import RiderState, RAW_SUBDIR
+    from src.news.engine.proxy_riding.state import RiderState, RAW_SUBDIR
     from src.news.engine.proxy_riding.cooldown import RidingCooldownManager as PersistentCooldownManager
 
     urls = [f"https://cd.com/{i}" for i in range(4)]
@@ -300,7 +300,7 @@ def test_4_normal_path_no_racing() -> None:
 # 1 URL, 1 slot: first fetch fails → requeue → second fetch ok → done exactly once.
 def test_5_fail_before_success_done_once() -> None:
     from src.news.engine.proxy_riding import rider as rider_mod
-    from src.news.engine.proxy_riding.rider import RiderState, RAW_SUBDIR
+    from src.news.engine.proxy_riding.state import RiderState, RAW_SUBDIR
     from src.news.engine.proxy_riding.cooldown import RidingCooldownManager as PersistentCooldownManager
 
     url_x = "https://cd.com/stubborn"
@@ -349,7 +349,8 @@ def test_5_fail_before_success_done_once() -> None:
 # _watchdog must call os._exit(0) and set termination='all-done', NOT return silently.
 def test_6_watchdog_wedge_after_all_resolved() -> None:
     from src.news.engine.proxy_riding import rider as rider_mod
-    from src.news.engine.proxy_riding.rider import RiderState, RAW_SUBDIR, _watchdog
+    from src.news.engine.proxy_riding.state import RiderState, RAW_SUBDIR
+    from src.news.engine.proxy_riding.rider import _watchdog
     from src.news.engine.proxy_riding.cooldown import RidingCooldownManager as PersistentCooldownManager
 
     url_done = "https://cd.com/already-done"
@@ -398,7 +399,8 @@ def test_6_watchdog_wedge_after_all_resolved() -> None:
 # State has all_resolved=True + in_flight=0 → watchdog returns cleanly after the refresh.
 def test_7_watchdog_pool_refresh() -> None:
     from src.news.engine.proxy_riding import rider as rider_mod
-    from src.news.engine.proxy_riding.rider import RiderState, RAW_SUBDIR, _watchdog
+    from src.news.engine.proxy_riding.state import RiderState, RAW_SUBDIR
+    from src.news.engine.proxy_riding.rider import _watchdog
     from src.news.engine.proxy_riding.cooldown import RidingCooldownManager as PersistentCooldownManager
 
     pool_a = [("http", "proxy-a1:1"), ("http", "proxy-a2:2")]

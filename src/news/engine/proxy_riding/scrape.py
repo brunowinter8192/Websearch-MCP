@@ -8,7 +8,9 @@ from pathlib import Path
 
 from src.news.engine.proxy_riding.cooldown import RidingCooldownManager
 from src.news.engine.proxy_pool.pool_loaders import load_backfill_pool
-from src.news.engine.proxy_riding.rider import run_riding_pool, RiderState
+from src.news.engine.proxy_riding.rider import run_riding_pool
+# From state.py: shared riding state shape
+from src.news.engine.proxy_riding.state import RiderState
 
 BROWSER_ELIGIBLE_PROTOS: frozenset[str] = frozenset({"http", "socks5"})
 

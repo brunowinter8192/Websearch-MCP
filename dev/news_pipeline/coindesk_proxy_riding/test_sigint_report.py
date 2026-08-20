@@ -65,7 +65,7 @@ def _run(name: str, fn) -> bool:
 
 # Build a minimal RiderState with two resolved job records so reporter has data.
 def _make_state(tmp_dir: Path) -> object:
-    from src.news.engine.proxy_riding.rider import RiderState, JobRecord, RideRecord
+    from src.news.engine.proxy_riding.state import RiderState, JobRecord, RideRecord
     from src.news.engine.proxy_riding.cooldown import RidingCooldownManager
     from datetime import datetime, timezone
 
@@ -142,7 +142,7 @@ def _make_state(tmp_dir: Path) -> object:
 # _abort_interrupted(SIGINT): report written, exit 130, termination=interrupted.
 def test_abort_interrupted_sigint() -> None:
     from src.news.engine.proxy_riding import rider as rider_mod
-    from src.news.engine.proxy_riding.rider import _abort_interrupted
+    from src.news.engine.proxy_riding.abort import _abort_interrupted
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
@@ -177,7 +177,7 @@ def test_abort_interrupted_sigint() -> None:
 # _abort_interrupted(SIGTERM): exit 143, same files.
 def test_abort_interrupted_sigterm() -> None:
     from src.news.engine.proxy_riding import rider as rider_mod
-    from src.news.engine.proxy_riding.rider import _abort_interrupted
+    from src.news.engine.proxy_riding.abort import _abort_interrupted
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_dir = Path(tmp)
