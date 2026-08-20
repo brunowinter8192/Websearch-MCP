@@ -25,7 +25,7 @@ from src.news.pipeline_support import (
 from src.news.clean_pass import _run_clean_pass
 
 DATA_ROOT = PROJECT_ROOT / "data" / "news"
-SCRAPE_CHUNK_SIZE = 200   # URLs per scrape chunk; controls crash-loss window
+SCRAPE_CHUNK_SIZE = 200
 
 
 # ORCHESTRATOR

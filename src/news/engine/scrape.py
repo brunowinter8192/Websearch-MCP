@@ -12,14 +12,13 @@ from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
 from src.news.platform import ScrapeConfig
 
-# Regwall fraction threshold — raise RegwallGuardError when regwall_count/total >= this
 REGWALL_FAIL_THRESHOLD = 0.20
 
 _RUN_CFG = CrawlerRunConfig(
     cache_mode=CacheMode.BYPASS,
     wait_until="domcontentloaded",
-    delay_before_return_html=0.5,  # overridden per scrape_cfg at runtime
-    page_timeout=15000,            # overridden per scrape_cfg at runtime
+    delay_before_return_html=0.5,
+    page_timeout=15000,
     markdown_generator=DefaultMarkdownGenerator(),
     verbose=False,
 )
@@ -28,7 +27,6 @@ _RUN_CFG = CrawlerRunConfig(
 # ORCHESTRATOR
 
 # Scrape all entries concurrently: fresh crawler per URL, prod gate pacing, loud regwall guard.
-# Returns manifest [{url,hash,file,char_count,status,error,wait_strategy,elapsed_s}, ...]
 async def scrape_entries(
     entries: list[dict],
     output_dir: Path,
@@ -69,7 +67,6 @@ def _is_regwall(markdown: str, signals: list[str]) -> bool:
 
 
 # Return or create per-domain state entry (lastseen, lock, sem) — asyncio-safe.
-# Ported from src/crawler/pipe_scraper.py:_ensure_domain_state.
 def _ensure_domain_state(domain_states: dict, domain: str, concurrency_per_domain: int) -> dict:
     if domain not in domain_states:
         domain_states[domain] = {
@@ -81,7 +78,6 @@ def _ensure_domain_state(domain_states: dict, domain: str, concurrency_per_domai
 
 
 # Scrapy gate: under domain lock, wait until delay elapsed since lastseen, then stamp lastseen=now.
-# Ported from src/crawler/pipe_scraper.py:_gate_domain.
 async def _gate_domain(state: dict, download_delay: float) -> None:
     async with state["lock"]:
         jitter = random.uniform(0.5 * download_delay, 1.5 * download_delay)
@@ -176,7 +172,6 @@ def _collect_manifest(entries: list[dict], raw_results: tuple) -> list[dict]:
 
 
 # Regwall guard: WARN per-page (caller handles skip); raise RegwallGuardError if fraction >= threshold.
-# manifest is carried on the exception so callers can recover blocked-URL data from the abort path.
 class RegwallGuardError(Exception):
     def __init__(self, msg: str, manifest: list[dict] | None = None):
         super().__init__(msg)

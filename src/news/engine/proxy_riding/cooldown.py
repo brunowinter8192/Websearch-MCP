@@ -5,32 +5,22 @@ from datetime import datetime, timedelta, timezone
 
 from src.news.engine.proxy_pool.proxy_key import proxy_key
 
-_FIXED_COOLDOWN_S  = 3600   # 60 min — matches PersistentCooldownManager default
-_EXP_BASE_S        = 300    # 5 min
-_EXP_CAP_S         = 3600   # 60 min
+_FIXED_COOLDOWN_S  = 3600
+_EXP_BASE_S        = 300
+_EXP_CAP_S         = 3600
 
 
 # ORCHESTRATOR
 
+# Proxy cooldown manager for the riding engine — policy="fixed" (60-min flat) or "exp" (backoff).
 class RidingCooldownManager:
-    """Proxy cooldown manager for the riding engine.
-
-    policy='fixed' (default): 60-min flat cooldown — byte-identical to
-    PersistentCooldownManager(). Theblock imports the shared class in
-    proxy_pool/cooldown.py; this class is riding-only.
-
-    policy='exp': exponential backoff with full jitter, ported from
-    scrapy-rotating-proxies. Per-proxy failed_attempts counter; reset on
-    productive ride (ride_ok >= 1). mark_burned() accepts ride_ok kwarg.
-    """
-
     def __init__(self, policy: str = "fixed"):
         if policy not in ("fixed", "exp"):
             raise ValueError(f"cooldown policy must be 'fixed' or 'exp', got {policy!r}")
         self._policy           = policy
-        self._burned_at:        dict[str, datetime] = {}   # fixed path
-        self._next_eligible:    dict[str, datetime] = {}   # exp path
-        self._failed_attempts:  dict[str, int]      = {}   # exp path
+        self._burned_at:        dict[str, datetime] = {}
+        self._next_eligible:    dict[str, datetime] = {}
+        self._failed_attempts:  dict[str, int]      = {}
 
     @property
     def policy(self) -> str:

@@ -1,15 +1,10 @@
 # INFRASTRUCTURE
 import re
 
-# End-anchor patterns — checked in document order; earliest match wins
 _RE_MORE_FOR_YOU     = re.compile(r'^More For You\s*$')
 _RE_MORE_FOR_YOU_H2  = re.compile(r'^## More For You')
 _RE_PRIVACY          = re.compile(r'^## We Care About Your Privacy')
-# ≥2 concatenated [text](url) groups with no surrounding plain text
 _RE_TAG_FOOTER       = re.compile(r'^(\[[^\]]+\]\([^)]+\)){2,}$')
-# Body tag-footer strip — 1+ groups; broader than _RE_TAG_FOOTER (which uses {2,} for end-anchor
-# detection) because orphan single-tag lines also appear in body.
-# Applied BEFORE inline-link substitution so [text](url) form is still matchable.
 _RE_TAG_LINE         = re.compile(r'^(\[[^\]]+\]\([^)]+\))+$')
 
 _END_ANCHORS = [
@@ -19,7 +14,6 @@ _END_ANCHORS = [
     ("TAG_FOOTER",      _RE_TAG_FOOTER),
 ]
 
-# In-body strip patterns
 _RE_GOOGLE_BADGE = re.compile(r'\[Make\s*\]\(https://www\.google\.com/preferences/source')
 _RE_DATE_BYLINE  = re.compile(r'^(?:Updated |Published )?[A-Z][a-z]+ \d{1,2}, \d{4},.*read$')
 _RE_BYLINE       = re.compile(r'^By \[.*?\]\(.*?\)(?:[,|].*)?\s*$')
@@ -32,8 +26,6 @@ _RE_INLINE_LINK  = re.compile(r'\[([^\]]+)\]\([^)]+\)')
 # FUNCTIONS
 
 # Extract H1 start-anchor → end-anchor → strip chrome → return joined cleaned lines (pure body).
-# entry is available for future extension (currently unused by cleanup logic).
-# If no H1 start-anchor: return raw_markdown.strip().
 def cleanup(raw_markdown: str, entry: dict) -> str:
     body_lines = raw_markdown.splitlines()
 
@@ -55,9 +47,7 @@ def find_start_anchor(body_lines: list[str]) -> int | None:
     return None
 
 
-# Return (end_idx, anchor_name) for the earliest end anchor after start_idx.
-# end_idx is exclusive — body slice is body_lines[start_idx:end_idx].
-# If no anchor found: (len(body_lines), "NONE")
+# Return (end_idx, anchor_name) for the earliest end anchor after start_idx; (len(body_lines), "NONE") if none.
 def find_end_anchor(body_lines: list[str], start_idx: int) -> tuple[int, str]:
     for i in range(start_idx + 1, len(body_lines)):
         line = body_lines[i]

@@ -15,7 +15,7 @@ to a future ad-hoc skill.
 
 ## Modules
 
-### scrape.py (202 LOC)
+### scrape.py (197 LOC)
 
 **Purpose:** Browser-engine scraper — fresh `AsyncWebCrawler` per URL, Scrapy gate pacing, regwall guard. Active when `platform.scrape_engine == "browser"`.
 **Reads:** entries list (in-memory), ScrapeConfig, regwall_signals list.
@@ -31,7 +31,10 @@ written before abort) so callers can persist raw data from aborted runs.
 extraction, mirrors `proxy_riding/fetch.py:_classify_crawl_result`) — returns the status-specific
 `result_entry` update fields; write-to-disk (`_write_body`) happens only on `ok`.
 
-### dedup.py (62 LOC)
+`_RUN_CFG` (module-level `CrawlerRunConfig`) is DEAD CODE — `scrape_entries` builds its own `run_cfg`
+locally from `scrape_cfg` instead of using it. Flagged 2026-08-20, not removed (comment-only pass).
+
+### dedup.py (57 LOC)
 
 **Purpose:** Filter discover entries to those not yet in the raw corpus by checking file existence; optionally exclude known-failure URLs permanently.
 **Reads:** entries list (in-memory), dir (filesystem), source name, mode, optional exclusion set.
@@ -48,7 +51,7 @@ Three modes via `mode` param:
 - `"pubdate"`: exact match `{source}__{pubdate}__{hash}.md` — legacy, collection-based.
 - `"hash_only"`: glob `{source}__*__{hash}.md` — legacy, collection-based, no pubdate.
 
-### publish.py (134 LOC)
+### publish.py (132 LOC)
 
 **Purpose:** Copy cleaned MDs to RAG collection dir; write/merge URL manifest; optionally run `rag-cli index`.
 **Reads:** clean_manifest (in-memory), clean_dir (filesystem), existing `{collection}__index.jsonl` if present.
@@ -56,7 +59,7 @@ Three modes via `mode` param:
 **Called by:** NOT called by any active pipeline path. Kept on disk for future cleanup+publish skill.
 **Calls out:** `rag-cli` (subprocess).
 
-### scrape_job.py (110 LOC)
+### scrape_job.py (108 LOC)
 
 **Purpose:** Raw-only chunked scrape orchestration for `run_scrape_only()` and shared raw-persist helpers.
 **Reads:** chunks (list of entry lists), platform config.

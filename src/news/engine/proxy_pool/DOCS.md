@@ -29,7 +29,7 @@ the job lifecycle (lock, janitor). Do NOT touch when adding a browser-engine pla
 
 ## Modules
 
-### scrape.py (90 LOC)
+### scrape.py (83 LOC)
 
 **Purpose:** Proxy-pool scrape entry point — wires `run_loop` with a caller-supplied `AcquireLogger`; returns pipeline manifest. Job lifecycle (box_lock, Janitor, AcquireLogger) is owned by `pipeline.py:_run_pipeline_proxy_pool`.
 **Reads:** `entries` list (in-memory) + `proxy_cfg.pool_provider()`.
@@ -37,9 +37,13 @@ the job lifecycle (lock, janitor). Do NOT touch when adding a browser-engine pla
 **Called by:** `pipeline.py:_run_pipeline_proxy_pool`.
 **Calls out:** `loop.py`, `cooldown.py`, `logger.py` (type reference only).
 
+`scrape_entries_proxy` manifest: `[{url, hash, status, file, char_count, error}]` in entries order —
+`status` ∈ `{"ok" (fetched + written), "dead" (404/410 from origin), "failed" (gap — never resolved)}`.
+Only `"ok"` entries proceed to `clean_pass.py:_run_clean_pass`.
+
 ---
 
-### loop.py (230 LOC)
+### loop.py (229 LOC)
 
 **Purpose:** Sustained concurrent rotation loop — 60-min pool refresh, 2-strikes lifecycle, tail-race, wait-on-exhaustion, stall-terminate.
 **Reads:** `pool_provider()` callback (returns `(pool, sources)`) + target URL list (in-memory).
@@ -72,17 +76,19 @@ concurrency, wset=None)`.
 
 ---
 
-### fetch.py (46 LOC)
+### fetch.py (38 LOC)
 
 **Purpose:** curl_cffi chrome-impersonating HTTP fetch primitive + content-type gate (`"html"` | `"xml"`).
 **Reads:** remote URL via curl_cffi Session (routed through proxy).
-**Writes:** nothing — returns `(status, content)` where `status ∈ {"ok", "dead", "fail"}`.
+**Writes:** nothing — returns `(status, content)`: `"ok"` — valid content fetched, `content` is raw
+bytes; `"dead"` — origin returned 404/410 (proxy worked, URL is gone), `content` is `b""`; `"fail"` —
+connection error, timeout, CF block, or wrong-format content, `content` is `b""`.
 **Called by:** `loop.py:run_loop`; `theblock/discover.py:_fetch_xml` (proxy fallback during discovery).
 **Calls out:** `curl_cffi`.
 
 ---
 
-### cooldown.py (47 LOC)
+### cooldown.py (43 LOC)
 
 **Purpose:** In-memory per-job cooldown tracking — clean slate per instantiation, 60-min burn window.
 **Reads:** nothing (in-memory only).
@@ -92,17 +98,23 @@ concurrency, wset=None)`.
 
 ---
 
-### buffer.py (45 LOC)
+### buffer.py (34 LOC)
 
-**Purpose:** Active-buffer helpers — `build_active_buffer`, `refill_buffer`; holds `BUFFER_SIZE = 1280`, `DEFAULT_CONCURRENCY = 128`.
+**Purpose:** Active-buffer helpers — `build_active_buffer`, `refill_buffer`; holds `BUFFER_SIZE = 1280`
+(10× `DEFAULT_CONCURRENCY`), `DEFAULT_CONCURRENCY = 128` (concurrent `(proxy, URL)` pairs per batch —
+also `ProxyScrapeConfig`'s `concurrency`/`buffer_size` defaults).
 **Reads:** proxy pool + `PersistentCooldownManager` eligibility (in-memory).
 **Writes:** returns new buffer lists (pure — no mutation of inputs).
 **Called by:** `loop.py:run_loop`.
 **Calls out:** `cooldown.py:PersistentCooldownManager`.
 
+`build_active_buffer` eligibility is delegated entirely to `cm.eligible_candidates()` (wall-clock UTC
+cooldown check). `refill_buffer` is a no-op if `buf` is already at/above `target_size`; otherwise tops
+up with eligible-pool proxies not already in `buf` (set-membership check), appended in pool order.
+
 ---
 
-### logger.py (56 LOC)
+### logger.py (53 LOC)
 
 **Purpose:** Streams per-fetch events to JSONL (line-buffered, kill-safe). Stats derived by `janitor.end_job`.
 **Reads:** events pushed via `record_attempt` / `record_pool_refresh` / `record_pool_source`.
@@ -114,7 +126,7 @@ concurrency, wset=None)`.
 
 ### janitor.py (287 LOC)
 
-**Purpose:** Job lifecycle — `Janitor(jobs_dir, log_dir, report_dir)`; wipes transient dirs at start; reads JSONL → `job.md` + `cumulative_hits.png` at end. `_compute_window_stats` buckets attempt events into 60-min windows from t0 (window k = `[t0+k*3600s, t0+(k+1)*3600s)`; a refresh at exactly the boundary, e.g. `t0+3600s`, lands in window 1 not window 0 — same `int((ts-t0)/3600)` formula used for both attempts and refreshes) and derives per-window `{probiert, erfolgreich, urls_handled, fetch_attempts, pool_size}` (`urls_handled` = distinct target URLs; `fetch_attempts` = total attempt events) via `_compute_one_window` (2026-08-20 extraction — per-window computation isolated from the windowing setup). `_group_pool_sources` groups `pool_source` events by preceding `pool_refresh` in JSONL order; rendered as a `## Pool source breakdown` section at the bottom of `job.md` (absent when no pool_source events — backward-compatible with old JSONL) via `_md_source_breakdown` (2026-08-20 extraction, alongside `_md_window_table` for the per-window table — both pytest-covered, see `tests/test_proxy_pool.py`).
+**Purpose:** Job lifecycle — `Janitor(jobs_dir, log_dir, report_dir)`; wipes transient dirs at start; reads JSONL → `job.md` + `cumulative_hits.png` at end. `_compute_window_stats` buckets attempt events into 60-min windows from t0 (window k = `[t0+k*3600s, t0+(k+1)*3600s)`; a refresh at exactly the boundary, e.g. `t0+3600s`, lands in window 1 not window 0 — same `int((ts-t0)/3600)` formula used for both attempts and refreshes) and derives per-window `{probiert, erfolgreich, urls_handled, fetch_attempts, pool_size}` (`urls_handled` = distinct target URLs; `fetch_attempts` = total attempt events) via `_compute_one_window` (2026-08-20 extraction — per-window computation isolated from the windowing setup). `_group_pool_sources` groups `pool_source` events by preceding `pool_refresh` in JSONL order; rendered as a `## Pool source breakdown` section at the bottom of `job.md` (absent when no pool_source events — backward-compatible with old JSONL) via `_md_source_breakdown` (2026-08-20 extraction, alongside `_md_window_table` for the per-window table — both pytest-covered, see `tests/test_proxy_pool.py`). `_group_pool_sources` ignores attempt events falling between a `pool_refresh` and its `pool_source` events — only `pool_refresh`/`pool_source` event types are batched.
 **Reads:** JSONL at `jsonl_path` passed to `end_job`.
 **Writes:** `{jobs_dir}/{job_id}/job.md`, `cumulative_hits.png`; wipes `log_dir` + `report_dir` at start and end.
 **Called by:** `pipeline.py:_run_pipeline_proxy_pool`.
@@ -130,6 +142,10 @@ concurrency, wset=None)`.
 **Called by:** `pipeline.py:_run_pipeline_proxy_pool`.
 **Calls out:** `fcntl`, `os` (stdlib).
 
+`cleanup_stale`: checks the sidecar's `pid` via `os.kill(pid, 0)`. Unreadable/corrupt sidecar JSON →
+treated as held (conservative, does not delete). `ProcessLookupError` (pid dead) → sidecar removed.
+`PermissionError` (process alive, owned by another user) → also treated as held.
+
 ---
 
 ### proxy_key.py (16 LOC)
@@ -142,9 +158,9 @@ concurrency, wset=None)`.
 
 ---
 
-### pool_retry.py (22 LOC)
+### pool_retry.py (21 LOC)
 
-**Purpose:** Bounded exponential-backoff retry for httpx fetches — `fetch_with_retry(fn)` calls `fn()` up to 5 times, sleeping 1/2/4/8s between attempts; re-raises last exception on final failure.
+**Purpose:** Bounded exponential-backoff retry for httpx fetches — `fetch_with_retry(fn)` calls `fn()` up to 5 times, sleeping 1/2/4/8s between attempts (~15s total backoff; ~90s worst-case combined with `FETCH_TIMEOUT=15` per attempt); re-raises last exception on final failure.
 **Reads:** nothing.
 **Writes:** nothing (pure control-flow wrapper).
 **Called by:** `monosans_loader.py:_fetch_json`, `pool_loaders.py:_fetch_bare_txt` / `_fetch_roosterkid` / `_fetch_proxifly`.
@@ -154,7 +170,7 @@ Key: `_sleep = time.sleep` is a module-level alias — patch `pool_retry._sleep`
 
 ---
 
-### pool_loaders.py (341 LOC)
+### pool_loaders.py (325 LOC)
 
 **Purpose:** 18 proxy-source loaders + `load_backfill_pool()` — fetches all sources per-URL with retry and per-source failure isolation; returns `(pool, sources)` where `pool` is deduped `[(protocol, host:port)]` (~32k unique) and `sources` is `[{url, ok, count}, …]` one entry per URL.
 
@@ -186,7 +202,12 @@ Key: `_try_source(url, fn, entries, sources)` is the per-URL isolation helper �
 
 ## Gotchas
 
-- `pool_loaders.py` at 341 LOC exceeds the 200-LOC heuristic — no extractable concern exists (flat list of 18 loader functions sharing one `_merge_dedup` utility). Do not split. Same reasoning holds one level down: `load_backfill_pool` itself (56 code lines) is a flat ordered sequence of `_try_source(...)` calls — the call ORDER affects `sources`' reported order (and, via `_merge_dedup`, which source's entry wins on a dup) — confirmed 2026-08-20, left un-extracted rather than risk that order under a data-driven loop.
+- `pool_loaders.py` at 325 LOC exceeds the 200-LOC heuristic — no extractable concern exists (flat list of 18 loader functions sharing one `_merge_dedup` utility). Do not split. Same reasoning holds one level down: `load_backfill_pool` itself (56 code lines) is a flat ordered sequence of `_try_source(...)` calls — the call ORDER affects `sources`' reported order (and, via `_merge_dedup`, which source's entry wins on a dup) — confirmed 2026-08-20, left un-extracted rather than risk that order under a data-driven loop.
+- `pool_loaders.py`'s 17 per-source `load_X_proxies()` functions (`load_curated_proxies` through
+  `load_murongpig_proxies`) are DEAD CODE within `src/` — `load_backfill_pool` calls `_try_source` +
+  lambdas directly, not these wrappers; the only live callers of same-named functions are a separate,
+  non-importing copy in `dev/news_pipeline/theblock/curated_sources.py`. Flagged 2026-08-20, not
+  removed (out of scope for a comment-only pass).
 - `janitor.end_job` calls `jsonl_path.unlink()` then wipes `log_dir`. Interrupt between these two orphans the JSONL in `log_dir`. Non-critical: `start_job` wipes `log_dir` at the next run.
 - `box_lock`: SIGTERM kills Python before `finally` runs → sidecar stays; kernel releases flock. Next `acquire()` recovers via `cleanup_stale()` (dead-PID detection).
 - `_sleep` in `loop.py` AND `pool_retry.py` are both module aliases (`_sleep = time.sleep`) — patch the alias in the target module in tests, not `time.sleep` directly. For retry tests patch `pool_retry._sleep`; for exhaustion-sleep tests patch `loop._sleep`.

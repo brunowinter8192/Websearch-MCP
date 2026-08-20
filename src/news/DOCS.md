@@ -14,7 +14,7 @@ Multi-platform news ingestion pipeline, run as `python -m src.news --source <pla
 
 ## Modules
 
-### pipeline.py (349 LOC)
+### pipeline.py (345 LOC)
 
 **Purpose:** Entry module — 3 CLI-facing async orchestrators (`run_pipeline`, `run_scrape_only`,
 `run_discover_only`; import path unchanged, still what `__main__.py` calls) + their engine-arm
@@ -43,7 +43,7 @@ completed`).
 + `logger.close()` run in a `finally` nested inside that `with`, guaranteeing Janitor bookkeeping
 closes even on an exception, before the lock releases.
 
-### pipeline_support.py (86 LOC)
+### pipeline_support.py (88 LOC)
 
 **Purpose:** Generic run bookkeeping shared by all 3 `pipeline.py` orchestrators — logging setup,
 connectivity precondition, and the 3 small state-writer helpers (master URL list, discover JSON
@@ -93,6 +93,18 @@ move, zero text/flag changes — verified via `python -m src.news --help` text d
 **Purpose:** The extension seam. Defines the `Platform` Protocol (name, collection, precondition_url, regwall_signals, scrape_engine, scrape_config, proxy_scrape_config; `discover()` + `cleanup()`), plus the `ScrapeConfig` and `ProxyScrapeConfig` dataclasses. `scrape_engine` ∈ {browser, proxy_pool, proxy_riding} is the pipeline dispatch key. Optional attrs (`riding_scrape_config`, `timeframe`, `uses_master_list`) are consumed via `getattr` in pipeline.py, deliberately NOT in the Protocol.
 **Called by:** `pipeline.py`, `registry.py`, `platforms/*`, `engine/*`.
 **Calls out:** none (stdlib `typing`, `dataclasses`).
+
+`Platform.name` is dual-purpose: the `--source` CLI value AND the filename prefix (`f"{name}__"`)
+used by legacy pubdate/hash_only dedup modes. `Platform.regwall_signals = []` disables the regwall
+guard entirely (`engine/scrape.py:_check_regwall_guard` short-circuits on falsy `regwall_signals`) —
+not "no signals configured yet", a deliberate opt-out. `discover()`'s per-platform return shape is
+`[{url, lastmod, publication_date, title, section}, ...]` (CoinDesk adds `_new` internally, stripped
+before return); not every platform populates every key (e.g. TheBlock's `publication_date` is empty
+until `cleanup()` back-fills it from JSON-LD).
+`ProxyScrapeConfig.pool_provider` is called once on `run_loop` startup and again at each
+`refresh_interval_s` tick; returns `(pool, sources)`. `ProxyScrapeConfig.content_type` gates
+`fetch.py:fetch_url`'s validation ("html" | "xml"). `concurrency`/`buffer_size` defaults (128/1280)
+mirror `proxy_pool/buffer.py`'s `DEFAULT_CONCURRENCY`/`BUFFER_SIZE`.
 
 ### registry.py (19 LOC)
 

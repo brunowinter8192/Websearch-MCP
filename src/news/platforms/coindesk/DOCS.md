@@ -12,7 +12,7 @@ Auto-registers via `register(CoinDeskPlatform())` at module end.
 
 ## Modules
 
-### config.py (38 LOC)
+### config.py (34 LOC)
 
 **Purpose:** Platform constants — REGWALL_SIGNALS, SCRAPE_CONFIG (ScrapeConfig()), timeline-API
 discovery params (TIMELINE_BASE, COINDESK_BASE, TARGET_URL, CALL_DELAY, REWARM_EVERY,
@@ -20,7 +20,14 @@ CLICKS_WARMUP, CLICKS_REWARM, MAX_CURSOR_FALLBACKS, CHECKPOINT_EVERY, DEFAULT_DE
 FULL_MODE_FLOOR, DISCOVER_DIR, SKIP_HEADERS).
 **Called by:** `browser.py`, `discover.py`, `__init__.py`.
 
-### browser.py (170 LOC)
+`REGWALL_SIGNALS` uses precise match strings deliberately — do NOT loosen to generic markers like
+"subscribe"/"register": those fire on ordinary article footers, producing false regwall positives.
+`CALL_DELAY = 0.3` (seconds between cursor calls). `REWARM_EVERY = 240.0` (seconds; proactive re-warm
+interval — see `discover.py`'s proactive-rewarm gating note). `CLICKS_WARMUP = 8` — CoinDesk's SSR
+buffer clears at ~click 6; 8 gives margin. `FULL_MODE_FLOOR = "2018-01-01"` — Binance candle data
+(used for cross-referencing) starts 2017-08, so full-mode backfill doesn't need to go earlier.
+
+### browser.py (169 LOC)
 
 **Purpose:** Chrome browser launch + pydoll HAR-capture machinery for the initial feed warmup.
 `browser_load_feed(n_clicks)` launches Chrome via `open -gna`, navigates to latest-crypto-news,
@@ -29,7 +36,7 @@ request (URL + headers + first response body). Returns `(headers, api_url, body_
 **Called by:** `discover.py:discover`, `discover.py:try_rewarm`.
 **Calls out:** `pydoll` (Chrome CDP), `httpx` (first response replay).
 
-### discover.py (406 LOC)
+### discover.py (402 LOC)
 
 **Purpose:** Timeline-API cursor loop + master discover management.
 `discover(timeframe)` orchestrates: warmup → load discover → `cursor_loop` →
@@ -66,7 +73,7 @@ one's message must fire when the first one's `fatal=True`). The outer `while Tru
 control flow (empty-response check, stop-date-floor termination check, proactive-rewarm check, the
 two-stage exhaustion/no-body break sequence) stays inline in `cursor_loop` itself.
 
-### cleanup.py (130 LOC)
+### cleanup.py (120 LOC)
 
 **Purpose:** Strip CoinDesk page chrome from raw crawl4ai markdown → pure article body.
 Logic: H1 start-anchor → first end-anchor (_END_ANCHORS: MORE_FOR_YOU, PRIVACY, TAG_FOOTER) →
@@ -76,6 +83,16 @@ Not called by `run_pipeline` or `run_scrape_only` — reserved for future cleanu
 **Calls out:** stdlib re only.
 
 No H1 found → returns `raw_markdown.strip()` (fallback, logged upstream).
+`cleanup(raw_markdown, entry)`'s `entry` param is currently unused — kept for future extension (a
+platform-generic `Platform.cleanup(raw_markdown, entry)` signature); do not remove it as dead.
+
+`_RE_TAG_FOOTER` (end-anchor detection, requires ≥2 concatenated `[text](url)` groups) vs
+`_RE_TAG_LINE` (body strip, 1+ groups — broader, because orphan single-tag lines also appear
+mid-body) are deliberately different patterns for the same visual shape; `_RE_TAG_LINE` is applied
+in `_strip_and_substitute_lines` BEFORE inline-link substitution so the `[text](url)` form is still
+matchable at that point.
+`find_end_anchor`'s `end_idx` is exclusive — the body slice is `body_lines[start_idx:end_idx]`;
+no anchor found → `(len(body_lines), "NONE")`.
 
 `clean_body` (2026-08-20, 52→8 code lines): the two comment-delineated passes extracted 1:1 —
 `_strip_and_substitute_lines` (Pass 1: per-line strip/substitute rules + trailing-ws count) and

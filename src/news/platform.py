@@ -7,10 +7,10 @@ from typing import Callable, Protocol, runtime_checkable
 
 @dataclass
 class ProxyScrapeConfig:
-    pool_provider: Callable[[], tuple[list[tuple[str, str]], list[dict]]]  # called on startup + 60-min refresh; returns (pool, sources)
-    content_type: str = "html"                           # "html" | "xml" — fetch validation gate
-    concurrency: int = 128                               # concurrent (proxy, url) pairs per batch
-    buffer_size: int = 1280                              # active buffer depth (10× concurrency)
+    pool_provider: Callable[[], tuple[list[tuple[str, str]], list[dict]]]
+    content_type: str = "html"
+    concurrency: int = 128
+    buffer_size: int = 1280
 
 
 @dataclass
@@ -23,13 +23,13 @@ class ScrapeConfig:
 
 @runtime_checkable
 class Platform(Protocol):
-    name: str                   # --source value AND filename prefix f"{name}__"
-    collection: str             # target RAG collection; CoinDesk -> "coindesk"
-    precondition_url: str       # internet-check URL; CoinDesk -> "https://www.coindesk.com"
-    regwall_signals: list[str]  # precise match strings; [] = guard disabled
-    scrape_engine: str          # "browser" | "proxy_pool" | "proxy_riding" — selects engine in pipeline.py
+    name: str
+    collection: str
+    precondition_url: str
+    regwall_signals: list[str]
+    scrape_engine: str
     scrape_config: ScrapeConfig
-    proxy_scrape_config: "ProxyScrapeConfig | None"  # None for browser platforms
+    proxy_scrape_config: "ProxyScrapeConfig | None"
 
-    async def discover(self) -> list[dict]: ...         # [{url,lastmod,publication_date,title,section}, ...]
-    def cleanup(self, raw_markdown: str, entry: dict) -> str: ...  # strip chrome -> pure body
+    async def discover(self) -> list[dict]: ...
+    def cleanup(self, raw_markdown: str, entry: dict) -> str: ...

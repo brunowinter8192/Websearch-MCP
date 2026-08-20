@@ -18,13 +18,6 @@ def scrape_entries_proxy(
     proxy_cfg: ProxyScrapeConfig,
     logger: AcquireLogger,
 ) -> list[dict]:
-    """Proxy-rotation scraper: rotate proxies via run_loop, write fetched bytes to output_dir.
-
-    Returns manifest [{url, hash, status, file, char_count, error}] in entries order.
-    status values: "ok" (fetched + written), "dead" (404/410 from origin), "failed" (gap).
-    Only "ok" entries proceed to _run_clean_pass in clean_pass.py.
-    Job lifecycle (box_lock, Janitor, AcquireLogger) is owned by pipeline.py:_run_pipeline_proxy_pool.
-    """
     output_dir.mkdir(parents=True, exist_ok=True)
 
     target_urls = [e["url"] for e in entries]
@@ -32,7 +25,7 @@ def scrape_entries_proxy(
         url: hashlib.sha256(url.encode()).hexdigest()[:12]
         for url in target_urls
     }
-    fetched: dict[str, dict] = {}  # url -> {file, char_count} for "ok" URLs
+    fetched: dict[str, dict] = {}
 
     def content_handler(url: str, content: bytes) -> None:
         url_hash  = url_to_hash[url]

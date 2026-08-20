@@ -53,7 +53,6 @@ _JS_CLICK_BTN = """
 # ORCHESTRATOR
 
 # Launch Chrome, load feed, capture timeline headers + first API response body.
-# Returns (headers, api_url, body_bytes) — body_bytes is None on failure.
 async def browser_load_feed(n_clicks: int) -> tuple[dict, str, bytes | None]:
     port = get_free_port()
     session_dir = tempfile.mkdtemp(prefix="coindesk_disc_")

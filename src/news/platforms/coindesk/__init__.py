@@ -22,7 +22,7 @@ class CoinDeskPlatform:
     scrape_config: ScrapeConfig = SCRAPE_CONFIG
     proxy_scrape_config = None
     riding_scrape_config = RidingScrapeConfig()
-    timeframe: str = "30"   # set by __main__ via --timeframe; "full" or int-string N-days
+    timeframe: str = "30"
 
     async def discover(self) -> list[dict]:
         return await _discover(self.timeframe)

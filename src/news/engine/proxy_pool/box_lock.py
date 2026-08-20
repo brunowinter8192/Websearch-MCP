@@ -12,22 +12,22 @@ LOCK_DIR = Path.home() / ".websearch-locks"
 _TS_FMT  = "%Y-%m-%dT%H:%M:%SZ"
 
 
+# Raised when the lock is held by another process.
 class LockBusyError(RuntimeError):
-    """Raised when the lock is held by another process."""
+    pass
 
 
 # FUNCTIONS
 
 # Remove stale sidecar if the owning PID is no longer alive
 def cleanup_stale(sidecar: Path) -> None:
-    """Check sidecar PID via os.kill; unlink sidecar if process dead. PermissionError → held."""
     if not sidecar.exists():
         return
     try:
         data = json.loads(sidecar.read_text(encoding="utf-8"))
         pid  = data.get("pid")
     except (json.JSONDecodeError, OSError):
-        return  # unreadable → treat as held
+        return
     if pid is None:
         sidecar.unlink(missing_ok=True)
         return
@@ -36,7 +36,7 @@ def cleanup_stale(sidecar: Path) -> None:
     except ProcessLookupError:
         sidecar.unlink(missing_ok=True)
     except PermissionError:
-        return  # process alive but not ours → treat as held
+        return
 
 
 # Single-job system-wide lock; crash-safe (kernel releases flock on process death)

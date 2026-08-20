@@ -76,7 +76,6 @@ def parse_index_result(output: str) -> tuple[int, int]:
 
 
 # Write/merge {collection_name}__index.jsonl in collection_dir; one line per article; dedup by hash.
-# Reads existing JSONL → dict[hash→record], merges new entries, writes all back.
 def _write_index(
     manifest: list[dict],
     collection_dir: "Path",
@@ -106,8 +105,7 @@ def _write_index(
     )
 
 
-# Copy articles to collection_dir then optionally run rag-cli index.
-# Manifest passed directly (no disk read). Returns (n_copied, n_chunks).
+# Copy articles to collection_dir then optionally run rag-cli index; return (n_copied, n_chunks).
 def publish_articles(
     manifest: list[dict],
     clean_dir: Path,

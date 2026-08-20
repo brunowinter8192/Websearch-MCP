@@ -53,7 +53,7 @@ async def _scrape_one_chunk(
             chunk, raw_dir, platform.regwall_signals, platform.scrape_config
         )
     except RegwallGuardError as exc:
-        manifest = exc.manifest  # full manifest carried on exception; ok files already on disk
+        manifest = exc.manifest
         n_rw = sum(1 for e in manifest if e.get("status") == "regwall")
         log.error(
             f"RegwallGuardError chunk {ci + 1}: {exc} "
@@ -86,7 +86,6 @@ async def _scrape_one_chunk(
     return chunk_job_records, aborted
 
 # Append one JSONL line per ok entry to raw_dir/manifest.jsonl.
-# Format: {hash, url, publication_date}. Append-only; caller ensures entries are deduplicated.
 def _append_to_raw_manifest(raw_dir: Path, ok_entries: list[dict]) -> None:
     if not ok_entries:
         return
@@ -97,7 +96,6 @@ def _append_to_raw_manifest(raw_dir: Path, ok_entries: list[dict]) -> None:
 
 
 # Read each blocked-URL file, union with new URLs from manifest, write back sorted.
-# status_filenames: {manifest_status_value: filename}, e.g. {"regwall": "regwall_urls.txt"}.
 def _update_blocked_urls(raw_dir: Path, manifest: list[dict], status_filenames: dict[str, str]) -> None:
     for status, filename in status_filenames.items():
         new_urls = {e["url"] for e in manifest if e.get("status") == status}
