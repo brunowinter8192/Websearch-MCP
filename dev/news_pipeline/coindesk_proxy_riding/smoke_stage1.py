@@ -72,14 +72,14 @@ def _run(name: str, fn) -> bool:
 # Section 1 — import clean: package resolves without sys.path tricks
 def test_import_clean() -> None:
     import src.news.engine.proxy_riding.rider    as rider_mod
+    import src.news.engine.proxy_riding.abort    as abort_mod
     import src.news.engine.proxy_riding.reporter as reporter_mod
     from src.news.engine.proxy_riding.scrape import (
         scrape_entries_riding, RidingScrapeConfig, BROWSER_ELIGIBLE_PROTOS,
     )
-    from src.news.engine.proxy_riding.rider import (
-        RiderState, RideRecord, JobRecord, run_riding_pool,
-        _watchdog, _abort_stall, FAIL_THRESHOLD,
-    )
+    from src.news.engine.proxy_riding.state import RiderState, RideRecord, JobRecord, FAIL_THRESHOLD
+    from src.news.engine.proxy_riding.rider import run_riding_pool, _watchdog
+    from src.news.engine.proxy_riding.abort import _abort_stall
     from src.news.engine.proxy_riding.reporter import write_riding_report
 
     # Confirm defaults match validated production values
@@ -95,12 +95,14 @@ def test_import_clean() -> None:
 
     # Confirm no sys.path manipulation in production modules
     src_rider    = Path(rider_mod.__file__).read_text()
+    src_abort    = Path(abort_mod.__file__).read_text()
     src_reporter = Path(reporter_mod.__file__).read_text()
     assert "sys.path.insert" not in src_rider,    "sys.path.insert found in rider.py"
+    assert "sys.path.insert" not in src_abort,    "sys.path.insert found in abort.py"
     assert "sys.path.insert" not in src_reporter, "sys.path.insert found in reporter.py"
 
     # Confirm late import in _abort_stall uses src package path
-    assert "src.news.engine.proxy_riding.reporter" in src_rider, \
+    assert "src.news.engine.proxy_riding.reporter" in src_abort, \
         "late import in _abort_stall does not reference src package"
 
     print("    imports ok, defaults ok, no sys.path hacks, late import correct")
@@ -109,7 +111,9 @@ def test_import_clean() -> None:
 # Section 2 — deterministic watchdog: pre-aged state + patched os._exit
 def test_watchdog_deterministic() -> None:
     import src.news.engine.proxy_riding.rider as rider_mod
-    from src.news.engine.proxy_riding.rider import RiderState, _abort_stall, _watchdog
+    from src.news.engine.proxy_riding.state import RiderState
+    from src.news.engine.proxy_riding.rider import _watchdog
+    from src.news.engine.proxy_riding.abort import _abort_stall
     from src.news.engine.proxy_pool.cooldown import PersistentCooldownManager
 
     _STALL_S = 1.0

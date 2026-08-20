@@ -5,7 +5,8 @@ import statistics
 from datetime import datetime, timezone
 from pathlib import Path
 
-from src.news.engine.proxy_riding.rider import RiderState, FAIL_THRESHOLD
+# From state.py: shared riding state shape + constants
+from src.news.engine.proxy_riding.state import RiderState, FAIL_THRESHOLD
 
 _BACKFILL_TOTAL = 61_000
 

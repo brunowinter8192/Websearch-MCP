@@ -1,112 +1,40 @@
 # INFRASTRUCTURE
 
 import asyncio
-import hashlib
 import os
 import signal
 import sys
 import time
-import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from crawl4ai import (
-    AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode, ProxyConfig,
-)
-from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
+from crawl4ai import AsyncWebCrawler, BrowserConfig
 
+# From cooldown.py: proxy cooldown manager (type hint only)
 from src.news.engine.proxy_riding.cooldown import RidingCooldownManager
-
-# Regwall signals checked on result.markdown.raw_markdown (browser-rendered visible text).
-# NOT on result.html — signals are embedded as hidden React components in all CoinDesk pages.
-REGWALL_SIGNALS: list[str] = [
-    "from_regwall",
-    "Create a FREE account to continue reading",
-    "You've reached your monthly limit",
-]
-
-PAGE_TIMEOUT_MS          = 8_000    # default; overridden per-call via page_timeout_ms param
-DELAY_BEFORE_HTML        = 0.5      # s wait after domcontentloaded
-STALL_TIMEOUT_S          = 3_600.0  # 60 min no progress → terminate
-POOL_REFRESH_INTERVAL_S  = 1_800.0  # re-fetch + filter + shuffle pool every 30 min
-FAIL_THRESHOLD           = 2        # failed/empty strikes before dropping a proxy (mirrors burn_threshold for regwall)
-
-# Playwright error substrings that indicate a proxy-side failure (not CoinDesk)
-_PROXY_ERR = ("timeout", "proxy", "err_proxy", "tunnel", "socks",
-              "err_empty", "connection refused", "connection failed", "net::err")
-
-RAW_SUBDIR = "raw"
+# From state.py: shared riding dataclasses + constants
+from src.news.engine.proxy_riding.state import (
+    RiderState, RideRecord, JobRecord,
+    PAGE_TIMEOUT_MS, DELAY_BEFORE_HTML, STALL_TIMEOUT_S, POOL_REFRESH_INTERVAL_S,
+    FAIL_THRESHOLD, RAW_SUBDIR,
+)
+# From fetch.py: per-URL fetch + classification helpers
+from src.news.engine.proxy_riding.fetch import (
+    _fetch_one_url, _classify_connect_fail, _write_raw, _url_hash,
+)
+# From abort.py: report-then-exit handlers for watchdog/signal aborts
+from src.news.engine.proxy_riding.abort import _abort_done, _abort_interrupted, _abort_stall
 
 
+# Ephemeral per-ride bookkeeping for _run_slot — not persisted, never reaches a report.
 @dataclass
-class RideRecord:
-    proxy_str:        str
-    proto:            str
-    host_port:        str
-    n_ok:             int
-    n_regwall:        int
-    n_connect_fail:   int
-    n_failed:         int        # URLs that triggered the fail-rotation (2-strike drop)
-    n_urls_attempted: int
-    burned_threshold: bool
-    burned_connect:   bool
-    ride_s:           float
-    positions:        list = field(default_factory=list)  # (url, status, elapsed_s)
-
-
-@dataclass
-class JobRecord:
-    url:           str
-    url_hash:      str
-    status:        str        # ok | regwall | connect_fail | failed | empty
-    char_count:    int | None
-    markdown_len:  int | None
-    elapsed_s:     float | None
-    error:         str | None
-    file:          str | None
-    t_start:       datetime
-    ride_position: int        # which URL on this proxy (1st, 2nd, …)
-    proxy_str:     str
-    load_s:        float | None = None  # elapsed_s − DELAY_BEFORE_HTML; crawl4ai exposes no dedicated nav-timing field
-
-
-@dataclass
-class RiderState:
-    url_queue:       asyncio.Queue
-    proxy_pool:      list               # raw (proto, hp) tuples from load_backfill_pool()
-    cooldown_mgr:    RidingCooldownManager
-    output_dir:      Path               # raw HTML target: output_dir/raw/{hash}.html
-    job_dir:         Path               # report target: scrape_jobs/{job_id}/
-    burn_threshold:  int
-    page_timeout_ms: int
-    total_urls:      int
-    target_urls:     frozenset               # all distinct target URLs; open = target_urls − done_urls
-
-    n_ok:            int   = 0
-    n_regwall:       int   = 0
-    n_failed:        int   = 0
-    n_connect_fail:  int   = 0
-    in_flight:       int   = 0
-    job_records:     list  = field(default_factory=list)
-    ride_records:    list  = field(default_factory=list)
-    last_progress_mono: float      = field(default_factory=time.monotonic)
-    stall_timeout_s:    float      = STALL_TIMEOUT_S
-    termination:        str        = "running"   # all-done | stall | pool-exhausted
-    proxy_cursor:       int        = 0
-    proxy_lock:         asyncio.Lock = field(default_factory=asyncio.Lock)
-    n_browsers:         int        = 1
-    n_slots:            int        = 0
-    in_flight_urls:     set        = field(default_factory=set)
-    done_urls:          set        = field(default_factory=set)    # URLs written; first-writer guard
-    t_job_start:        datetime   = field(default_factory=lambda: datetime.now(timezone.utc))
-    pool_samples:       list       = field(default_factory=list)   # (elapsed_s, n_eligible, n_cooldown)
-    pool_provider:      object     = None                          # async () -> list[tuple[str,str]] | None = static pool
-    connect_fail_records: list     = field(default_factory=list)  # [(elapsed_s, subtype)] per connect_fail
-
-    @property
-    def all_resolved(self) -> bool:
-        return len(self.done_urls) >= len(self.target_urls)
+class _RideProgress:
+    burn_count: int  = 0
+    fail_count: int  = 0
+    ride_ok:    int  = 0
+    positions:  list = field(default_factory=list)
+    cf_broke:   bool = False
 
 
 # ORCHESTRATOR
@@ -154,16 +82,7 @@ async def run_riding_pool(
         tasks = [asyncio.create_task(_run_slot(i, crawlers[i % n_browsers], state)) for i in range(n_slots)]
         await asyncio.gather(*tasks)
     finally:
-        try:
-            loop.remove_signal_handler(signal.SIGINT)
-            loop.remove_signal_handler(signal.SIGTERM)
-        except Exception as exc:
-            print(f"[rider] remove_signal_handler warn: {exc}", file=sys.stderr)
-        watchdog.cancel()
-        results = await asyncio.gather(*[c.close() for c in crawlers], return_exceptions=True)
-        for idx, r in enumerate(results):
-            if isinstance(r, Exception):
-                print(f"[rider] crawler[{idx}].close warn: {r}", file=sys.stderr)
+        await _teardown_pool(loop, watchdog, crawlers)
     if state.termination == "running":
         state.termination = "all-done"
     return state
@@ -190,16 +109,12 @@ async def _run_slot(slot_id: int, crawler: AsyncWebCrawler, state: RiderState) -
             break
 
         proto, hp = entry
-        pstr      = f"{proto}://{hp}"
-        t_bind    = time.monotonic()
-        burn_count = 0
-        fail_count = 0
-        ride_ok    = 0
-        positions: list = []
-        cf_broke   = False
+        pstr     = f"{proto}://{hp}"
+        t_bind   = time.monotonic()
+        progress = _RideProgress()
 
         try:
-            while burn_count < state.burn_threshold:
+            while progress.burn_count < state.burn_threshold:
                 if state.all_resolved:
                     break
                 if time.monotonic() - state.last_progress_mono > state.stall_timeout_s:
@@ -210,7 +125,7 @@ async def _run_slot(slot_id: int, crawler: AsyncWebCrawler, state: RiderState) -
                 try:
                     url = state.url_queue.get_nowait()
                     if url in state.done_urls:
-                        continue   # stale queue entry — already won by a racer
+                        continue
                 except asyncio.QueueEmpty:
                     if state.all_resolved:
                         break
@@ -222,7 +137,7 @@ async def _run_slot(slot_id: int, crawler: AsyncWebCrawler, state: RiderState) -
 
                 state.in_flight += 1
                 state.in_flight_urls.add(url)
-                ride_pos  = len(positions) + 1
+                ride_pos  = len(progress.positions) + 1
                 t_url_abs = datetime.now(timezone.utc)
 
                 status, char_count, markdown_len, elapsed, html, err = await _fetch_one_url(
@@ -231,7 +146,7 @@ async def _run_slot(slot_id: int, crawler: AsyncWebCrawler, state: RiderState) -
                 state.in_flight -= 1
                 state.in_flight_urls.discard(url)
 
-                positions.append((url, status, round(elapsed, 2)))
+                progress.positions.append((url, status, round(elapsed, 2)))
                 job = JobRecord(
                     url=url, url_hash=_url_hash(url),
                     status=status, char_count=char_count, markdown_len=markdown_len,
@@ -240,72 +155,110 @@ async def _run_slot(slot_id: int, crawler: AsyncWebCrawler, state: RiderState) -
                     load_s=round(max(0.0, elapsed - DELAY_BEFORE_HTML), 3) if status == "ok" else None,
                 )
 
-                if status == "ok":
-                    if url not in state.done_urls:
-                        state.done_urls.add(url)
-                        out      = _write_raw(_url_hash(url), html, state.output_dir)
-                        job.file = str(out)
-                        state.n_ok += 1
-                        ride_ok   += 1
-                        state.last_progress_mono = time.monotonic()
-                        print(f"[slot {slot_id}] ok  r={ride_pos} {url[:70]}", file=sys.stderr)
-                    else:
-                        print(f"[slot {slot_id}] dup-race discarded {url[:70]}", file=sys.stderr)
-                        continue   # skip job_records.append — dup fetch, no stats
-
-                elif status == "regwall":
-                    burn_count      += 1
-                    state.n_regwall += 1
-                    if dequeued and url not in state.done_urls:
-                        state.url_queue.put_nowait(url)
-                    print(
-                        f"[slot {slot_id}] RW  burn={burn_count}/{state.burn_threshold}"
-                        f" r={ride_pos}", file=sys.stderr,
-                    )
-
-                elif status == "connect_fail":
-                    state.n_connect_fail += 1
-                    if dequeued and url not in state.done_urls:
-                        state.url_queue.put_nowait(url)
-                    cf_broke = True
-                    state.connect_fail_records.append((round(elapsed, 3), _classify_connect_fail(err)))
-                    print(f"[slot {slot_id}] CF  rotating", file=sys.stderr)
+                action = _apply_fetch_result(
+                    slot_id, state, progress, job, url, html, dequeued, ride_pos, elapsed, err,
+                )
+                if action == "continue":
+                    continue
+                if action == "append":
+                    state.job_records.append(job)
+                if action == "break":
                     break
 
-                else:  # failed | empty
-                    fail_count += 1
-                    if dequeued and url not in state.done_urls:
-                        state.url_queue.put_nowait(url)
-                    print(
-                        f"[slot {slot_id}] {status} fail={fail_count}/{FAIL_THRESHOLD}"
-                        f" r={ride_pos} → requeue", file=sys.stderr,
-                    )
-                    if fail_count >= FAIL_THRESHOLD:
-                        break
-
-                state.job_records.append(job)
-
         finally:
-            ride = RideRecord(
-                proxy_str=pstr, proto=proto, host_port=hp,
-                n_ok=ride_ok, n_regwall=burn_count,
-                n_connect_fail=1 if cf_broke else 0,
-                n_failed=fail_count,
-                n_urls_attempted=len(positions),
-                burned_threshold=burn_count >= state.burn_threshold,
-                burned_connect=cf_broke,
-                ride_s=time.monotonic() - t_bind,
-                positions=positions,
-            )
-            state.ride_records.append(ride)
-            state.cooldown_mgr.mark_burned(proto, hp, ride_ok=ride_ok)
-            print(
-                f"[slot {slot_id}] proxy done ok={ride_ok} rw={burn_count}"
-                f" cf={int(cf_broke)} n={len(positions)} {pstr}",
-                file=sys.stderr,
-            )
+            _finalize_ride(slot_id, state, proto, hp, pstr, t_bind, progress)
 
     print(f"[slot {slot_id}] exit", file=sys.stderr)
+
+
+# Dispatch one fetch's status (ok/regwall/connect_fail/failed/empty); return "continue"|"append"|"break".
+def _apply_fetch_result(
+    slot_id:  int,
+    state:    RiderState,
+    progress: _RideProgress,
+    job:      JobRecord,
+    url:      str,
+    html:     str,
+    dequeued: bool,
+    ride_pos: int,
+    elapsed:  float,
+    err:      str | None,
+) -> str:
+    status = job.status
+
+    if status == "ok":
+        if url not in state.done_urls:
+            state.done_urls.add(url)
+            out      = _write_raw(_url_hash(url), html, state.output_dir)
+            job.file = str(out)
+            state.n_ok += 1
+            progress.ride_ok += 1
+            state.last_progress_mono = time.monotonic()
+            print(f"[slot {slot_id}] ok  r={ride_pos} {url[:70]}", file=sys.stderr)
+            return "append"
+        print(f"[slot {slot_id}] dup-race discarded {url[:70]}", file=sys.stderr)
+        return "continue"
+
+    if status == "regwall":
+        progress.burn_count += 1
+        state.n_regwall     += 1
+        if dequeued and url not in state.done_urls:
+            state.url_queue.put_nowait(url)
+        print(
+            f"[slot {slot_id}] RW  burn={progress.burn_count}/{state.burn_threshold}"
+            f" r={ride_pos}", file=sys.stderr,
+        )
+        return "append"
+
+    if status == "connect_fail":
+        state.n_connect_fail += 1
+        if dequeued and url not in state.done_urls:
+            state.url_queue.put_nowait(url)
+        progress.cf_broke = True
+        state.connect_fail_records.append((round(elapsed, 3), _classify_connect_fail(err)))
+        print(f"[slot {slot_id}] CF  rotating", file=sys.stderr)
+        return "break"
+
+    progress.fail_count += 1
+    if dequeued and url not in state.done_urls:
+        state.url_queue.put_nowait(url)
+    print(
+        f"[slot {slot_id}] {status} fail={progress.fail_count}/{FAIL_THRESHOLD}"
+        f" r={ride_pos} → requeue", file=sys.stderr,
+    )
+    if progress.fail_count >= FAIL_THRESHOLD:
+        return "break"
+    return "append"
+
+
+# Build + append RideRecord for a finished proxy ride; mark proxy burned; log summary.
+def _finalize_ride(
+    slot_id:  int,
+    state:    RiderState,
+    proto:    str,
+    hp:       str,
+    pstr:     str,
+    t_bind:   float,
+    progress: _RideProgress,
+) -> None:
+    ride = RideRecord(
+        proxy_str=pstr, proto=proto, host_port=hp,
+        n_ok=progress.ride_ok, n_regwall=progress.burn_count,
+        n_connect_fail=1 if progress.cf_broke else 0,
+        n_failed=progress.fail_count,
+        n_urls_attempted=len(progress.positions),
+        burned_threshold=progress.burn_count >= state.burn_threshold,
+        burned_connect=progress.cf_broke,
+        ride_s=time.monotonic() - t_bind,
+        positions=progress.positions,
+    )
+    state.ride_records.append(ride)
+    state.cooldown_mgr.mark_burned(proto, hp, ride_ok=progress.ride_ok)
+    print(
+        f"[slot {slot_id}] proxy done ok={progress.ride_ok} rw={progress.burn_count}"
+        f" cf={int(progress.cf_broke)} n={len(progress.positions)} {pstr}",
+        file=sys.stderr,
+    )
 
 
 # Atomically advance pool cursor; return (proto, hp) or None if pool is empty.
@@ -319,104 +272,7 @@ async def _next_proxy(state: RiderState) -> tuple[str, str] | None:
         return eligible[idx]
 
 
-# Fetch one URL via per-context proxy; return (status, char_count, markdown_len, elapsed, html, err).
-async def _fetch_one_url(
-    crawler:         AsyncWebCrawler,
-    url:             str,
-    proxy_str:       str,
-    page_timeout_ms: int,
-) -> tuple[str, int | None, int | None, float, str, str | None]:
-    sid     = str(uuid.uuid4())
-    run_cfg = CrawlerRunConfig(
-        session_id=sid,
-        proxy_config=ProxyConfig(server=proxy_str),
-        cache_mode=CacheMode.BYPASS,
-        page_timeout=page_timeout_ms,
-        wait_until="domcontentloaded",
-        delay_before_return_html=DELAY_BEFORE_HTML,
-        markdown_generator=DefaultMarkdownGenerator(),
-        verbose=False,
-    )
-
-    t0           = time.perf_counter()
-    status       = "failed"
-    html         = ""
-    err          = None
-    markdown_len = None
-
-    try:
-        result  = await crawler.arun(url=url, config=run_cfg)
-        elapsed = time.perf_counter() - t0
-
-        if not result.success:
-            emsg   = (result.error_message or "").lower()
-            status = "connect_fail" if any(k in emsg for k in _PROXY_ERR) else "failed"
-            err    = result.error_message
-        elif not result.html:
-            status = "empty"
-        else:
-            raw_md = (result.markdown.raw_markdown or "") if result.markdown else ""
-            if _is_regwall(raw_md):
-                status = "regwall"
-            else:
-                status       = "ok"
-                html         = result.html
-                markdown_len = len(raw_md)
-
-    except Exception as exc:
-        elapsed = time.perf_counter() - t0
-        status  = "connect_fail"
-        err     = str(exc)
-
-    finally:
-        try:
-            await crawler.crawler_strategy.browser_manager.kill_session(sid)
-        except Exception as exc:
-            print(f"[rider] kill_session warn: {exc}", file=sys.stderr)
-
-    return status, len(html) if html else None, markdown_len, elapsed, html, err
-
-
-# Return True if markdown contains any REGWALL_SIGNALS.
-def _is_regwall(markdown: str) -> bool:
-    return any(sig in markdown for sig in REGWALL_SIGNALS)
-
-
-# Classify a connect_fail error string into a subtype for reporting.
-# 'page_timeout'  — Playwright nav timeout ("Timeout Nms exceeded"); crawl4ai wraps as RuntimeError.
-# 'net_timed_out' — TCP-level timeout (net::ERR_TIMED_OUT); distinct from Playwright nav cap.
-# 'proxy_connect' — Explicit proxy/tunnel/SOCKS handshake failure.
-# 'other'         — ERR_CONNECTION_REFUSED, ERR_CONNECTION_CLOSED, ERR_EMPTY_RESPONSE, etc.
-def _classify_connect_fail(err: str | None) -> str:
-    if not err:
-        return "other"
-    emsg = err.lower()
-    if "ms exceeded" in emsg:
-        return "page_timeout"
-    if "net::err_timed_out" in emsg:
-        return "net_timed_out"
-    if any(k in emsg for k in ("err_proxy", "err_tunnel", "socks")):
-        return "proxy_connect"
-    return "other"
-
-
-# Write raw HTML to output_dir/raw/{url_hash}.html; return path.
-def _write_raw(url_hash: str, html: str, output_dir: Path) -> Path:
-    path = output_dir / RAW_SUBDIR / f"{url_hash}.html"
-    path.write_text(html, encoding="utf-8")
-    return path
-
-
-# SHA-256 URL hash (12 hex chars) — matches scrape.py convention.
-def _url_hash(url: str) -> str:
-    return hashlib.sha256(url.encode()).hexdigest()[:12]
-
-
-# Independent progress watchdog — runs as a separate asyncio task, immune to wedged slots.
-# Uses asyncio.sleep() (timer-based) so it fires even when all slot tasks are permanently
-# suspended on await crawler.arun(). Polls every poll_interval seconds; default is
-# min(30, stall_timeout_s / 4) so a short smoke timeout still gets fast detection.
-# Appends (elapsed_s, n_eligible, n_cooldown) to state.pool_samples each poll for the reporter.
+# Independent progress watchdog — separate asyncio task, immune to wedged slots (see package DOCS.md Role).
 async def _watchdog(
     state:         RiderState,
     poll_interval: float | None = None,
@@ -441,134 +297,22 @@ async def _watchdog(
                 print("[watchdog] pool refresh returned empty — keeping current pool", file=sys.stderr)
         if state.all_resolved:
             if state.in_flight == 0:
-                return   # clean drain — all slots exited before this poll
-            _abort_done(state)   # wedged slot(s) on already-done URLs — does not return
+                return
+            _abort_done(state)
         idle = time.monotonic() - state.last_progress_mono
         if idle > state.stall_timeout_s:
-            _abort_stall(state, idle)  # does not return
+            _abort_stall(state, idle)
 
 
-# All URLs done but in_flight > 0: wedged slot(s) racing already-done URLs. Write report +
-# os._exit(0). Never returns. Work is complete — exit code 0 signals success.
-def _abort_done(state: RiderState) -> None:
-    print(
-        f"[watchdog] all-done but in_flight={state.in_flight} — "
-        f"wedged slot(s) on already-done URLs; writing report → os._exit(0)",
-        file=sys.stderr,
-    )
-    state.termination = "all-done"
-
-    state.job_dir.mkdir(parents=True, exist_ok=True)
-
+# Remove signal handlers, cancel watchdog, close crawlers — teardown after slot tasks finish.
+async def _teardown_pool(loop, watchdog: asyncio.Task, crawlers: list) -> None:
     try:
-        from src.news.engine.proxy_riding.reporter import write_riding_report  # late import — avoids circular at module level
-        write_riding_report(state, state.job_dir, state.t_job_start)
-        print(f"[watchdog] job.md → {state.job_dir / 'job.md'}", file=sys.stderr)
+        loop.remove_signal_handler(signal.SIGINT)
+        loop.remove_signal_handler(signal.SIGTERM)
     except Exception as exc:
-        print(f"[watchdog] write_riding_report WARN: {exc}", file=sys.stderr)
-        try:
-            (state.job_dir / "job.md").write_text(
-                "\n".join([
-                    "# CoinDesk riding job — DONE (wedged slot)",
-                    "",
-                    "termination: all-done",
-                    f"n_ok: {state.n_ok}",
-                    f"n_regwall: {state.n_regwall}",
-                    f"n_failed: {state.n_failed}",
-                    f"n_connect_fail: {state.n_connect_fail}",
-                    "",
-                    f"Reporter error: {exc}",
-                ]),
-                encoding="utf-8",
-            )
-        except Exception as write_exc:
-            print(f"[watchdog] fallback job.md WARN: {write_exc}", file=sys.stderr)
-
-    sys.stderr.flush()
-    os._exit(0)
-
-
-# Write report + os._exit on SIGINT/SIGTERM. Never returns.
-# os._exit bypasses asyncio teardown — same rationale as _abort_stall/_abort_done.
-# exit 130 (128+SIGINT=2) / 143 (128+SIGTERM=15) — Unix conventions for signal-killed processes.
-def _abort_interrupted(state: RiderState, signum: int) -> None:
-    name      = "SIGINT" if signum == signal.SIGINT else "SIGTERM"
-    exit_code = 130      if signum == signal.SIGINT else 143
-    print(
-        f"[rider] {name} received — writing report → os._exit({exit_code})",
-        file=sys.stderr,
-    )
-    state.termination = "interrupted"
-
-    state.job_dir.mkdir(parents=True, exist_ok=True)
-
-    try:
-        from src.news.engine.proxy_riding.reporter import write_riding_report  # late import — avoids circular at module level
-        write_riding_report(state, state.job_dir, state.t_job_start)
-        print(f"[rider] job.md → {state.job_dir / 'job.md'}", file=sys.stderr)
-    except Exception as exc:
-        print(f"[rider] write_riding_report WARN: {exc}", file=sys.stderr)
-        try:
-            (state.job_dir / "job.md").write_text(
-                "\n".join([
-                    f"# CoinDesk riding job — {name} ABORT",
-                    "",
-                    "termination: interrupted",
-                    f"n_ok: {state.n_ok}",
-                    f"n_regwall: {state.n_regwall}",
-                    f"n_failed: {state.n_failed}",
-                    f"n_connect_fail: {state.n_connect_fail}",
-                    "",
-                    f"Reporter error: {exc}",
-                ]),
-                encoding="utf-8",
-            )
-        except Exception as write_exc:
-            print(f"[rider] fallback job.md WARN: {write_exc}", file=sys.stderr)
-
-    sys.stderr.flush()
-    os._exit(exit_code)
-
-
-# Write job.md then os._exit(1). Never returns.
-# os._exit bypasses asyncio teardown and browser.close() so wedged Chrome processes
-# cannot re-hang the shutdown; raw files already flushed to disk before we reach here.
-def _abort_stall(state: RiderState, idle_s: float) -> None:
-    print(
-        f"[watchdog] STALL {idle_s:.0f}s ≥ {state.stall_timeout_s:.0f}s — "
-        f"writing report → os._exit(1)",
-        file=sys.stderr,
-    )
-    state.termination = "stall"
-
-    # Write report into scrape_jobs/{job_id}/ (same dir as normal completion)
-    state.job_dir.mkdir(parents=True, exist_ok=True)
-
-    # Write job.md via reporter; fallback to minimal stub on any error
-    try:
-        from src.news.engine.proxy_riding.reporter import write_riding_report  # late import — avoids circular at module level
-        write_riding_report(state, state.job_dir, state.t_job_start)
-        print(f"[watchdog] job.md → {state.job_dir / 'job.md'}", file=sys.stderr)
-    except Exception as exc:
-        print(f"[watchdog] write_riding_report WARN: {exc}", file=sys.stderr)
-        try:
-            (state.job_dir / "job.md").write_text(
-                "\n".join([
-                    "# CoinDesk riding job — STALL ABORT",
-                    "",
-                    "termination: stall",
-                    f"idle_s: {idle_s:.0f}",
-                    f"n_ok: {state.n_ok}",
-                    f"n_regwall: {state.n_regwall}",
-                    f"n_failed: {state.n_failed}",
-                    f"n_connect_fail: {state.n_connect_fail}",
-                    "",
-                    f"Reporter error: {exc}",
-                ]),
-                encoding="utf-8",
-            )
-        except Exception as write_exc:
-            print(f"[watchdog] fallback job.md WARN: {write_exc}", file=sys.stderr)
-
-    sys.stderr.flush()
-    os._exit(1)
+        print(f"[rider] remove_signal_handler warn: {exc}", file=sys.stderr)
+    watchdog.cancel()
+    results = await asyncio.gather(*[c.close() for c in crawlers], return_exceptions=True)
+    for idx, r in enumerate(results):
+        if isinstance(r, Exception):
+            print(f"[rider] crawler[{idx}].close warn: {r}", file=sys.stderr)
