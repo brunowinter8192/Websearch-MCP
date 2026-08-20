@@ -170,7 +170,7 @@ Key: `_sleep = time.sleep` is a module-level alias — patch `pool_retry._sleep`
 
 ---
 
-### pool_loaders.py (325 LOC)
+### pool_loaders.py (190 LOC)
 
 **Purpose:** 18 proxy-source loaders + `load_backfill_pool()` — fetches all sources per-URL with retry and per-source failure isolation; returns `(pool, sources)` where `pool` is deduped `[(protocol, host:port)]` (~32k unique) and `sources` is `[{url, ok, count}, …]` one entry per URL.
 
@@ -202,12 +202,12 @@ Key: `_try_source(url, fn, entries, sources)` is the per-URL isolation helper �
 
 ## Gotchas
 
-- `pool_loaders.py` at 325 LOC exceeds the 200-LOC heuristic — no extractable concern exists (flat list of 18 loader functions sharing one `_merge_dedup` utility). Do not split. Same reasoning holds one level down: `load_backfill_pool` itself (56 code lines) is a flat ordered sequence of `_try_source(...)` calls — the call ORDER affects `sources`' reported order (and, via `_merge_dedup`, which source's entry wins on a dup) — confirmed 2026-08-20, left un-extracted rather than risk that order under a data-driven loop.
+- `pool_loaders.py` (190 LOC after the 2026-08-20 dead-code removal below) — no extractable concern exists in `load_backfill_pool` (flat list of `_try_source(...)` calls sharing one `_merge_dedup` utility). Do not split. `load_backfill_pool` itself (56 code lines) is a flat ordered sequence — the call ORDER affects `sources`' reported order (and, via `_merge_dedup`, which source's entry wins on a dup) — confirmed 2026-08-20, left un-extracted rather than risk that order under a data-driven loop.
 - `pool_loaders.py`'s 17 per-source `load_X_proxies()` functions (`load_curated_proxies` through
-  `load_murongpig_proxies`) are DEAD CODE within `src/` — `load_backfill_pool` calls `_try_source` +
-  lambdas directly, not these wrappers; the only live callers of same-named functions are a separate,
-  non-importing copy in `dev/news_pipeline/theblock/curated_sources.py`. Flagged 2026-08-20, not
-  removed (out of scope for a comment-only pass).
+  `load_murongpig_proxies`) were REMOVED 2026-08-20 — dead within `src/` (`load_backfill_pool` calls
+  `_try_source` + lambdas directly, never these wrappers); confirmed via repo-wide grep including
+  `dev/` before removal. The only surviving same-named functions are a separate, non-importing copy
+  in `dev/news_pipeline/theblock/curated_sources.py` — untouched, out of scope.
 - `janitor.end_job` calls `jsonl_path.unlink()` then wipes `log_dir`. Interrupt between these two orphans the JSONL in `log_dir`. Non-critical: `start_job` wipes `log_dir` at the next run.
 - `box_lock`: SIGTERM kills Python before `finally` runs → sidecar stays; kernel releases flock. Next `acquire()` recovers via `cleanup_stale()` (dead-PID detection).
 - `_sleep` in `loop.py` AND `pool_retry.py` are both module aliases (`_sleep = time.sleep`) — patch the alias in the target module in tests, not `time.sleep` directly. For retry tests patch `pool_retry._sleep`; for exhaustion-sleep tests patch `loop._sleep`.

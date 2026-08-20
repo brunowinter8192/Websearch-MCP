@@ -1,14 +1,26 @@
 # INFRASTRUCTURE
 
 import logging
+import re
 from pathlib import Path
 
 from src.news.platform import Platform
-# From engine/publish.py: derive the {pubdate} slug for clean filenames
-from src.news.engine.publish import pub_date_str
+
+DATE_RE = re.compile(r"/(\d{4})/(\d{2})/(\d{2})/")
 
 
 # FUNCTIONS
+
+# Extract YYYY-MM-DD from publication_date field or URL path; "unknown" if neither present.
+def pub_date_str(entry: dict) -> str:
+    pub = entry.get("publication_date", "")
+    if pub and len(pub) >= 10:
+        return pub[:10]
+    m = DATE_RE.search(entry.get("url", ""))
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    return "unknown"
+
 
 # Clean ok entries → collection_dir; body-less → bodyless_urls.txt; returns {n_cleaned, n_bodyless, total}.
 def _run_clean_pass(

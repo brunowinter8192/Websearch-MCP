@@ -61,7 +61,7 @@ already depends on this module for the 5 functions).
 entries without `lastmod` or `url` skipped), set-union merged with the existing file content, sorted
 before write. TheBlock-specific — called only when `platform.uses_master_list` is `True`.
 
-### clean_pass.py (55 LOC)
+### clean_pass.py (65 LOC)
 
 **Purpose:** The proxy_pool/TheBlock clean-pass stage (`_run_clean_pass`) — isolated from
 `pipeline_support.py`'s generic helpers because it's stage-specific business logic (reads
@@ -70,7 +70,12 @@ bookkeeping, and has its own independent test file.
 **Reads:** `raw_dir/{hash}.md` for each ok entry; existing `clean/bodyless_urls.txt` (set-union merge).
 **Writes:** `collection_dir/theblock__{pubdate}__{hash}.md` per cleaned entry; `raw_dir.parent/clean/bodyless_urls.txt` (body-less URLs, set-union, sorted); progress logged every 200 entries.
 **Called by:** `pipeline.py:_persist_proxy_pool_results` (proxy_pool arm, only when `n_ok > 0`).
-**Calls out:** `engine.publish.pub_date_str` (the `{pubdate}` slug in the output filename).
+**Calls out:** none (stdlib `re` only).
+
+`pub_date_str` (the `{pubdate}` slug in the output filename) moved in-module from the now-deleted
+`engine/publish.py` (2026-08-20) — it was the only live symbol in that file; everything else there
+(`url_hash`, `copy_articles`, `run_rag_index`, `parse_index_result`, `_write_index`,
+`publish_articles`) had zero external callers and was deleted along with the module.
 
 Returns `{"n_cleaned", "n_bodyless", "total"}`. Empty `ok_entries` short-circuits to
 `{0, 0, 0}` without creating `collection_dir`.
@@ -124,7 +129,6 @@ mirror `proxy_pool/buffer.py`'s `DEFAULT_CONCURRENCY`/`BUFFER_SIZE`.
 - proxy_riding (CoinDesk current) writes raw `.html`; browser/proxy_pool write raw `.md`. `filter_new_entries` takes `raw_ext` accordingly.
 - `run_scrape_only` reporters are engine-specific: `write_riding_report` for proxy_riding, `write_scrape_report` for browser. They are NOT interchangeable — the browser reporter needs `t_chunk_start`/`elapsed_s` fields absent from riding manifests and would crash.
 - Both normal completion and the stall-abort path write the job report to the same `scrape_jobs/{job_id}/` dir; the platform root is never written to by the report step.
-- `publish.py` remains on disk but is not called in any path.
 - `_run_pipeline_browser`'s `RegwallGuardError` recovery: `scrape_entries` raising mid-run means the
   guard tripped (too many regwalls) — the exception's `.manifest` (partial, already-persisted
   results) is used AS the final manifest, not discarded; the arm proceeds to persist it normally
