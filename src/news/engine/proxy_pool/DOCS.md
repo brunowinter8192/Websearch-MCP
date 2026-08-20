@@ -39,7 +39,7 @@ the job lifecycle (lock, janitor). Do NOT touch when adding a browser-engine pla
 
 ---
 
-### loop.py (218 LOC)
+### loop.py (230 LOC)
 
 **Purpose:** Sustained concurrent rotation loop — 60-min pool refresh, 2-strikes lifecycle, tail-race, wait-on-exhaustion, stall-terminate.
 **Reads:** `pool_provider()` callback (returns `(pool, sources)`) + target URL list (in-memory).
@@ -57,6 +57,18 @@ poison URLs (neither 200 nor 404 from origin) consume all proxies for a full poo
 no terminal resolution.
 
 Key: `_sleep = time.sleep` is a module-level alias — patch it in tests, not `time.sleep`.
+
+`run_loop` (2026-08-20, 122→52 code lines): startup + refresh-tick pool-load (previously duplicated)
+extracted to `_refresh_pool`; the `ThreadPoolExecutor` batch-processing block extracted to
+`_execute_batch`, which mutates `done`/`dead`/`wset`/`consec_fail` in place and returns `(buf,
+batch_done, batch_failed, last_progress)`. `last_progress` deliberately replicates the ORIGINAL
+per-url-resolution `time.monotonic()` call pattern (captured once per done/dead resolution inside
+the helper, same as before — NOT collapsed to a single post-batch call): `tests/test_proxy_pool.py`'s
+`test_run_loop_refresh_*` tests patch `loop.time` wholesale and drive it with a pre-counted
+`side_effect` sequence keyed to the exact number of `time.monotonic()` calls — collapsing the call
+count would desync that sequence. `_build_batch`'s two near-identical Phase-1 assignment loops
+(wset-first, then buf) deduped into `_assign_batch_slots(proxies, url_iter, batch, assigned_proxies,
+concurrency, wset=None)`.
 
 ---
 
@@ -100,9 +112,9 @@ Key: `_sleep = time.sleep` is a module-level alias — patch it in tests, not `t
 
 ---
 
-### janitor.py (284 LOC)
+### janitor.py (287 LOC)
 
-**Purpose:** Job lifecycle — `Janitor(jobs_dir, log_dir, report_dir)`; wipes transient dirs at start; reads JSONL → `job.md` + `cumulative_hits.png` at end. `_compute_window_stats` buckets attempt events into 60-min windows from t0 and derives per-window `{probiert, erfolgreich, urls_handled, fetch_attempts, pool_size}` (`urls_handled` = distinct target URLs; `fetch_attempts` = total attempt events). `_group_pool_sources` groups `pool_source` events by preceding `pool_refresh` in JSONL order; rendered as a `## Pool source breakdown` section at the bottom of `job.md` (absent when no pool_source events — backward-compatible with old JSONL).
+**Purpose:** Job lifecycle — `Janitor(jobs_dir, log_dir, report_dir)`; wipes transient dirs at start; reads JSONL → `job.md` + `cumulative_hits.png` at end. `_compute_window_stats` buckets attempt events into 60-min windows from t0 (window k = `[t0+k*3600s, t0+(k+1)*3600s)`; a refresh at exactly the boundary, e.g. `t0+3600s`, lands in window 1 not window 0 — same `int((ts-t0)/3600)` formula used for both attempts and refreshes) and derives per-window `{probiert, erfolgreich, urls_handled, fetch_attempts, pool_size}` (`urls_handled` = distinct target URLs; `fetch_attempts` = total attempt events) via `_compute_one_window` (2026-08-20 extraction — per-window computation isolated from the windowing setup). `_group_pool_sources` groups `pool_source` events by preceding `pool_refresh` in JSONL order; rendered as a `## Pool source breakdown` section at the bottom of `job.md` (absent when no pool_source events — backward-compatible with old JSONL) via `_md_source_breakdown` (2026-08-20 extraction, alongside `_md_window_table` for the per-window table — both pytest-covered, see `tests/test_proxy_pool.py`).
 **Reads:** JSONL at `jsonl_path` passed to `end_job`.
 **Writes:** `{jobs_dir}/{job_id}/job.md`, `cumulative_hits.png`; wipes `log_dir` + `report_dir` at start and end.
 **Called by:** `pipeline.py:_run_pipeline_proxy_pool`.
@@ -174,7 +186,12 @@ Key: `_try_source(url, fn, entries, sources)` is the per-URL isolation helper �
 
 ## Gotchas
 
-- `pool_loaders.py` at 341 LOC exceeds the 200-LOC heuristic — no extractable concern exists (flat list of 18 loader functions sharing one `_merge_dedup` utility). Do not split.
+- `pool_loaders.py` at 341 LOC exceeds the 200-LOC heuristic — no extractable concern exists (flat list of 18 loader functions sharing one `_merge_dedup` utility). Do not split. Same reasoning holds one level down: `load_backfill_pool` itself (56 code lines) is a flat ordered sequence of `_try_source(...)` calls — the call ORDER affects `sources`' reported order (and, via `_merge_dedup`, which source's entry wins on a dup) — confirmed 2026-08-20, left un-extracted rather than risk that order under a data-driven loop.
 - `janitor.end_job` calls `jsonl_path.unlink()` then wipes `log_dir`. Interrupt between these two orphans the JSONL in `log_dir`. Non-critical: `start_job` wipes `log_dir` at the next run.
 - `box_lock`: SIGTERM kills Python before `finally` runs → sidecar stays; kernel releases flock. Next `acquire()` recovers via `cleanup_stale()` (dead-PID detection).
 - `_sleep` in `loop.py` AND `pool_retry.py` are both module aliases (`_sleep = time.sleep`) — patch the alias in the target module in tests, not `time.sleep` directly. For retry tests patch `pool_retry._sleep`; for exhaustion-sleep tests patch `loop._sleep`.
+- `loop.py:_execute_batch`'s `last_progress` return MUST call `time.monotonic()` once per done/dead
+  URL resolution inside the batch loop (not once per batch) — `tests/test_proxy_pool.py`'s
+  `test_run_loop_refresh_*` tests patch `loop.time` wholesale and drive it with a pre-counted
+  `side_effect` sequence keyed to the exact call count; collapsing to a single post-batch call
+  desyncs that sequence. Don't "simplify" this without re-checking those tests.

@@ -68,9 +68,20 @@ def find_end_anchor(body_lines: list[str], start_idx: int) -> tuple[int, str]:
 
 
 # Apply in-body cleanup rules; return (cleaned_lines, ws_strip_count, para_insert_count, tag_strip_count).
-# Two passes: (1) line-level strip/substitution + trailing-ws; (2) paragraph normalization.
 def clean_body(lines: list[str]) -> tuple[list[str], int, int, int]:
-    # Pass 1 — strip/substitute each line, count trailing-ws hits
+    pass1, ws_strips, tag_strips = _strip_and_substitute_lines(lines)
+    result, para_inserts = _normalize_paragraphs(pass1)
+
+    while result and result[0] == "":
+        result.pop(0)
+    while result and result[-1] == "":
+        result.pop()
+
+    return result, ws_strips, para_inserts, tag_strips
+
+
+# Pass 1 — strip/substitute each line, count trailing-ws + tag-footer hits.
+def _strip_and_substitute_lines(lines: list[str]) -> tuple[list[str], int, int]:
     pass1: list[str] = []
     ws_strips = 0
     tag_strips = 0
@@ -92,8 +103,11 @@ def clean_body(lines: list[str]) -> tuple[list[str], int, int, int]:
         if stripped != line:
             ws_strips += 1
         pass1.append(stripped)
+    return pass1, ws_strips, tag_strips
 
-    # Pass 2 — paragraph normalization + blank-run collapse-to-1
+
+# Pass 2 — paragraph normalization + blank-run collapse-to-1.
+def _normalize_paragraphs(pass1: list[str]) -> tuple[list[str], int]:
     result: list[str] = []
     para_inserts = 0
     blank_run = 0
@@ -113,11 +127,4 @@ def clean_body(lines: list[str]) -> tuple[list[str], int, int, int]:
                     para_inserts += 1
             result.append(line)
             prev_was_body_para = is_body_para
-
-    # Strip leading/trailing blank lines from body
-    while result and result[0] == "":
-        result.pop(0)
-    while result and result[-1] == "":
-        result.pop()
-
-    return result, ws_strips, para_inserts, tag_strips
+    return result, para_inserts

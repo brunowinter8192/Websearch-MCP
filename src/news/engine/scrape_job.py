@@ -10,9 +10,7 @@ from src.news.engine.scrape import scrape_entries, RegwallGuardError
 
 # ORCHESTRATOR
 
-# Raw-only chunked scrape: scrape directly into raw_dir, persist manifest.jsonl + blocked URL lists.
-# No cleanup, no publish. Dedup on raw-file existence handled by caller before chunking.
-# RegwallGuardError: ok files already written to raw_dir; recover via dir-scan, set regwall_abort, stop.
+# Raw-only chunked scrape: scrape each chunk, persist manifest.jsonl + blocked URL lists; RegwallGuardError stops the loop.
 async def scrape_chunks_raw(
     chunks: list[list[dict]],
     raw_dir: Path,
@@ -24,53 +22,68 @@ async def scrape_chunks_raw(
     regwall_abort = False
     raw_dir.mkdir(parents=True, exist_ok=True)
     for ci, chunk in enumerate(chunks):
-        log.info(f"CHUNK {ci + 1}/{len(chunks)}: {len(chunk)} URLs …")
-        t_chunk_start = datetime.now(timezone.utc)
-        manifest: list[dict] = []
-        aborted = False
-        try:
-            manifest = await scrape_entries(
-                chunk, raw_dir, platform.regwall_signals, platform.scrape_config
-            )
-        except RegwallGuardError as exc:
-            manifest = exc.manifest  # full manifest carried on exception; ok files already on disk
-            n_rw = sum(1 for e in manifest if e.get("status") == "regwall")
-            log.error(
-                f"RegwallGuardError chunk {ci + 1}: {exc} "
-                f"(regwall rate {n_rw / max(len(chunk), 1):.1%} — stopping loop)"
-            )
-            regwall_abort = True
-            aborted = True
-
-        counts = {s: sum(1 for e in manifest if e.get("status") == s) for s in totals}
-        for s, n in counts.items():
-            totals[s] += n
-        for e in manifest:
-            job_records.append({"t_chunk_start": t_chunk_start, **e})
-
-        entries_by_url = {e["url"]: e for e in chunk}
-        ok_manifest_entries = [
-            {
-                "hash": e["hash"],
-                "url": e["url"],
-                "publication_date": entries_by_url.get(e["url"], {}).get("publication_date", ""),
-            }
-            for e in manifest if e.get("status") == "ok"
-        ]
-        _append_to_raw_manifest(raw_dir, ok_manifest_entries)
-        _update_blocked_urls(raw_dir, manifest, {"regwall": "regwall_urls.txt", "empty": "empty_urls.txt"})
-
-        log.info(
-            f"  chunk {ci + 1}: ok={counts['ok']} "
-            f"regwall={counts['regwall']}({counts['regwall'] / max(len(chunk), 1):.0%}) "
-            f"empty={counts['empty']} failed={counts['failed']}"
+        chunk_job_records, aborted = await _scrape_one_chunk(
+            ci, len(chunks), chunk, raw_dir, platform, log, totals,
         )
+        job_records += chunk_job_records
         if aborted:
+            regwall_abort = True
             break
     return totals, job_records, regwall_abort
 
 
 # FUNCTIONS
+
+# Scrape one chunk (RegwallGuardError-recovered), persist manifest+blocked lists; return (job_records, aborted).
+async def _scrape_one_chunk(
+    ci:       int,
+    n_chunks: int,
+    chunk:    list[dict],
+    raw_dir:  Path,
+    platform: "Platform",
+    log:      logging.Logger,
+    totals:   dict,
+) -> tuple[list[dict], bool]:
+    log.info(f"CHUNK {ci + 1}/{n_chunks}: {len(chunk)} URLs …")
+    t_chunk_start = datetime.now(timezone.utc)
+    manifest: list[dict] = []
+    aborted = False
+    try:
+        manifest = await scrape_entries(
+            chunk, raw_dir, platform.regwall_signals, platform.scrape_config
+        )
+    except RegwallGuardError as exc:
+        manifest = exc.manifest  # full manifest carried on exception; ok files already on disk
+        n_rw = sum(1 for e in manifest if e.get("status") == "regwall")
+        log.error(
+            f"RegwallGuardError chunk {ci + 1}: {exc} "
+            f"(regwall rate {n_rw / max(len(chunk), 1):.1%} — stopping loop)"
+        )
+        aborted = True
+
+    counts = {s: sum(1 for e in manifest if e.get("status") == s) for s in totals}
+    for s, n in counts.items():
+        totals[s] += n
+    chunk_job_records = [{"t_chunk_start": t_chunk_start, **e} for e in manifest]
+
+    entries_by_url = {e["url"]: e for e in chunk}
+    ok_manifest_entries = [
+        {
+            "hash": e["hash"],
+            "url": e["url"],
+            "publication_date": entries_by_url.get(e["url"], {}).get("publication_date", ""),
+        }
+        for e in manifest if e.get("status") == "ok"
+    ]
+    _append_to_raw_manifest(raw_dir, ok_manifest_entries)
+    _update_blocked_urls(raw_dir, manifest, {"regwall": "regwall_urls.txt", "empty": "empty_urls.txt"})
+
+    log.info(
+        f"  chunk {ci + 1}: ok={counts['ok']} "
+        f"regwall={counts['regwall']}({counts['regwall'] / max(len(chunk), 1):.0%}) "
+        f"empty={counts['empty']} failed={counts['failed']}"
+    )
+    return chunk_job_records, aborted
 
 # Append one JSONL line per ok entry to raw_dir/manifest.jsonl.
 # Format: {hash, url, publication_date}. Append-only; caller ensures entries are deduplicated.

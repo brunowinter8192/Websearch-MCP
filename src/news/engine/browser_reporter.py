@@ -71,6 +71,11 @@ def _compute_stats(job_records: list[dict], t_job_start: datetime) -> dict:
     }
 
 
+# Format v with spec+unit, or an em-dash when None.
+def _fmt(v, spec="", unit="") -> str:
+    return f"{format(v, spec)}{unit}" if v is not None else "—"
+
+
 # Step-plot of cumulative ok scrapes vs elapsed seconds; save as cumulative.png.
 def _write_plot(job_dir: Path, stats: dict) -> None:
     import matplotlib.pyplot as plt
@@ -103,16 +108,25 @@ def _write_md(
     job_records: list[dict],
     stats: dict,
 ) -> None:
-    def _fmt(v, spec="", unit="") -> str:
-        return f"{format(v, spec)}{unit}" if v is not None else "—"
-
-    job_id   = t_job_start.strftime("%Y%m%dT%H%M%SZ")
-    rw_rate  = stats["n_regwall"] / max(stats["n_scraped"], 1)
-    rw_cell  = f"{stats['n_regwall']} ({rw_rate:.1%})"
+    job_id  = t_job_start.strftime("%Y%m%dT%H%M%SZ")
+    rw_rate = stats["n_regwall"] / max(stats["n_scraped"], 1)
+    rw_cell = f"{stats['n_regwall']} ({rw_rate:.1%})"
     if regwall_abort:
         rw_cell += "  ⚠ **REGWALL ABORT**"
 
-    lines = [
+    lines  = _md_header(job_id, filter_desc, n_target, stats, rw_cell)
+    lines += _md_char_distribution(stats)
+    lines += _md_failure_list(job_records)
+    lines += _md_url_list_section("Regwall URLs", job_records, "regwall")
+    lines += _md_url_list_section("Empty URLs", job_records, "empty")
+    lines += ["![Cumulative OK](cumulative.png)", ""]
+
+    (job_dir / "job.md").write_text("\n".join(lines), encoding="utf-8")
+
+
+# Header + Counts + Throughput sections.
+def _md_header(job_id: str, filter_desc: str, n_target: int, stats: dict, rw_cell: str) -> list[str]:
+    return [
         f"# Browser scrape job — {job_id}",
         "",
         f"Filter: `{filter_desc}`",
@@ -140,58 +154,52 @@ def _write_md(
         "",
     ]
 
+
+# Char-count distribution table (ok bodies only), or a skip note.
+def _md_char_distribution(stats: dict) -> list[str]:
     p = stats["char_pct"]
-    if p:
-        lines += [
-            "## Char-count distribution (ok bodies)",
-            "",
-            "| Percentile | Chars | Note |",
-            "|---|---|---|",
-            f"| p10 | {p['p10']:,} | |",
-            f"| p25 | {p['p25']:,} | |",
-            f"| p50 | {p['p50']:,} | low p50 ⇒ silent-regwall / truncation risk |",
-            f"| p75 | {p['p75']:,} | |",
-            f"| p90 | {p['p90']:,} | |",
-            f"| p95 | {p['p95']:,} | real articles typically 34 k+ chars |",
-            "",
-        ]
-    else:
-        lines += ["## Char-count distribution (ok bodies)", "", "No ok bodies — skipped.", ""]
+    if not p:
+        return ["## Char-count distribution (ok bodies)", "", "No ok bodies — skipped.", ""]
+    return [
+        "## Char-count distribution (ok bodies)",
+        "",
+        "| Percentile | Chars | Note |",
+        "|---|---|---|",
+        f"| p10 | {p['p10']:,} | |",
+        f"| p25 | {p['p25']:,} | |",
+        f"| p50 | {p['p50']:,} | low p50 ⇒ silent-regwall / truncation risk |",
+        f"| p75 | {p['p75']:,} | |",
+        f"| p90 | {p['p90']:,} | |",
+        f"| p95 | {p['p95']:,} | real articles typically 34 k+ chars |",
+        "",
+    ]
 
+
+# Failure breakdown table (URL + error), capped at 20 rows.
+def _md_failure_list(job_records: list[dict]) -> list[str]:
     failures = [r for r in job_records if r.get("status") == "failed"]
-    if failures:
-        lines += [
-            "## Failure breakdown",
-            "",
-            "| URL | Error |",
-            "|---|---|",
-        ]
-        for r in failures[:20]:
-            err = (r.get("error") or "").replace("|", "\\|")[:120]
-            url = (r.get("url") or "")[:80]
-            lines.append(f"| {url} | {err} |")
-        if len(failures) > 20:
-            lines.append(f"| … ({len(failures) - 20} more) | |")
-        lines.append("")
+    if not failures:
+        return []
+    lines = ["## Failure breakdown", "", "| URL | Error |", "|---|---|"]
+    for r in failures[:20]:
+        err = (r.get("error") or "").replace("|", "\\|")[:120]
+        url = (r.get("url") or "")[:80]
+        lines.append(f"| {url} | {err} |")
+    if len(failures) > 20:
+        lines.append(f"| … ({len(failures) - 20} more) | |")
+    lines.append("")
+    return lines
 
-    regwall_entries = [r for r in job_records if r.get("status") == "regwall"]
-    if regwall_entries:
-        lines += ["## Regwall URLs", "", "| URL |", "|---|"]
-        for r in regwall_entries[:50]:
-            lines.append(f"| {(r.get('url') or '')[:100]} |")
-        if len(regwall_entries) > 50:
-            lines.append(f"| … ({len(regwall_entries) - 50} more) |")
-        lines.append("")
 
-    empty_entries = [r for r in job_records if r.get("status") == "empty"]
-    if empty_entries:
-        lines += ["## Empty URLs", "", "| URL |", "|---|"]
-        for r in empty_entries[:50]:
-            lines.append(f"| {(r.get('url') or '')[:100]} |")
-        if len(empty_entries) > 50:
-            lines.append(f"| … ({len(empty_entries) - 50} more) |")
-        lines.append("")
-
-    lines += ["![Cumulative OK](cumulative.png)", ""]
-
-    (job_dir / "job.md").write_text("\n".join(lines), encoding="utf-8")
+# URL-only table for a given status (Regwall/Empty), capped at limit rows.
+def _md_url_list_section(title: str, job_records: list[dict], status: str, limit: int = 50) -> list[str]:
+    entries = [r for r in job_records if r.get("status") == status]
+    if not entries:
+        return []
+    lines = [f"## {title}", "", "| URL |", "|---|"]
+    for r in entries[:limit]:
+        lines.append(f"| {(r.get('url') or '')[:100]} |")
+    if len(entries) > limit:
+        lines.append(f"| … ({len(entries) - limit} more) |")
+    lines.append("")
+    return lines

@@ -194,12 +194,18 @@ bookkeeping, never persisted, never reaches a report.
 4. `all_resolved AND in_flight > 0` → `_abort_done(state)`: report + `os._exit(0)` (wedge-after-done).
 5. `idle > stall_timeout_s` → `_abort_stall(state, idle)`: report + `os._exit(1)` (genuine stall).
 
-### reporter.py (384 LOC)
+### reporter.py (425 LOC)
 
 **Purpose:** Job report writer — `job.md` (counts, throughput, proxy-riding stats, eligible-pool-over-time
 table, regwall counts, connect-fail breakdown, success load-time distribution) + `cumulative.png`
 (step-plot of cumulative OK fetches over time) + `success_load_hist.png` (histogram of OK-fetch load
-times) + `connect_fail_hist.png` (histogram of connect-fail elapsed times).
+times) + `connect_fail_hist.png` (histogram of connect-fail elapsed times). `_compute_stats` (one
+metric-group helper per concern: `_compute_retry_outcome`, `_compute_pool_windows`,
+`_compute_load_percentiles`, `_compute_connect_fail_stats`) and `_write_md` (one section-builder
+helper per `job.md` heading: `_md_header_counts`, `_md_proxy_riding`, `_md_pool_windows`,
+`_md_regwall`, `_md_connect_fail`, `_md_load_time`, `_md_plots`) were split 2026-08-20 to clear the
+100-line function ceiling — mechanical extraction, `job.md` output byte-identical (verified via
+synthetic-state before/after diff, no test suite coverage exists for this module).
 **Reads:** `RiderState` (in-memory), `t_job_start` (datetime).
 **Writes:** `{job_dir}/job.md`; `{job_dir}/cumulative.png`;
 `{job_dir}/success_load_hist.png` (only when ≥2 OK `load_s` values);

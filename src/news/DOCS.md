@@ -75,13 +75,18 @@ bookkeeping, and has its own independent test file.
 Returns `{"n_cleaned", "n_bodyless", "total"}`. Empty `ok_entries` short-circuits to
 `{0, 0, 0}` without creating `collection_dir`.
 
-### __main__.py (132 LOC)
+### __main__.py (150 LOC)
 
 **Purpose:** argparse entry point. Flags: `--source`, `--skip-index` (no-op, CLI compat), `--timeframe`, `--discover-only`, `--scrape-only` (+ `--year/--from/--to/--limit/--browsers/--slots/--cooldown-policy/--page-timeout`). Imports the platform modules for side-effect registration, resolves via `registry.get`, dispatches to the matching pipeline entry. When `--timeframe` is not `delta` and not `--discover-only`, auto-forces `skip_index=True` and prints the manual index reminder.
 **Reads:** CLI args.
 **Writes:** stdout.
 **Called by:** the `python -m src.news` entry point.
 **Calls out:** `platforms.coindesk`, `platforms.theblock` (side-effect register); `registry` (get); `pipeline` (run_pipeline, run_discover_only, run_scrape_only).
+
+`main` (2026-08-20, 116→30 code lines): argparse setup extracted to `_build_parser` (calls
+`_add_core_args` for the 9 always-present flags, `_add_scrape_only_args` for the 4
+proxy_riding-refinement flags — grouping matches the Purpose paragraph above). Pure declarative
+move, zero text/flag changes — verified via `python -m src.news --help` text diff before/after.
 
 ### platform.py (35 LOC)
 
