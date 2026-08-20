@@ -21,14 +21,14 @@ Touch this package when changing proxy-riding engine behaviour. Do NOT touch `en
 `__init__.py` is empty. Entry paths:
 
 - `scrape_entries_riding(entries, output_dir, riding_cfg, job_dir)` in `scrape.py` — async; called by
-  `pipeline.py:run_scrape_only`. Returns `tuple[list[dict], RiderState]`: manifest
+  `pipeline.py:_run_scrape_only_riding`. Returns `tuple[list[dict], RiderState]`: manifest
   `[{url, hash, status, file, char_count, error}]` + full rider state (for `write_riding_report`).
   `job_dir` is threaded to the watchdog so stall-abort writes land in `scrape_jobs/{job_id}/` (same as
   normal completion), not the platform root.
 - `RidingScrapeConfig` in `scrape.py` — dataclass with production defaults
   (`n_browsers=4, n_slots=64, stall_timeout_s=300.0, burn_threshold=2, page_timeout_ms=8_000`).
 - `write_riding_report(state, job_dir, t_job_start)` in `reporter.py` — called by
-  `pipeline.py:run_scrape_only` (normal completion) and by `abort.py`'s `_abort_stall` / `_abort_done` /
+  `pipeline.py:_run_scrape_only_riding` (normal completion) and by `abort.py`'s `_abort_stall` / `_abort_done` /
   `_abort_interrupted` (late import, abort paths).
 - `run_riding_pool(url_queue, proxy_pool, cooldown_mgr, output_dir, job_dir, target_urls, …)` in
   `rider.py` — async; called by `scrape_entries_riding`. Stable entry point — this import path does
@@ -211,7 +211,7 @@ synthetic-state before/after diff, no test suite coverage exists for this module
 `{job_dir}/success_load_hist.png` (only when ≥2 OK `load_s` values);
 `{job_dir}/connect_fail_hist.png` (only when ≥2 `connect_fail_records`).
 All histograms: 0.25 s bins, x-axis auto-ranges to data max, page_timeout_s red vertical line.
-**Called by:** `pipeline.py:run_scrape_only` (normal completion, via `write_riding_report`);
+**Called by:** `pipeline.py:_run_scrape_only_riding` (normal completion, via `write_riding_report`);
 `abort.py:_abort_stall` (late import, stall abort); `abort.py:_abort_done` (late import,
 wedge-after-done); `abort.py:_abort_interrupted` (late import, SIGINT/SIGTERM abort).
 **Calls out:** `matplotlib` (lazy import inside plot functions); `statistics` (stdlib, incl.
@@ -238,7 +238,7 @@ job.md section **"Success load-time distribution"**: percentile table computed o
 maps `RiderState.job_records` → pipeline manifest.
 **Reads:** entries list (in-memory), `RidingScrapeConfig`, proxy pool (network via `load_backfill_pool`).
 **Writes:** delegates to `rider.py` (raw HTML writes to `output_dir/raw/{hash}.html`); writes nothing directly.
-**Called by:** `pipeline.py:run_scrape_only` (proxy_riding dispatch arm).
+**Called by:** `pipeline.py:_run_scrape_only_riding` (proxy_riding dispatch arm).
 **Calls out:** `src.news.engine.proxy_pool.pool_loaders.load_backfill_pool`;
 `src.news.engine.proxy_riding.cooldown.RidingCooldownManager`;
 `src.news.engine.proxy_riding.rider.run_riding_pool`;
@@ -273,7 +273,7 @@ are safe without explicit locking. `proxy_lock` (asyncio.Lock) guards `proxy_cur
 
 - `file` field in manifest points to `.html` (not `.md`). `dedup.py:filter_new_entries` mode `"raw"`
   now accepts `raw_ext` param — pass `".html"` for riding path (done in `pipeline.py:run_scrape_only`).
-  `pipeline.py:_run_clean_pass` still hardcodes `{h}.md` but is NOT on CoinDesk's path (proxy_pool /
+  `clean_pass.py:_run_clean_pass` still hardcodes `{h}.md` but is NOT on CoinDesk's path (proxy_pool /
   TheBlock only) — out of scope unless CoinDesk gains a clean-pass step.
 - `output_dir` passed to `scrape_entries_riding` must be `platform_dir` (`data/news/{name}/`), NOT
   `raw_dir`. The rider writes to `output_dir/raw/{hash}.html`; passing `raw_dir` puts files at

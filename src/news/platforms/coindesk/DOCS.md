@@ -96,4 +96,4 @@ browser chunking). `riding_scrape_config = RidingScrapeConfig()` — production 
 `.html` (not `.md`) — `data/news/coindesk/raw/{hash}.html`. `proxy_scrape_config = None`.
 Attribute `timeframe: str = "30"` set by `__main__` via `--timeframe`.
 `load_scrape_entries(year, from_date, to_date, limit)` delegates to `discover.py:load_discover_filtered` — exposes the `--scrape-only` interface required by `run_scrape_only()` in `pipeline.py`.
-**Called by:** `__main__.py` (side-effect import); `pipeline.py:run_scrape_only` (via `platform.load_scrape_entries`, `platform.scrape_engine`, `platform.riding_scrape_config`).
+**Called by:** `__main__.py` (side-effect import); `pipeline.py:run_scrape_only` (via `platform.load_scrape_entries`, `platform.scrape_engine`); `pipeline.py:_run_scrape_only_riding` (via `platform.riding_scrape_config`).

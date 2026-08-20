@@ -77,7 +77,7 @@ extract `articleBody` (HTML) → convert to Markdown via `crawl4ai.html2text.HTM
 apply `_post_clean()` regex pass → mutate `entry["publication_date"] = datePublished`.
 **Reads:** raw HTML string (proxy engine output), entry dict (scrape manifest).
 **Writes:** mutates `entry["publication_date"]` in place.
-**Called by:** `pipeline.py:_run_clean_pass` (proxy_pool branch of `run_pipeline`).
+**Called by:** `clean_pass.py:_run_clean_pass` (proxy_pool arm, dispatched from `pipeline.py:_run_pipeline_proxy_pool`).
 **Calls out:** `crawl4ai.html2text` (bundled, no new dep).
 
 JSON-LD shape hardening — `_iter_candidates()` handles all common shapes without crashing:
