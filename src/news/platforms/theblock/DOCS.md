@@ -58,10 +58,15 @@ Four timeframe modes (read from `self.timeframe`); no `lastmod` date filtering i
 Proxy pool is lazy-loaded into `pool_cache` on first fallback; shared across all XML fetches
 in the same discover call (index + sub-sitemaps) to avoid loading the pool twice.
 
+`discover`'s timeframe dispatch (2026-08-20, extracted from `discover()`'s body) lives in
+`_resolve_target_subs(timeframe, post_subs)` — the four-mode branch above, `RuntimeError` messages
+preserved verbatim (pytest-covered: `tests/test_theblock_discover.py`'s `discover("sub:27-24")` /
+`discover("sub:x-y")` / `discover("sub:10-20")` end-to-end error-message assertions).
+
 After `discover()`, both `run_discover_only()` and `run_pipeline()` call
 `_persist_master_list(entries, master_path, log)` → `data/news/theblock/discover/master_urls.txt`
 (format `YYYY-MM-DD\t{url}`, sorted+deduped, set-union append). No timestamped snapshot JSON,
-no per-year shards. Persistence is in `pipeline.py:_persist_master_list`, not in discover.py.
+no per-year shards. Persistence is in `pipeline_support.py:_persist_master_list`, not in discover.py.
 
 ---
 
@@ -72,7 +77,7 @@ extract `articleBody` (HTML) → convert to Markdown via `crawl4ai.html2text.HTM
 apply `_post_clean()` regex pass → mutate `entry["publication_date"] = datePublished`.
 **Reads:** raw HTML string (proxy engine output), entry dict (scrape manifest).
 **Writes:** mutates `entry["publication_date"]` in place.
-**Called by:** `pipeline.py:_run_clean_pass` (proxy_pool branch of `run_pipeline`).
+**Called by:** `clean_pass.py:_run_clean_pass` (proxy_pool arm, dispatched from `pipeline.py:_run_pipeline_proxy_pool`).
 **Calls out:** `crawl4ai.html2text` (bundled, no new dep).
 
 JSON-LD shape hardening — `_iter_candidates()` handles all common shapes without crashing:

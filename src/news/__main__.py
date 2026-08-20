@@ -11,10 +11,54 @@ from src.news.pipeline import run_pipeline, run_discover_only, run_scrape_only
 
 # ORCHESTRATOR
 def main() -> None:
+    parser = _build_parser()
+    args = parser.parse_args()
+
+    platform = get(args.source)
+    skip_index = args.skip_index
+    if hasattr(platform, "timeframe"):
+        platform.timeframe = args.timeframe
+        if args.timeframe != "delta" and not args.discover_only and not args.scrape_only:
+            skip_index = True
+            print(f"Non-delta timeframe ({args.timeframe!r}) — RAG index auto-skipped.")
+            print(f"After review, run: rag-cli index --collection {platform.collection}")
+
+    if args.scrape_only:
+        if args.year and (args.from_date or args.to_date):
+            parser.error("--year and --from/--to are mutually exclusive")
+        asyncio.run(run_scrape_only(
+            platform,
+            year=args.year,
+            from_date=args.from_date,
+            to_date=args.to_date,
+            limit=args.limit,
+            skip_index=skip_index,
+            n_browsers=args.browsers,
+            n_slots=args.slots,
+            cooldown_policy=args.cooldown_policy,
+            page_timeout_ms=args.page_timeout,
+        ))
+    elif args.discover_only:
+        asyncio.run(run_discover_only(platform))
+    else:
+        asyncio.run(run_pipeline(platform, skip_index=skip_index))
+
+
+# FUNCTIONS
+
+# Build the full argparse surface: core flags + scrape-only refinement flags.
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m src.news",
         description="News ingestion pipeline — discover, scrape, clean, publish to RAG.",
     )
+    _add_core_args(parser)
+    _add_scrape_only_args(parser)
+    return parser
+
+
+# --source/--skip-index/--timeframe/--discover-only/--scrape-only/--year/--from/--to/--limit
+def _add_core_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--source",
         required=True,
@@ -70,6 +114,10 @@ def main() -> None:
         default=None,
         help="Cap URL count after date filter (quick probe, e.g. --limit 5).",
     )
+
+
+# --browsers/--slots/--cooldown-policy/--page-timeout — proxy_riding scrape-only refinement flags
+def _add_scrape_only_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--browsers",
         type=int,
@@ -96,36 +144,6 @@ def main() -> None:
         default=None,
         help="Per-fetch page navigation timeout in ms for proxy_riding scrape-only (default 8000 from RidingScrapeConfig).",
     )
-    args = parser.parse_args()
-
-    platform = get(args.source)
-    skip_index = args.skip_index
-    if hasattr(platform, "timeframe"):
-        platform.timeframe = args.timeframe
-        if args.timeframe != "delta" and not args.discover_only and not args.scrape_only:
-            skip_index = True
-            print(f"Non-delta timeframe ({args.timeframe!r}) — RAG index auto-skipped.")
-            print(f"After review, run: rag-cli index --collection {platform.collection}")
-
-    if args.scrape_only:
-        if args.year and (args.from_date or args.to_date):
-            parser.error("--year and --from/--to are mutually exclusive")
-        asyncio.run(run_scrape_only(
-            platform,
-            year=args.year,
-            from_date=args.from_date,
-            to_date=args.to_date,
-            limit=args.limit,
-            skip_index=skip_index,
-            n_browsers=args.browsers,
-            n_slots=args.slots,
-            cooldown_policy=args.cooldown_policy,
-            page_timeout_ms=args.page_timeout,
-        ))
-    elif args.discover_only:
-        asyncio.run(run_discover_only(platform))
-    else:
-        asyncio.run(run_pipeline(platform, skip_index=skip_index))
 
 
 if __name__ == "__main__":

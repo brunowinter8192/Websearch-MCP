@@ -120,31 +120,36 @@ async def _fetch_one(
                 result = await crawler.arun(url=url, config=run_cfg)
             elapsed = time.perf_counter() - t0
             raw_md = (result.markdown.raw_markdown if result.markdown else "") or ""
-
-            if _is_regwall(raw_md, regwall_signals):
-                result_entry.update({
-                    "status": "regwall", "char_count": len(raw_md),
-                    "elapsed_s": round(elapsed, 2), "wait_strategy": "domcontentloaded",
-                })
-                print(f"  WARN regwall detected — skipping write: {url}", file=sys.stderr)
-            elif not raw_md:
-                result_entry.update({
-                    "status": "empty", "char_count": 0,
-                    "elapsed_s": round(elapsed, 2), "wait_strategy": "domcontentloaded",
-                })
-                print(f"  empty ({elapsed:.1f}s)", file=sys.stderr)
-            else:
-                file_path = _write_body(url_hash, raw_md, output_dir)
-                result_entry.update({
-                    "status": "ok", "char_count": len(raw_md),
-                    "file": str(file_path),
-                    "elapsed_s": round(elapsed, 2), "wait_strategy": "domcontentloaded",
-                })
-                print(f"  ok — {len(raw_md):,} chars in {elapsed:.1f}s [domcontentloaded]", file=sys.stderr)
+            result_entry.update(_classify_fetch(url, url_hash, raw_md, elapsed, regwall_signals, output_dir))
         except Exception as exc:
             result_entry.update({"status": "failed", "error": str(exc)})
             print(f"  FAILED: {exc}", file=sys.stderr)
     return result_entry
+
+
+# Classify a fetch result (regwall/empty/ok), write the body on ok, log the outcome; return update fields.
+def _classify_fetch(
+    url: str, url_hash: str, raw_md: str, elapsed: float,
+    regwall_signals: list[str], output_dir: Path,
+) -> dict:
+    if _is_regwall(raw_md, regwall_signals):
+        print(f"  WARN regwall detected — skipping write: {url}", file=sys.stderr)
+        return {
+            "status": "regwall", "char_count": len(raw_md),
+            "elapsed_s": round(elapsed, 2), "wait_strategy": "domcontentloaded",
+        }
+    if not raw_md:
+        print(f"  empty ({elapsed:.1f}s)", file=sys.stderr)
+        return {
+            "status": "empty", "char_count": 0,
+            "elapsed_s": round(elapsed, 2), "wait_strategy": "domcontentloaded",
+        }
+    file_path = _write_body(url_hash, raw_md, output_dir)
+    print(f"  ok — {len(raw_md):,} chars in {elapsed:.1f}s [domcontentloaded]", file=sys.stderr)
+    return {
+        "status": "ok", "char_count": len(raw_md), "file": str(file_path),
+        "elapsed_s": round(elapsed, 2), "wait_strategy": "domcontentloaded",
+    }
 
 
 # Write raw body ONLY (no frontmatter — cleanup receives entry separately); return path.

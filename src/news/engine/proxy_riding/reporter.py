@@ -36,7 +36,6 @@ def _compute_stats(state: RiderState, t_job_start: datetime) -> dict:
     n_ok              = sum(1 for j in jobs if j.status == "ok")
     n_regwall_fetches = sum(1 for j in jobs if j.status == "regwall")
     n_failed          = sum(1 for j in jobs if j.status in ("failed", "empty"))
-    # connect_fail breaks before job_records.append() → use authoritative state counter
     n_connect_fail    = state.n_connect_fail
 
     elapsed_values = [j.elapsed_s for j in jobs if j.elapsed_s is not None]
@@ -54,12 +53,46 @@ def _compute_stats(state: RiderState, t_job_start: datetime) -> dict:
     ride_lengths   = [r.n_urls_attempted for r in rides]
     ride_ok_counts = [r.n_ok             for r in rides]
     ride_len_stats = _distribution_stats(ride_lengths)
-
     n_proxies_burned     = len(rides)
     proxies_for_backfill = round(n_proxies_burned / max(n_ok, 1) * _BACKFILL_TOTAL)
     n_fail_rotations     = sum(1 for r in rides if r.n_failed >= FAIL_THRESHOLD)
 
-    # Retry outcome: among URLs that saw at least one regwall, final status
+    n_urls_with_regwall, retried_ok, retried_failed = _compute_retry_outcome(jobs)
+    wasted_ratio = n_regwall_fetches / max(n_total_fetches, 1)
+
+    pool_total, pool_windows = _compute_pool_windows(state)
+    page_timeout_s = state.page_timeout_ms / 1000
+    load_times, load_perc = _compute_load_percentiles(jobs)
+    cf_times, cf_perc, cf_subtype_counts = _compute_connect_fail_stats(state)
+
+    return {
+        "n_ok": n_ok, "n_regwall_fetches": n_regwall_fetches,
+        "n_failed": n_failed, "n_connect_fail": n_connect_fail,
+        "n_total_fetches": n_total_fetches,
+        "wall_s": wall_s, "mean_s": mean_s, "median_s": median_s,
+        "urls_per_min": urls_per_min,
+        "ok_completion_s": ok_completion_s,
+        "ride_ok_counts": ride_ok_counts,
+        "ride_len_stats": ride_len_stats,
+        "n_proxies_burned": n_proxies_burned,
+        "proxies_for_backfill": proxies_for_backfill,
+        "n_fail_rotations": n_fail_rotations,
+        "retried_ok": retried_ok, "retried_failed": retried_failed,
+        "n_urls_with_regwall": n_urls_with_regwall,
+        "wasted_ratio": wasted_ratio,
+        "termination": state.termination,
+        "pool_total": pool_total, "pool_windows": pool_windows,
+        "page_timeout_s": page_timeout_s,
+        "load_times": load_times,
+        "load_perc": load_perc,
+        "cf_times": cf_times,
+        "cf_perc": cf_perc,
+        "cf_subtype_counts": cf_subtype_counts,
+    }
+
+
+# Retry outcome: among URLs that saw ≥1 regwall, final status (eventually ok vs stayed failed).
+def _compute_retry_outcome(jobs: list) -> tuple[int, int, int]:
     url_final: dict[str, str] = {}
     url_rw:    set[str]       = set()
     for j in jobs:
@@ -68,9 +101,11 @@ def _compute_stats(state: RiderState, t_job_start: datetime) -> dict:
             url_rw.add(j.url)
     retried_ok     = sum(1 for u in url_rw if url_final[u] == "ok")
     retried_failed = len(url_rw) - retried_ok
-    wasted_ratio   = n_regwall_fetches / max(n_total_fetches, 1)
+    return len(url_rw), retried_ok, retried_failed
 
-    # Eligible pool over time — bucket pool_samples into 10-min windows
+
+# Eligible pool over time — bucket pool_samples into 10-min windows.
+def _compute_pool_windows(state: RiderState) -> tuple[int, list[dict]]:
     pool_total   = len(state.proxy_pool)
     pool_windows: list[dict] = []
     if state.pool_samples:
@@ -88,64 +123,36 @@ def _compute_stats(state: RiderState, t_job_start: datetime) -> dict:
                     "avg_eligible":  avg_eligible,
                     "peak_cooldown": peak_cooldown,
                 })
+    return pool_total, pool_windows
 
-    page_timeout_s = state.page_timeout_ms / 1000
+
+# OK-fetch load-time inclusive percentiles; None when fewer than 2 samples.
+def _compute_load_percentiles(jobs: list) -> tuple[list[float], dict | None]:
     load_times = [j.load_s for j in jobs if j.status == "ok" and j.load_s is not None]
-    if len(load_times) >= 2:
-        qs = statistics.quantiles(load_times, n=100, method="inclusive")
-        load_perc: dict | None = {
-            "p50": round(qs[49], 3),
-            "p90": round(qs[89], 3),
-            "p95": round(qs[94], 3),
-            "p99": round(qs[98], 3),
-            "max": round(max(load_times), 3),
-            "n":   len(load_times),
-        }
-    else:
-        load_perc = None
+    if len(load_times) < 2:
+        return load_times, None
+    qs = statistics.quantiles(load_times, n=100, method="inclusive")
+    return load_times, {
+        "p50": round(qs[49], 3), "p90": round(qs[89], 3), "p95": round(qs[94], 3),
+        "p99": round(qs[98], 3), "max": round(max(load_times), 3), "n": len(load_times),
+    }
 
+
+# Connect-fail elapsed-time inclusive percentiles + subtype counts.
+def _compute_connect_fail_stats(state: RiderState) -> tuple[list[float], dict | None, dict[str, int]]:
     cf_times    = [r[0] for r in state.connect_fail_records]
     cf_subtypes = [r[1] for r in state.connect_fail_records]
+    cf_perc: dict | None = None
     if len(cf_times) >= 2:
         qs = statistics.quantiles(cf_times, n=100, method="inclusive")
-        cf_perc: dict | None = {
-            "p50": round(qs[49], 3),
-            "p90": round(qs[89], 3),
-            "p95": round(qs[94], 3),
-            "p99": round(qs[98], 3),
-            "max": round(max(cf_times), 3),
-            "n":   len(cf_times),
+        cf_perc = {
+            "p50": round(qs[49], 3), "p90": round(qs[89], 3), "p95": round(qs[94], 3),
+            "p99": round(qs[98], 3), "max": round(max(cf_times), 3), "n": len(cf_times),
         }
-    else:
-        cf_perc = None
     cf_subtype_counts: dict[str, int] = {}
     for st in cf_subtypes:
         cf_subtype_counts[st] = cf_subtype_counts.get(st, 0) + 1
-
-    return {
-        "n_ok": n_ok, "n_regwall_fetches": n_regwall_fetches,
-        "n_failed": n_failed, "n_connect_fail": n_connect_fail,
-        "n_total_fetches": n_total_fetches,
-        "wall_s": wall_s, "mean_s": mean_s, "median_s": median_s,
-        "urls_per_min": urls_per_min,
-        "ok_completion_s": ok_completion_s,
-        "ride_ok_counts": ride_ok_counts,
-        "ride_len_stats": ride_len_stats,
-        "n_proxies_burned": n_proxies_burned,
-        "proxies_for_backfill": proxies_for_backfill,
-        "n_fail_rotations": n_fail_rotations,
-        "retried_ok": retried_ok, "retried_failed": retried_failed,
-        "n_urls_with_regwall": len(url_rw),
-        "wasted_ratio": wasted_ratio,
-        "termination": state.termination,
-        "pool_total": pool_total, "pool_windows": pool_windows,
-        "page_timeout_s": page_timeout_s,
-        "load_times": load_times,
-        "load_perc": load_perc,
-        "cf_times": cf_times,
-        "cf_perc": cf_perc,
-        "cf_subtype_counts": cf_subtype_counts,
-    }
+    return cf_times, cf_perc, cf_subtype_counts
 
 
 # Compute mean/median/min/max of a list; return None-filled dict if empty.
@@ -158,6 +165,11 @@ def _distribution_stats(values: list) -> dict:
         "min":    min(values),
         "max":    max(values),
     }
+
+
+# Format v with spec+unit, or an em-dash when None.
+def _fmt(v, spec="", unit="") -> str:
+    return f"{format(v, spec)}{unit}" if v is not None else "—"
 
 
 # Step-plot of cumulative OK fetches vs elapsed seconds; save as cumulative.png.
@@ -236,14 +248,23 @@ def _write_cf_hist(job_dir: Path, stats: dict) -> None:
 def _write_md(
     job_dir: Path, state: RiderState, stats: dict, t_job_start: datetime,
 ) -> None:
-    def _fmt(v, spec="", unit="") -> str:
-        return f"{format(v, spec)}{unit}" if v is not None else "—"
+    job_id  = t_job_start.strftime("%Y%m%dT%H%M%SZ")
+    rw_rate = stats["n_regwall_fetches"] / max(stats["n_total_fetches"], 1)
 
-    job_id   = t_job_start.strftime("%Y%m%dT%H%M%SZ")
-    rw_rate  = stats["n_regwall_fetches"] / max(stats["n_total_fetches"], 1)
-    rls      = stats["ride_len_stats"]
+    lines = _md_header_counts(state, stats, job_id)
+    lines += _md_proxy_riding(stats)
+    lines += _md_pool_windows(stats)
+    lines += _md_regwall(stats, rw_rate)
+    lines += _md_connect_fail(stats)
+    lines += _md_load_time(stats)
+    lines += _md_plots(stats)
 
-    lines = [
+    (job_dir / "job.md").write_text("\n".join(lines), encoding="utf-8")
+
+
+# Header + Counts + Throughput sections.
+def _md_header_counts(state: RiderState, stats: dict, job_id: str) -> list[str]:
+    return [
         f"# CoinDesk riding job — {job_id}",
         "",
         "## Counts",
@@ -273,7 +294,11 @@ def _write_md(
         "",
     ]
 
-    lines += [
+
+# Proxy-riding summary + ride-length distribution + eligible-pool header.
+def _md_proxy_riding(stats: dict) -> list[str]:
+    rls = stats["ride_len_stats"]
+    return [
         "## Proxy riding",
         "",
         "| Metric | Value |",
@@ -295,23 +320,29 @@ def _write_md(
         "",
     ]
 
-    pw = stats["pool_windows"]
-    if pw:
-        lines += [
-            "| t (min) | min eligible | avg eligible | peak in-cooldown |",
-            "|---|---|---|---|",
-        ]
-        for w in pw:
-            t_label = f"{w['window_min']}–{w['window_min'] + 10}"
-            lines.append(
-                f"| {t_label} | {w['min_eligible']:,} | {w['avg_eligible']:,}"
-                f" | {w['peak_cooldown']:,} |"
-            )
-        lines += [""]
-    else:
-        lines += ["No samples — run completed before first poll.", ""]
 
-    lines += [
+# Eligible-pool-over-time table (or no-samples note).
+def _md_pool_windows(stats: dict) -> list[str]:
+    pw = stats["pool_windows"]
+    if not pw:
+        return ["No samples — run completed before first poll.", ""]
+    lines = [
+        "| t (min) | min eligible | avg eligible | peak in-cooldown |",
+        "|---|---|---|---|",
+    ]
+    for w in pw:
+        t_label = f"{w['window_min']}–{w['window_min'] + 10}"
+        lines.append(
+            f"| {t_label} | {w['min_eligible']:,} | {w['avg_eligible']:,}"
+            f" | {w['peak_cooldown']:,} |"
+        )
+    lines += [""]
+    return lines
+
+
+# Regwall summary section.
+def _md_regwall(stats: dict, rw_rate: float) -> list[str]:
+    return [
         "## Regwall",
         "",
         "| Metric | Value |",
@@ -324,7 +355,10 @@ def _write_md(
         "",
     ]
 
-    lines += ["## Connect-fail breakdown", ""]
+
+# Connect-fail breakdown: percentile table + subtype table.
+def _md_connect_fail(stats: dict) -> list[str]:
+    lines    = ["## Connect-fail breakdown", ""]
     cp       = stats["cf_perc"]
     n_cf_tot = len(stats["cf_times"])
     if cp is None:
@@ -353,8 +387,12 @@ def _write_md(
             if count:
                 lines.append(f"| {label} | {count} | {count / max(n_cf_tot, 1):.1%} |")
         lines += [""]
+    return lines
 
-    lines += ["## Success load-time distribution", ""]
+
+# Success load-time distribution: percentile table.
+def _md_load_time(stats: dict) -> list[str]:
+    lines = ["## Success load-time distribution", ""]
     lp = stats["load_perc"]
     if lp is None:
         lines += [
@@ -374,11 +412,14 @@ def _write_md(
             f"| max | {lp['max']:.3f} |",
             "",
         ]
+    return lines
 
-    lines += ["## Plots", "", "![Cumulative OK](cumulative.png)", ""]
-    if cp is not None:
+
+# Plot links, conditional on which histograms were written.
+def _md_plots(stats: dict) -> list[str]:
+    lines = ["## Plots", "", "![Cumulative OK](cumulative.png)", ""]
+    if stats["cf_perc"] is not None:
         lines += ["![Connect-fail histogram](connect_fail_hist.png)", ""]
-    if lp is not None:
+    if stats["load_perc"] is not None:
         lines += ["![Success load-time histogram](success_load_hist.png)", ""]
-
-    (job_dir / "job.md").write_text("\n".join(lines), encoding="utf-8")
+    return lines

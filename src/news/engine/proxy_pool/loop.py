@@ -30,34 +30,16 @@ def run_loop(
     content_handler: Callable[[str, bytes], None] | None = None,
     refresh_interval_s: float = REFRESH_INTERVAL_S,
 ) -> tuple[list[str], list[str], list[str]]:
-    """Sustained concurrent rotation loop: 60-min pool refresh + wait-on-exhaustion.
-
-    pool_provider() is called once on startup and again at each refresh_interval_s
-    tick to fetch a fresh proxy list; build_active_buffer() filters it through cm
-    to rebuild the active buffer (up to buffer_size eligible).
-    2-strikes lifecycle drives burn→cooldown.
-
-    Exhaustion (buf + wset both empty): sleeps until the earlier of (next cooldown
-    expiry, next refresh tick), then calls pool_provider() and rebuilds buf.
-
-    Returns (done, dead, gap):
-      done — URLs successfully fetched with valid content.
-      dead — URLs whose origin returned 404/410 (permanently gone; proxy confirmed working).
-      gap  — URLs remaining in queue (should be empty on clean termination).
-    """
+    # Sustained concurrent rotation loop: 60-min pool refresh + wait-on-exhaustion; returns (done, dead, gap).
     queue         = deque(target_urls)
     done:         list[str]                  = []
     dead:         list[str]                  = []
     wset:         set[tuple[str, str]]       = set()
     _consec_fail: dict[tuple[str, str], int] = {}
 
-    pool, sources = pool_provider()
-    logger.record_pool_refresh(len(pool))
-    for s in sources:
-        logger.record_pool_source(s["url"], s["ok"], s["count"])
-    buf            = build_active_buffer(pool, cm, buffer_size)
+    pool, buf      = _refresh_pool(pool_provider, logger, cm, buffer_size)
     _last_refresh  = time.monotonic()
-    _last_progress = time.monotonic()  # stall detection: last time a URL resolved to done or dead
+    _last_progress = time.monotonic()
 
     while queue:
         now = time.monotonic()
@@ -71,11 +53,7 @@ def run_loop(
             break
 
         if now - _last_refresh >= refresh_interval_s:
-            pool, sources = pool_provider()
-            logger.record_pool_refresh(len(pool))
-            for s in sources:
-                logger.record_pool_source(s["url"], s["ok"], s["count"])
-            buf           = build_active_buffer(pool, cm, buffer_size)
+            pool, buf     = _refresh_pool(pool_provider, logger, cm, buffer_size)
             _last_refresh = time.monotonic()
 
         if len(buf) < buffer_size:
@@ -83,7 +61,6 @@ def run_loop(
 
         batch = _build_batch(queue, wset, buf, concurrency)
         if not batch:
-            # buf + wset exhausted — sleep until next eligible proxy or scheduled refresh
             sleep_s = _compute_sleep(cm, _last_refresh, refresh_interval_s)
             if sleep_s > 0:
                 _sleep(sleep_s)
@@ -94,47 +71,11 @@ def run_loop(
         for _ in range(n_urls_consumed):
             queue.popleft()
 
-        batch_done:   set[str] = set()
-        batch_failed: set[str] = set()
-
-        with ThreadPoolExecutor(max_workers=concurrency) as executor:
-            futures = {
-                executor.submit(fetch_url, p, hp, url, content_type): (p, hp, url)
-                for p, hp, url in batch
-            }
-            for fut in as_completed(futures):
-                proto, hp, url = futures[fut]
-                status, content = fut.result()
-                key             = (proto, hp)
-
-                logger.record_attempt(proto, hp, url, status == "ok")
-
-                if status == "ok":
-                    if url not in batch_done:
-                        batch_done.add(url)
-                        if content_handler is not None:
-                            content_handler(url, content)
-                        done.append(url)
-                        _last_progress = time.monotonic()
-                    wset.add(key)
-                    _consec_fail.pop(key, None)
-                elif status == "dead":
-                    if url not in batch_done:
-                        batch_done.add(url)
-                        dead.append(url)
-                        _last_progress = time.monotonic()
-                    wset.add(key)
-                    _consec_fail.pop(key, None)
-                else:
-                    batch_failed.add(url)
-                    fails = _consec_fail.get(key, 0) + 1
-                    if fails >= 2:
-                        cm.mark_burned(proto, hp)
-                        wset.discard(key)
-                        buf = [p for p in buf if p != key]
-                        _consec_fail.pop(key, None)
-                    else:
-                        _consec_fail[key] = fails
+        buf, batch_done, batch_failed, last_progress = _execute_batch(
+            batch, content_type, content_handler, logger, cm, wset, _consec_fail, buf, done, dead, concurrency,
+        )
+        if last_progress is not None:
+            _last_progress = last_progress
 
         for url in batch_failed:
             if url not in batch_done:
@@ -144,6 +85,81 @@ def run_loop(
 
 
 # FUNCTIONS
+
+# Fetch a fresh proxy list via pool_provider(), log it, rebuild the active buffer.
+def _refresh_pool(
+    pool_provider: Callable[[], tuple[list[tuple[str, str]], list[dict]]],
+    logger:        AcquireLogger,
+    cm:            PersistentCooldownManager,
+    buffer_size:   int,
+) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    pool, sources = pool_provider()
+    logger.record_pool_refresh(len(pool))
+    for s in sources:
+        logger.record_pool_source(s["url"], s["ok"], s["count"])
+    buf = build_active_buffer(pool, cm, buffer_size)
+    return pool, buf
+
+
+# Run one concurrent batch; mutate done/dead/wset/consec_fail in place; return (buf, batch_done, batch_failed, last_progress).
+def _execute_batch(
+    batch:           list[tuple[str, str, str]],
+    content_type:    str,
+    content_handler: Callable[[str, bytes], None] | None,
+    logger:          AcquireLogger,
+    cm:              PersistentCooldownManager,
+    wset:            set[tuple[str, str]],
+    consec_fail:     dict[tuple[str, str], int],
+    buf:             list[tuple[str, str]],
+    done:            list[str],
+    dead:            list[str],
+    concurrency:     int,
+) -> tuple[list[tuple[str, str]], set[str], set[str], float | None]:
+    batch_done:    set[str] = set()
+    batch_failed:  set[str] = set()
+    last_progress: float | None = None
+
+    with ThreadPoolExecutor(max_workers=concurrency) as executor:
+        futures = {
+            executor.submit(fetch_url, p, hp, url, content_type): (p, hp, url)
+            for p, hp, url in batch
+        }
+        for fut in as_completed(futures):
+            proto, hp, url = futures[fut]
+            status, content = fut.result()
+            key             = (proto, hp)
+
+            logger.record_attempt(proto, hp, url, status == "ok")
+
+            if status == "ok":
+                if url not in batch_done:
+                    batch_done.add(url)
+                    if content_handler is not None:
+                        content_handler(url, content)
+                    done.append(url)
+                    last_progress = time.monotonic()
+                wset.add(key)
+                consec_fail.pop(key, None)
+            elif status == "dead":
+                if url not in batch_done:
+                    batch_done.add(url)
+                    dead.append(url)
+                    last_progress = time.monotonic()
+                wset.add(key)
+                consec_fail.pop(key, None)
+            else:
+                batch_failed.add(url)
+                fails = consec_fail.get(key, 0) + 1
+                if fails >= 2:
+                    cm.mark_burned(proto, hp)
+                    wset.discard(key)
+                    buf = [p for p in buf if p != key]
+                    consec_fail.pop(key, None)
+                else:
+                    consec_fail[key] = fails
+
+    return buf, batch_done, batch_failed, last_progress
+
 
 # Seconds to sleep on exhaustion: min(next cooldown expiry, next refresh tick)
 def _compute_sleep(
@@ -164,45 +180,20 @@ def _compute_sleep(
     return min(secs_to_refresh, secs_to_eligible)
 
 
-# Build one batch: working-set proxies first, then fresh candidates from active buffer
+# Build one batch: Phase 1 (wset then fresh buf → distinct URLs) + Phase 2 tail-race. Each proxy appears once.
 def _build_batch(
     queue:       deque,
     wset:        set[tuple[str, str]],
     buf:         list[tuple[str, str]],
     concurrency: int,
 ) -> list[tuple[str, str, str]]:
-    """Return list of (proto, hp, url) up to concurrency; each proxy appears once.
-
-    Phase 1 — Normal: wset proxies first, then fresh buf entries; each gets the next
-    distinct URL from queue.
-    Phase 2 — Tail: when pending URLs < available proxy slots, surplus proxies race
-    the same remaining URLs round-robin so multiple proxies contest each leftover URL.
-    """
     batch:            list[tuple[str, str, str]] = []
     assigned_proxies: set[tuple[str, str]]       = set()
     url_iter = iter(queue)
 
-    for proto, hp in wset:
-        if len(batch) >= concurrency:
-            break
-        url = next(url_iter, None)
-        if url is None:
-            break
-        batch.append((proto, hp, url))
-        assigned_proxies.add((proto, hp))
+    _assign_batch_slots(wset, url_iter, batch, assigned_proxies, concurrency)
+    _assign_batch_slots(buf, url_iter, batch, assigned_proxies, concurrency, wset=wset)
 
-    for proto, hp in buf:
-        if len(batch) >= concurrency:
-            break
-        if (proto, hp) in assigned_proxies or (proto, hp) in wset:
-            continue
-        url = next(url_iter, None)
-        if url is None:
-            break
-        batch.append((proto, hp, url))
-        assigned_proxies.add((proto, hp))
-
-    # Phase 2 — Tail: surplus proxy slots race the same pending URLs round-robin
     if len(batch) < concurrency and batch:
         pending_urls = [url for _, _, url in batch]
         url_idx      = 0
@@ -216,3 +207,24 @@ def _build_batch(
             url_idx += 1
 
     return batch
+
+
+# Assign proxies to the next distinct queue URL up to concurrency, skipping already-assigned/wset proxies.
+def _assign_batch_slots(
+    proxies:          list[tuple[str, str]] | set[tuple[str, str]],
+    url_iter,
+    batch:            list[tuple[str, str, str]],
+    assigned_proxies: set[tuple[str, str]],
+    concurrency:      int,
+    wset:             set[tuple[str, str]] | None = None,
+) -> None:
+    for proto, hp in proxies:
+        if len(batch) >= concurrency:
+            break
+        if wset is not None and ((proto, hp) in assigned_proxies or (proto, hp) in wset):
+            continue
+        url = next(url_iter, None)
+        if url is None:
+            break
+        batch.append((proto, hp, url))
+        assigned_proxies.add((proto, hp))
