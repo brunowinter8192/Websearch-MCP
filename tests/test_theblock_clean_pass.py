@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from src.news.pipeline import _run_clean_pass
+from src.news.clean_pass import _run_clean_pass
 from src.news.platforms.theblock import TheBlockPlatform
 
 
