@@ -58,23 +58,40 @@ Standalone dev suite for scraping CoinDesk article HTML at scale via rotating pr
 **Writes:** stdout PASS/FAIL, exit code.
 **Called by:** CLI only. `./venv/bin/python dev/news_pipeline/coindesk_proxy_riding/test_cooldown_policy.py`.
 
-### smoke_stage1.py (250 LOC)
+### smoke_stage1.py (254 LOC)
 
-**Purpose:** Stage 1 smoke — validates `src/news/engine/proxy_riding/` package. Three sections: import check (no network); deterministic watchdog test (patches `os._exit`, no network/browser); mini live run (10 inventory URLs, 2 slots, 1 browser, 300s stall — validates manifest shape, shuffle, raw `.html` writes).
+**Purpose:** Stage 1 smoke — validates `src/news/engine/proxy_riding/` package (`rider.py`/`state.py`/
+`fetch.py`/`abort.py`/`reporter.py`/`scrape.py` — package split into these modules 2026-08-20; import
+lines here point at each symbol's owning module, e.g. `RiderState`/`FAIL_THRESHOLD` from `state.py`,
+`_abort_stall` from `abort.py`, `run_riding_pool`/`_watchdog` still from `rider.py`). Three sections:
+import check (no network — also greps `abort.py`'s source for the late-import-of-reporter pattern,
+not `rider.py`'s); deterministic watchdog test (patches `os._exit`, no network/browser — pre-existing
+stale `RiderState` construction, fails independent of the module split); mini live run (10 inventory
+URLs, 2 slots, 1 browser, 300s stall — validates manifest shape, shuffle, raw `.html` writes).
 **Reads:** `src/news/engine/proxy_riding/` package (import validation); 10 inventory URLs (live run).
 **Writes:** live-run raw `.html` files to a temp dir.
 **Called by:** CLI only, run from main checkout: `./venv/bin/python .claude/worktrees/<worktree>/dev/news_pipeline/coindesk_proxy_riding/smoke_stage1.py`.
 
 ### test_sigint_report.py (213 LOC)
 
-**Purpose:** Deterministic SIGINT/SIGTERM report tests for `src/news/engine/proxy_riding/rider.py`. No browser or proxy infrastructure needed; `src/` imports lazy (inside function bodies). Test 1 — `_abort_interrupted` SIGINT: constructs `RiderState` with partial job data, patches `os._exit` to raise `SystemExit`, calls `_abort_interrupted` directly, asserts exit code 130, `job.md` + `cumulative.png` written, `termination=interrupted`. Test 2 — same with SIGTERM → exit code 143.
+**Purpose:** Deterministic SIGINT/SIGTERM report tests for `src/news/engine/proxy_riding/abort.py`'s
+`_abort_interrupted` (`RiderState`/`JobRecord`/`RideRecord` from `state.py`). No browser or proxy
+infrastructure needed; `src/` imports lazy (inside function bodies). Test 1 — `_abort_interrupted`
+SIGINT: constructs `RiderState` with partial job data, patches `os._exit` to raise `SystemExit`,
+calls `_abort_interrupted` directly, asserts exit code 130, `job.md` + `cumulative.png` written,
+`termination=interrupted`. Test 2 — same with SIGTERM → exit code 143.
 **Reads:** none (constructed state).
 **Writes:** `job.md`, `cumulative.png` to a temp dir (assertion targets).
 **Called by:** CLI only. `./venv/bin/python dev/news_pipeline/coindesk_proxy_riding/test_sigint_report.py`.
 
-### test_tail_race.py (443 LOC)
+### test_tail_race.py (445 LOC)
 
-**Purpose:** Deterministic tail-race tests for `src/news/engine/proxy_riding/rider.py`. No browser or proxy infrastructure needed — `_fetch_one_url` and `_next_proxy` mocked; `src/` imports lazy. 5 cases: surplus-slots race (2 URLs, 6 slots → both done, no double-write); write-exactly-once (1 URL, 3 racing slots → exactly 1 raw file); no-spurious-requeue (stale dequeue → no fetch; raced-fail → not re-queued); normal path (4 URLs, 4 slots, no racing); fail-before-success (fails first fetch, re-queued, succeeds second → done exactly once).
+**Purpose:** Deterministic tail-race tests for `src/news/engine/proxy_riding/rider.py`'s `_run_slot`/
+`_watchdog` (`RiderState`/`RAW_SUBDIR` from `state.py`). No browser or proxy infrastructure needed —
+`_fetch_one_url` and `_next_proxy` mocked via `unittest.mock.patch.object(rider_mod, ...)`, which
+only works because both stay defined in `rider.py` (attribute-patching resolves through the
+*defining* module's globals, not the importing module's) — see the `refactor_sweep` area for the
+finding that shaped the 2026-08-20 module split. `src/` imports lazy. 5 cases: surplus-slots race (2 URLs, 6 slots → both done, no double-write); write-exactly-once (1 URL, 3 racing slots → exactly 1 raw file); no-spurious-requeue (stale dequeue → no fetch; raced-fail → not re-queued); normal path (4 URLs, 4 slots, no racing); fail-before-success (fails first fetch, re-queued, succeeds second → done exactly once).
 **Reads:** none (mocked fetch/proxy).
 **Writes:** none beyond test assertions.
 **Called by:** CLI only. `./venv/bin/python dev/news_pipeline/coindesk_proxy_riding/test_tail_race.py`.
