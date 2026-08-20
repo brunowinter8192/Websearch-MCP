@@ -12,37 +12,22 @@ _LD_RE = re.compile(
 
 _LINK_URL_RE       = re.compile(r'\[([^\]]+)\]\(https?://[^)]+\)')
 _DISCLAIMER_RE     = re.compile(r'^Disclaimer: The Block is an independent media outlet.*$', re.MULTILINE)
-# Extended to also match old brand name "The Block Crypto, Inc." (2 files in corpus)
 _COPYRIGHT_RE      = re.compile(
     r'^©\s*\d{4}\s+(?:The Block Crypto,\s*Inc\.|The Block)\.?\s*All Rights Reserved.*$',
     re.MULTILINE,
 )
-# Broadened: drop trailing-_ requirement (many CTAs close with "here." not "_")
 _NEWSLETTER_CTA_RE = re.compile(r'^_.*subscribe to the .*newsletter.*$', re.MULTILINE)
 _BLANK_RUN_RE      = re.compile(r'\n{3,}')
 
-# Stage 1 additions — corpus-verified boilerplate shapes
-# TinyMCE bookmark spans that html2text passes through as literal HTML (19 files in corpus)
 _MCE_SPAN_RE        = re.compile(r'<span[^>]*data-mce-type[^>]*>.*?</span>', re.DOTALL)
-# Commissioned-content disclaimer footer (534 files); optional italic wrapper
 _COMMISSIONED_RE    = re.compile(r'^_?This post is commissioned\b.*$', re.MULTILINE)
-# Podcast subscribe-CTA line; handles _/*/__ markdown prefix variants (371 files)
 _PODCAST_SUB_CTA_RE = re.compile(r'^[*_]*Listen below[,.]?\s+and subscribe to\b.*$', re.MULTILINE)
-# Newsletter promo 2-line block: header + subscribe line (99 files)
 _NEWSLETTER_PROMO_RE = re.compile(
     r'^\*\*The Block Newsletters[^\n]*\n[^\n]*theblock\.co/newsletters[^\n]*',
     re.MULTILINE,
 )
-# Campus trial CTA — any line containing theblock.co/campus (56 files).
-# URL is a pure product-CTA; never appears in editorial prose.
 _CAMPUS_CTA_RE      = re.compile(r'^.*theblock\.co/campus.*$', re.MULTILINE)
 
-# Stage 2 — Podcast sponsor block (252 files).
-# Strips from the sponsor-block header to end of string.
-# EOS anchor proven safe: 252/252 files checked — zero editorial content follows
-# the header; only sponsor descriptions, The Block Community promos, and
-# copyright/disclaimer lines (already stripped by Stage 1) appear after it.
-# \*{0,2} covers the 2 files whose header lacks the ** bold prefix.
 _SPONSOR_BLOCK_RE   = re.compile(
     r'\n\*{0,2}This episode is brought to you by\b.*',
     re.DOTALL | re.IGNORECASE,
@@ -52,7 +37,6 @@ _SPONSOR_BLOCK_RE   = re.compile(
 # FUNCTIONS
 
 # Parse JSON-LD NewsArticle from raw HTML → articleBody→Markdown; mutate entry['publication_date'].
-# Fallback: empty string + stderr log on missing JSON-LD or missing articleBody (no crash).
 def cleanup(raw_html: str, entry: dict) -> str:
     data = _find_news_article(raw_html)
     if data is None:
@@ -72,11 +56,6 @@ def cleanup(raw_html: str, entry: dict) -> str:
 
 
 # Return first JSON-LD block whose @type is or includes "NewsArticle"; None if not found.
-# Handles all common JSON-LD shapes without crashing:
-#   plain dict           → checked directly
-#   dict with @graph     → container dict + each @graph item checked
-#   top-level list       → each list item checked
-#   non-dict (int/str/…) → skipped silently
 def _find_news_article(html: str) -> dict | None:
     for raw in _LD_RE.findall(html):
         try:
@@ -113,8 +92,6 @@ def _is_news_article(data: dict) -> bool:
 
 
 # Strip The-Block-specific boilerplate from post-html2text Markdown.
-# Order: inline-URL strip first (exposes plain CTA text), MCE spans, then line-level removals,
-# sponsor block (EOS anchor, always last), then normalise.
 def _post_clean(md: str) -> str:
     md = _LINK_URL_RE.sub(r'\1', md)
     md = _MCE_SPAN_RE.sub('', md)

@@ -13,14 +13,14 @@ from src.news.platforms.theblock.cleanup import cleanup as _cleanup
 class TheBlockPlatform:
     name: str                  = "theblock"
     collection: str            = "theblock"
-    precondition_url: str      = "https://www.google.com"   # theblock.co returns 403 on direct urllib
+    precondition_url: str      = "https://www.google.com"
     regwall_signals: list[str] = []
     scrape_engine: str         = "proxy_pool"
     scrape_config: ScrapeConfig = ScrapeConfig()
     proxy_scrape_config        = PROXY_SCRAPE_CONFIG
-    timeframe: str             = "delta"  # set by __main__ via --timeframe
+    timeframe: str             = "delta"
     dedup_mode: str            = "hash_only"
-    uses_master_list: bool     = True     # pipeline writes single master_urls.txt instead of per-year shards
+    uses_master_list: bool     = True
 
     async def discover(self, logger=None) -> list[dict]:
         return await _discover(self.timeframe, logger=logger)

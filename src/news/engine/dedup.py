@@ -24,12 +24,7 @@ def pub_date_str(entry: dict) -> str:
     return ""
 
 
-# Return (new_entries, n_skip_raw, n_excluded): drop entries already in collection_dir OR in
-# exclude_urls. exclude_urls: optional pre-loaded set of permanently-excluded URLs (e.g. known-dead
-# + known-failed); excluded entries are counted separately from raw-exist skips. Default None = no
-# exclusion (unchanged behaviour for all existing callers). Exclusion is checked before raw test.
-# mode="pubdate": exact match f"{source}__{pubdate}__{hash}.md" (default, CoinDesk).
-# mode="hash_only": glob f"{source}__*__{hash}.md" — for platforms with no pubdate at discover time.
+# Filter entries not yet in collection_dir (or in exclude_urls); return (new_entries, n_skip_raw, n_excluded).
 def filter_new_entries(
     entries: list[dict],
     collection_dir: Path,

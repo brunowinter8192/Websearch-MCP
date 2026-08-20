@@ -70,7 +70,7 @@ no per-year shards. Persistence is in `pipeline_support.py:_persist_master_list`
 
 ---
 
-### cleanup.py (140 LOC)
+### cleanup.py (117 LOC)
 
 **Purpose:** Parse JSON-LD `NewsArticle` block from raw HTML fetched by proxy engine →
 extract `articleBody` (HTML) → convert to Markdown via `crawl4ai.html2text.HTML2Text` →
@@ -96,8 +96,13 @@ plain dict, dict with `@graph`, top-level array, non-dict values (int/str) silen
 10. Podcast sponsor block (`_SPONSOR_BLOCK_RE`): `\n\*{0,2}This episode is brought to you by\b.*` to EOS (DOTALL).
 11. Trailing whitespace per line; blank-run collapse to single blank; final strip.
 
-Rules validated against full 22,995 raw corpus.
+Rules validated against full 22,995 raw corpus (per-rule file-count evidence: `refactor_sweep` area).
 Fallback: if no `NewsArticle` or no `articleBody` → returns `""` + stderr log, no crash.
+
+Gotcha: `_SPONSOR_BLOCK_RE` strips from the sponsor-block header to END OF STRING (no closing anchor)
+— corpus-verified safe (zero editorial content follows the header in the validated corpus; only
+sponsor descriptions / community promos / already-stripped copyright lines appear after it), but this
+assumption should be re-checked against new corpus shapes before trusting it on fresh scrapes.
 
 ---
 

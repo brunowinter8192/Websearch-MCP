@@ -12,13 +12,14 @@ from src.news.engine.proxy_pool.cooldown import PersistentCooldownManager
 from src.news.engine.proxy_pool.logger import AcquireLogger
 from src.news.engine.proxy_pool.buffer import build_active_buffer, refill_buffer, BUFFER_SIZE, DEFAULT_CONCURRENCY
 
-_sleep             = time.sleep    # patchable in tests without affecting stdlib time
-REFRESH_INTERVAL_S = 3600          # full pool reload cadence (60 min)
-STALL_TIMEOUT_S    = 3600          # stall: no done/dead progress for one full pool cycle → terminate
+_sleep             = time.sleep
+REFRESH_INTERVAL_S = 3600
+STALL_TIMEOUT_S    = 3600
 
 
 # ORCHESTRATOR
 
+# Sustained concurrent rotation loop: 60-min pool refresh + wait-on-exhaustion; returns (done, dead, gap).
 def run_loop(
     pool_provider: Callable[[], tuple[list[tuple[str, str]], list[dict]]],
     target_urls: list[str],
@@ -30,7 +31,6 @@ def run_loop(
     content_handler: Callable[[str, bytes], None] | None = None,
     refresh_interval_s: float = REFRESH_INTERVAL_S,
 ) -> tuple[list[str], list[str], list[str]]:
-    # Sustained concurrent rotation loop: 60-min pool refresh + wait-on-exhaustion; returns (done, dead, gap).
     queue         = deque(target_urls)
     done:         list[str]                  = []
     dead:         list[str]                  = []
@@ -167,7 +167,6 @@ def _compute_sleep(
     last_refresh_mono: float,
     refresh_interval_s: float,
 ) -> float:
-    """Return seconds to sleep; 0.0 means immediate wakeup."""
     now_mono        = time.monotonic()
     secs_to_refresh = max(0.0, (last_refresh_mono + refresh_interval_s) - now_mono)
 

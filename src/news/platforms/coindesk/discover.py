@@ -29,7 +29,6 @@ from src.news.platforms.coindesk.browser import browser_load_feed
 # ORCHESTRATOR
 
 # Browser warmup → httpx cursor loop → incremental discover write → entry list.
-# timeframe: "full" (→ FULL_MODE_FLOOR floor), int-string N (→ N days back), else DEFAULT_DELTA_DAYS.
 async def discover(timeframe: str = "30") -> list[dict]:
     stop_date = _parse_stop_date(timeframe)
     print(f"[coindesk] discover timeframe={timeframe!r} stop_date={stop_date}", file=sys.stderr)
@@ -368,9 +367,6 @@ def load_discover(discover_dir: Path) -> set[str]:
 
 
 # Read discover shards filtered by year or date range; return [{url, publication_date}].
-# year:      only reads coindesk_{year}.txt — fast single-shard load.
-# from_date / to_date: YYYY-MM-DD strings; both optional (open-ended range if one is omitted).
-# limit:     cap result count after filtering.
 def load_discover_filtered(
     discover_dir: Path,
     year: str | None = None,

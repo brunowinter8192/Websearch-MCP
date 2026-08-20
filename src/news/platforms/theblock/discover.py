@@ -84,7 +84,7 @@ def _resolve_target_subs(timeframe: str, post_subs: list[str]) -> list[str]:
 def _fetch_xml(url: str, pool_cache: list, logger=None) -> bytes | None:
     content = _fetch_direct(url)
     if content is not None:
-        return content  # direct fetch succeeded — no proxy used, nothing to log
+        return content
     if not pool_cache:
         print("[theblock] Loading proxy pool for sitemap fallback …", file=sys.stderr)
         pool, _ = load_backfill_pool()

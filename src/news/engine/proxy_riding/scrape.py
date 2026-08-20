@@ -28,9 +28,6 @@ class RidingScrapeConfig:
 # ORCHESTRATOR
 
 # Fetch target URLs via browser-per-context proxy riding; return manifest matching pipeline contract.
-# Returns [{url, hash, status, file, char_count, error}] in entries order.
-# status values: "ok" (HTML written to output_dir/raw/{hash}.html), "failed" (not fetched or all rides failed).
-# Note: file points to .html (not .md) — Stage 2 pipeline integration must handle .html content type.
 async def scrape_entries_riding(
     entries:    list[dict],
     output_dir: Path,
@@ -78,8 +75,6 @@ async def _pool_provider() -> list[tuple[str, str]]:
     return pool
 
 # Map rider job_records to pipeline manifest; entries order preserved.
-# ok: at least one job_record with status=="ok" and a written file.
-# failed: no ok record — regwall/connect_fail/failed/empty all map to "failed".
 def _build_manifest(
     entries:     list[dict],
     url_to_hash: dict[str, str],

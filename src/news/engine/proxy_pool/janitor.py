@@ -11,23 +11,20 @@ _TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 # ORCHESTRATOR
 
+# Job lifecycle: wipe transient artifacts at start, derive persistent record at end.
 class Janitor:
-    """Job lifecycle: wipe transient artifacts at start, derive persistent record at end.
-
-    Caller supplies jobs_dir, log_dir, report_dir — no hardcoded paths.
-    """
-
     def __init__(self, jobs_dir: Path, log_dir: Path, report_dir: Path):
         self._jobs_dir   = jobs_dir
         self._log_dir    = log_dir
         self._report_dir = report_dir
 
+    # Delete all files in log_dir and report_dir before a fresh job.
     def start_job(self, job_id: str) -> None:
-        """Delete all files in log_dir and report_dir before a fresh job."""
         _wipe_dir(self._log_dir)
         _wipe_dir(self._report_dir)
         print(f"[janitor] start_job {job_id!r}: transient logs wiped")
 
+    # Read JSONL → compute stats → write job.md + cumulative_hits.png → delete JSONL.
     def end_job(
         self,
         job_id: str,
@@ -35,7 +32,6 @@ class Janitor:
         target_count: int,
         done_count: int,
     ) -> None:
-        """Read JSONL → compute stats → write job.md + cumulative_hits.png → delete JSONL."""
         job_dir = self._jobs_dir / job_id
         job_dir.mkdir(parents=True, exist_ok=True)
 
@@ -163,11 +159,6 @@ def _compute_one_window(
 
 # Group pool_source events into one batch per pool_refresh, in JSONL order
 def _group_pool_sources(events: list[dict]) -> list[list[dict]]:
-    """Return one list of pool_source dicts per pool_refresh event, preserving JSONL order.
-
-    pool_refresh opens a new batch; pool_source events append to the current batch.
-    Attempt events between pool_refresh and pool_source are ignored here.
-    """
     batches: list[list[dict]] = []
     current: list[dict] | None = None
     for e in events:

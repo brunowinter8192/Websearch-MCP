@@ -191,8 +191,7 @@ def _write_cumulative_plot(job_dir: Path, stats: dict) -> None:
     plt.close(fig)
 
 
-# Histogram of OK-fetch load times; x-axis auto-ranges to data (load_s can exceed page_timeout_s
-# due to post-nav processing); vertical line marks page_timeout_s so the nav cap is visible.
+# Histogram of OK-fetch load times; x-axis auto-ranges to data, page_timeout_s marked as a vertical line.
 def _write_load_hist(job_dir: Path, stats: dict) -> None:
     import matplotlib.pyplot as plt
 

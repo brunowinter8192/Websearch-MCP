@@ -3,7 +3,7 @@ import statistics
 from datetime import datetime, timezone
 from pathlib import Path
 
-_BACKFILL_TOTAL = 61_000  # CoinDesk estimated full-backfill article count
+_BACKFILL_TOTAL = 61_000
 
 
 # ORCHESTRATOR

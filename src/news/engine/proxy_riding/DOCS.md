@@ -56,7 +56,7 @@ Touch this package when changing proxy-riding engine behaviour. Do NOT touch `en
 
 ## Modules
 
-### cooldown.py (95 LOC)
+### cooldown.py (85 LOC)
 
 **Purpose:** Riding-specific proxy cooldown manager (`RidingCooldownManager`). Isolated from the
 theblock-shared `proxy_pool/cooldown.py` (`PersistentCooldownManager`) — the theblock path is
@@ -194,7 +194,7 @@ bookkeeping, never persisted, never reaches a report.
 4. `all_resolved AND in_flight > 0` → `_abort_done(state)`: report + `os._exit(0)` (wedge-after-done).
 5. `idle > stall_timeout_s` → `_abort_stall(state, idle)`: report + `os._exit(1)` (genuine stall).
 
-### reporter.py (425 LOC)
+### reporter.py (424 LOC)
 
 **Purpose:** Job report writer — `job.md` (counts, throughput, proxy-riding stats, eligible-pool-over-time
 table, regwall counts, connect-fail breakdown, success load-time distribution) + `cumulative.png`
@@ -232,7 +232,7 @@ comparability. `_Fewer than 2 connect-fail records_` note + no histogram when <2
 job.md section **"Success load-time distribution"**: percentile table computed over OK fetches only.
 `_Fewer than 2 OK fetches_` note when unavailable.
 
-### scrape.py (116 LOC)
+### scrape.py (111 LOC)
 
 **Purpose:** Pipeline entry point + manifest adapter. Loads pool, shuffles, calls `run_riding_pool`,
 maps `RiderState.job_records` → pipeline manifest.
@@ -296,3 +296,7 @@ are safe without explicit locking. `proxy_lock` (asyncio.Lock) guards `proxy_cur
   `run_riding_pool`/`RiderState` are constructed without an explicit `stall_timeout_s`). Production
   runs override it via `RidingScrapeConfig.stall_timeout_s = 300.0` — don't read the module constant
   as "the" production stall timeout.
+- `reporter.py:_write_load_hist`'s x-axis auto-ranges to data max rather than clamping at
+  `page_timeout_s` — `load_s` (elapsed minus the fixed `DELAY_BEFORE_HTML`) can legitimately exceed
+  `page_timeout_s` due to post-navigation processing time not covered by the nav timeout; the red
+  vertical line marks the nav cap, it is not the axis bound.
