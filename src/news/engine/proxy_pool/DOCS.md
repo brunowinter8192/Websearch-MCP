@@ -124,7 +124,7 @@ up with eligible-pool proxies not already in `buf` (set-membership check), appen
 
 ---
 
-### janitor.py (287 LOC)
+### janitor.py (278 LOC)
 
 **Purpose:** Job lifecycle — `Janitor(jobs_dir, log_dir, report_dir)`; wipes transient dirs at start; reads JSONL → `job.md` + `cumulative_hits.png` at end. `_compute_window_stats` buckets attempt events into 60-min windows from t0 (window k = `[t0+k*3600s, t0+(k+1)*3600s)`; a refresh at exactly the boundary, e.g. `t0+3600s`, lands in window 1 not window 0 — same `int((ts-t0)/3600)` formula used for both attempts and refreshes) and derives per-window `{probiert, erfolgreich, urls_handled, fetch_attempts, pool_size}` (`urls_handled` = distinct target URLs; `fetch_attempts` = total attempt events) via `_compute_one_window` (2026-08-20 extraction — per-window computation isolated from the windowing setup). `_group_pool_sources` groups `pool_source` events by preceding `pool_refresh` in JSONL order; rendered as a `## Pool source breakdown` section at the bottom of `job.md` (absent when no pool_source events — backward-compatible with old JSONL) via `_md_source_breakdown` (2026-08-20 extraction, alongside `_md_window_table` for the per-window table — both pytest-covered, see `tests/test_proxy_pool.py`). `_group_pool_sources` ignores attempt events falling between a `pool_refresh` and its `pool_source` events — only `pool_refresh`/`pool_source` event types are batched.
 **Reads:** JSONL at `jsonl_path` passed to `end_job`.
