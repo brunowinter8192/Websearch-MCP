@@ -20,21 +20,21 @@ the job lifecycle (lock, janitor). Do NOT touch when adding a browser-engine pla
 
 ## Flow
 
-1. `pipeline.py:run_pipeline` acquires `box_lock`, instantiates `Janitor` + `AcquireLogger`; calls `start_job` (wipes log_dir) before opening the JSONL. The unified job spans discover + scrape: discovery proxy fetches in `theblock/discover.py:_fetch_xml` call `logger.record_attempt`; article scrape fetches call it via `run_loop`.
+1. `pipeline.py:_run_pipeline_proxy_pool` acquires `box_lock`, instantiates `Janitor` + `AcquireLogger`; calls `start_job` (wipes log_dir) before opening the JSONL. The unified job spans discover + scrape: discovery proxy fetches in `theblock/discover.py:_fetch_xml` call `logger.record_attempt`; article scrape fetches call it via `run_loop`.
 2. `scrape_entries_proxy` receives the caller-supplied `logger` + instantiates `PersistentCooldownManager`; delegates to `run_loop`.
 3. `run_loop` sustains concurrent rotation: `pool_provider()` → `build_active_buffer` → batches of `(proxy, URL)` → `fetch_url` via `ThreadPoolExecutor`.
 4. Per ok fetch: `content_handler` decodes bytes → writes `output_dir/{hash}.md`.
-5. `logger` streams all events to JSONL (discovery + scrape combined); `pipeline.py` calls `logger.close()` + `janitor.end_job` in `finally` — fires on all exit paths including 0-entries and 0-new-after-dedup early returns. `end_job` derives `job.md` + `cumulative_hits.png`.
+5. `logger` streams all events to JSONL (discovery + scrape combined); `pipeline.py:_run_pipeline_proxy_pool` calls `logger.close()` + `janitor.end_job` in `finally` — fires on all exit paths including 0-entries and 0-new-after-dedup early returns. `end_job` derives `job.md` + `cumulative_hits.png`.
 6. `_build_manifest` maps `(done, dead, gap)` → `[{url, hash, status, file, char_count, error}]` matching the browser engine manifest contract.
 
 ## Modules
 
 ### scrape.py (90 LOC)
 
-**Purpose:** Proxy-pool scrape entry point — wires `run_loop` with a caller-supplied `AcquireLogger`; returns pipeline manifest. Job lifecycle (box_lock, Janitor, AcquireLogger) is owned by `pipeline.py:run_pipeline`.
+**Purpose:** Proxy-pool scrape entry point — wires `run_loop` with a caller-supplied `AcquireLogger`; returns pipeline manifest. Job lifecycle (box_lock, Janitor, AcquireLogger) is owned by `pipeline.py:_run_pipeline_proxy_pool`.
 **Reads:** `entries` list (in-memory) + `proxy_cfg.pool_provider()`.
 **Writes:** `output_dir/{url_hash}.md` per ok fetch.
-**Called by:** `pipeline.py:run_pipeline`.
+**Called by:** `pipeline.py:_run_pipeline_proxy_pool`.
 **Calls out:** `loop.py`, `cooldown.py`, `logger.py` (type reference only).
 
 ---
@@ -95,7 +95,7 @@ Key: `_sleep = time.sleep` is a module-level alias — patch it in tests, not `t
 **Purpose:** Streams per-fetch events to JSONL (line-buffered, kill-safe). Stats derived by `janitor.end_job`.
 **Reads:** events pushed via `record_attempt` / `record_pool_refresh` / `record_pool_source`.
 **Writes:** `{platform_dir}/proxy_pool_logs/acquire_events_{ts}.jsonl` (streamed, line-buffered). Event types: `{proxy_key, ts, url, result}` (attempt), `{event:"pool_refresh", size, ts}`, `{event:"pool_source", url, ok, count, ts}`.
-**Called by:** `pipeline.py:run_pipeline` (instantiates + closes); `loop.py` (`record_attempt` + `record_pool_refresh` + `record_pool_source` per pool load); `theblock/discover.py:_fetch_xml` (`record_attempt` per discovery proxy fetch).
+**Called by:** `pipeline.py:_run_pipeline_proxy_pool` (instantiates + closes); `loop.py` (`record_attempt` + `record_pool_refresh` + `record_pool_source` per pool load); `theblock/discover.py:_fetch_xml` (`record_attempt` per discovery proxy fetch).
 **Calls out:** `proxy_key.py:proxy_key`.
 
 ---
@@ -105,7 +105,7 @@ Key: `_sleep = time.sleep` is a module-level alias — patch it in tests, not `t
 **Purpose:** Job lifecycle — `Janitor(jobs_dir, log_dir, report_dir)`; wipes transient dirs at start; reads JSONL → `job.md` + `cumulative_hits.png` at end. `_compute_window_stats` buckets attempt events into 60-min windows from t0 and derives per-window `{probiert, erfolgreich, urls_handled, fetch_attempts, pool_size}` (`urls_handled` = distinct target URLs; `fetch_attempts` = total attempt events). `_group_pool_sources` groups `pool_source` events by preceding `pool_refresh` in JSONL order; rendered as a `## Pool source breakdown` section at the bottom of `job.md` (absent when no pool_source events — backward-compatible with old JSONL).
 **Reads:** JSONL at `jsonl_path` passed to `end_job`.
 **Writes:** `{jobs_dir}/{job_id}/job.md`, `cumulative_hits.png`; wipes `log_dir` + `report_dir` at start and end.
-**Called by:** `pipeline.py:run_pipeline`.
+**Called by:** `pipeline.py:_run_pipeline_proxy_pool`.
 **Calls out:** `matplotlib.pyplot` (lazy import in `_write_plot`), `statistics` (stdlib).
 
 ---
@@ -115,7 +115,7 @@ Key: `_sleep = time.sleep` is a module-level alias — patch it in tests, not `t
 **Purpose:** System-wide single-job flock — `acquire(job, target, lock_name="proxy_pool")`; crash-safe (kernel releases flock on process death). Raises `LockBusyError` on contention.
 **Reads:** `~/.websearch-locks/{lock_name}.lock` sidecar (in `cleanup_stale` + busy message).
 **Writes:** `~/.websearch-locks/{lock_name}.{flock,lock}`.
-**Called by:** `pipeline.py:run_pipeline`.
+**Called by:** `pipeline.py:_run_pipeline_proxy_pool`.
 **Calls out:** `fcntl`, `os` (stdlib).
 
 ---
