@@ -115,10 +115,7 @@ async def search_web_workflow(
     pools = build_engine_pools(raw_results)
     pool_build_ms = round((time.perf_counter() - t0) * 1000)
 
-    google_count = len(pools.get("google", []))
-    K = google_count if google_count > 0 else 10
-    capped_pools = {eng: pool[:K] for eng, pool in pools.items()}
-    logger.info("Pool cap K=%d (google_count=%d)", K, google_count)
+    capped_pools = _cap_pools(pools)
 
     formatted_text = _format_breakdown(query, capped_pools, list(selected.keys()))
 
@@ -168,6 +165,14 @@ def fetch_search_results(
 
 
 # FUNCTIONS
+
+# Cap each engine's pool to K = google's pool size (fallback 10) — prevents drilldown floods
+def _cap_pools(pools: dict) -> dict:
+    google_count = len(pools.get("google", []))
+    K = google_count if google_count > 0 else 10
+    logger.info("Pool cap K=%d (google_count=%d)", K, google_count)
+    return {eng: pool[:K] for eng, pool in pools.items()}
+
 
 # Filter engine registry; default path returns full 9-engine set
 # Returns (selected, excluded) — excluded maps engine.name → reason for engines not included
@@ -258,6 +263,27 @@ async def _query_engines_concurrent(
     return combined, engine_stats
 
 
+# Map an engine-search exception to (status, drop_reason) — same match order as the original except chain
+def _classify_engine_exception(exc: Exception, timeout: float | None, search_ms: int) -> tuple[str, str]:
+    if isinstance(exc, asyncio.TimeoutError):
+        sub = S.TIMEOUT_WATCHDOG if timeout is not None and search_ms < timeout * 1.2 * 1000 else S.TIMEOUT_NONCOOP
+        return sub, f"asyncio.TimeoutError after {timeout}s watchdog"
+    if isinstance(exc, httpx.TimeoutException):
+        logger.warning("Engine httpx timeout: %s", exc)
+        return S.TIMEOUT_HTTPX, str(exc)
+    if isinstance(exc, (_pydoll_exc.PydollException, _ws_exc.WebSocketException, ConnectionError)):
+        logger.warning("Engine browser error: %s", exc)
+        return S.ERROR_BROWSER, str(exc)
+    if isinstance(exc, httpx.HTTPError):
+        logger.warning("Engine HTTP error: %s", exc)
+        return S.ERROR_HTTP, str(exc)
+    if isinstance(exc, (json.JSONDecodeError, KeyError, ValueError, AttributeError)):
+        logger.warning("Engine parse error: %s", exc)
+        return S.ERROR_PARSE, str(exc)
+    logger.warning("Engine error: %s", exc)
+    return S.ERROR_OTHER, str(exc)
+
+
 # Wrap single engine search; return (results, rate_wait_ms, search_ms, status, drop_reason)
 async def _engine_with_timing(
     engine,
@@ -289,33 +315,10 @@ async def _engine_with_timing(
         if results:
             return results, rate_wait_ms, search_ms, S.OK, None
         return [], rate_wait_ms, search_ms, empty_reason or S.EMPTY, None
-    except asyncio.TimeoutError:
-        search_ms = round((time.perf_counter() - t0) * 1000)
-        if timeout is not None and search_ms < timeout * 1.2 * 1000:
-            sub = S.TIMEOUT_WATCHDOG
-        else:
-            sub = S.TIMEOUT_NONCOOP
-        return [], rate_wait_ms, search_ms, sub, f"asyncio.TimeoutError after {timeout}s watchdog"
-    except httpx.TimeoutException as e:
-        logger.warning("Engine httpx timeout: %s", e)
-        search_ms = round((time.perf_counter() - t0) * 1000)
-        return [], rate_wait_ms, search_ms, S.TIMEOUT_HTTPX, str(e)
-    except (_pydoll_exc.PydollException, _ws_exc.WebSocketException, ConnectionError) as e:
-        logger.warning("Engine browser error: %s", e)
-        search_ms = round((time.perf_counter() - t0) * 1000)
-        return [], rate_wait_ms, search_ms, S.ERROR_BROWSER, str(e)
-    except httpx.HTTPError as e:
-        logger.warning("Engine HTTP error: %s", e)
-        search_ms = round((time.perf_counter() - t0) * 1000)
-        return [], rate_wait_ms, search_ms, S.ERROR_HTTP, str(e)
-    except (json.JSONDecodeError, KeyError, ValueError, AttributeError) as e:
-        logger.warning("Engine parse error: %s", e)
-        search_ms = round((time.perf_counter() - t0) * 1000)
-        return [], rate_wait_ms, search_ms, S.ERROR_PARSE, str(e)
     except Exception as e:
-        logger.warning("Engine error: %s", e)
         search_ms = round((time.perf_counter() - t0) * 1000)
-        return [], rate_wait_ms, search_ms, S.ERROR_OTHER, str(e)
+        status, drop_reason = _classify_engine_exception(e, timeout, search_ms)
+        return [], rate_wait_ms, search_ms, status, drop_reason
 
 
 # Format per-engine result counts as a breakdown table with drilldown hint

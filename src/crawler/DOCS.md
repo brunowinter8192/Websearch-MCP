@@ -19,9 +19,9 @@ pipe_scraper: URL list in → per-domain paced raw crawl → one `.md` per URL +
 
 ## Modules
 
-### crawl_site.py (353 LOC)
+### crawl_site.py (359 LOC)
 
-**Purpose:** Discovery engine + content crawl. `discover_urls_playwright(seed, include/exclude_patterns, max_pages, max_depth, delay_s, page_timeout_ms, concurrency, stealth)` runs a manual Playwright-per-page BFS (`crawler.arun()` per URL, links from `result.links.internal` post-JS DOM), returning `(urls, meta)` with `stop_reason` ∈ {frontier_exhausted, max_pages_reached, 429_persistent}. `crawl_urls(urls)` does the parallel content crawl (`SemaphoreDispatcher(max_session_permit=10)`, `wait_until="networkidle"`). `normalize_url` strips query/fragment/@version/trailing-slash for visited-set dedup. CLI (`python -m src.crawler.crawl_site`): `--url` seed, `--output-dir`, `--depth` (3), `--max-pages` (100), `--include/exclude-patterns`, `--url-file` (skips discovery), `--delay` (3.0), `--page-timeout` (15000), `--concurrency` (1), `--stealth`.
+**Purpose:** Discovery engine + content crawl. `discover_urls_playwright(seed, include/exclude_patterns, max_pages, max_depth, delay_s, page_timeout_ms, concurrency, stealth)` runs a manual Playwright-per-page BFS (`crawler.arun()` per URL, links from `result.links.internal` post-JS DOM), returning `(urls, meta)` with `stop_reason` ∈ {frontier_exhausted, max_pages_reached, 429_persistent}. Per-batch fetch results are classified by `_process_batch_results` (status filtering, found/latency collection, frontier expansion via `_extract_frontier_links`) — a sibling to the pre-existing `_fetch_page`/`_build_crawler_config`/`_handle_429_batch` helpers. `crawl_urls(urls)` does the parallel content crawl (`SemaphoreDispatcher(max_session_permit=10)`, `wait_until="networkidle"`). `normalize_url` strips query/fragment/@version/trailing-slash for visited-set dedup. CLI (`python -m src.crawler.crawl_site`): `--url` seed, `--output-dir`, `--depth` (3), `--max-pages` (100), `--include/exclude-patterns`, `--url-file` (skips discovery), `--delay` (3.0), `--page-timeout` (15000), `--concurrency` (1), `--stealth`.
 **Reads:** seed URL / `--url-file` list.
 **Writes:** per-URL `.md` to `--output-dir` (each with source header).
 **Called by:** `crawl_site_workflow` (CLI entry); capture-and-index workflow.
