@@ -426,7 +426,7 @@ def test_run_loop_refresh_swaps_pool_and_preserves_state():
     - pool_provider called exactly 2× (startup + one refresh).
     - All 3 target URLs reach done — none dropped at the swap boundary.
     - Pool A proxy A1:80 enters wset pre-refresh and is still dispatched for url2
-      post-refresh (wset untouched by the refresh block, lines 62-68 of loop.py).
+      post-refresh (wset is never touched by _refresh_pool — only pool/buf are).
     - Logger receives 2 record_pool_refresh events with correct pool sizes.
     """
     import src.news.engine.proxy_pool.loop as loop_module
@@ -451,16 +451,18 @@ def test_run_loop_refresh_swaps_pool_and_preserves_state():
     mock_logger = MagicMock(spec=AcquireLogger)
     cm          = PersistentCooldownManager()
 
-    # time.monotonic sequence (see design):
-    #   call 1 → line 57 startup _last_refresh = 0.0
-    #   call 2 → line 60 iter 1 now = 0.0  →  0.0 - 0.0 = 0.0 < 10.0  →  no refresh
-    #   [batch 1: A1→url1 ok, A1 enters wset]
-    #   call 3 → line 60 iter 2 now = 15.0 → 15.0 - 0.0 = 15.0 ≥ 10.0 → REFRESH fires
-    #   call 4 → line 68 _last_refresh = 15.0
-    #   [batch 2: A1 (wset) → url2 ok, post-swap]
-    #   call 5 → line 60 iter 3 now = 15.0 → 15.0 - 15.0 = 0.0 < 10.0 → no refresh
-    #   [batch 3: A1 (wset) → url3 ok; queue empty → return]
-    mono_seq = iter([0.0, 0.0, 15.0, 15.0, 15.0] + [15.0] * 10)
+    # time.monotonic sequence — 9 real calls (corrected 2026-08-20; the previous 5-value sequence
+    # undercounted by omitting the startup _last_progress call and the per-resolution _last_progress
+    # update inside _execute_batch, causing the refresh to fire before batch 1 ever ran — see this
+    # milestone's process-docs entry for the traced call-by-call evidence):
+    #   #1 _last_refresh=0.0 (startup)  #2 _last_progress=0.0 (startup)
+    #   #3 now(iter1)=0.0 → 0-0=0<10 → no refresh
+    #   [batch 1: A1→url1 ok, A1 enters wset]  #4 _last_progress=0.0 (post-batch1 update)
+    #   #5 now(iter2)=15.0 → 15-0=15≥10 → REFRESH fires  #6 _last_refresh=15.0 (post-refresh)
+    #   [batch 2: A1(wset)→url2 ok, post-swap]  #7 _last_progress=15.0 (post-batch2 update)
+    #   #8 now(iter3)=15.0 → 15-15=0<10 → no refresh
+    #   [batch 3: →url3 ok; queue empty → return]  #9 _last_progress=15.0 (post-batch3 update)
+    mono_seq = iter([0.0, 0.0, 0.0, 0.0, 15.0, 15.0, 15.0, 15.0, 15.0] + [15.0] * 10)
 
     with (
         patch("src.news.engine.proxy_pool.loop.fetch_url", mock_fetch),
@@ -539,15 +541,17 @@ def test_run_loop_refresh_fresh_candidates_from_new_pool():
     mock_logger = MagicMock(spec=AcquireLogger)
     cm          = PersistentCooldownManager()
 
-    # time.monotonic sequence:
-    #   call 1 → startup _last_refresh = 0.0
-    #   call 2 → iter 1 now = 0.0 → no refresh
-    #   [batch 1: only A1 in pool → A1→url1 ok; wset={A1}]
-    #   call 3 → iter 2 now = 15.0 → REFRESH
-    #   call 4 → _last_refresh = 15.0
-    #   [batch 2: concurrency=3; A1(wset)→url2, B1(buf)→url3, B2(buf)→url4; all ok]
+    # time.monotonic sequence — 9 real calls (corrected 2026-08-20, same undercounting fix as
+    # test_run_loop_refresh_swaps_pool_and_preserves_state above — see this milestone's process-docs
+    # entry for the traced call-by-call evidence):
+    #   #1 _last_refresh=0.0 (startup)  #2 _last_progress=0.0 (startup)
+    #   #3 now(iter1)=0.0 → no refresh
+    #   [batch 1: only A1 in pool → A1→url1 ok; wset={A1}]  #4 _last_progress=0.0 (post-batch1)
+    #   #5 now(iter2)=15.0 → REFRESH  #6 _last_refresh=15.0 (post-refresh)
+    #   [batch 2: concurrency=3; A1(wset)→url2, B1(buf)→url3, B2(buf)→url4; all ok —
+    #    3 futures each call _last_progress once]  #7,#8,#9 _last_progress=15.0 (post-batch2 x3)
     #   queue empty after n_urls_consumed=3 → return
-    mono_seq = iter([0.0, 0.0, 15.0, 15.0] + [15.0] * 10)
+    mono_seq = iter([0.0, 0.0, 0.0, 0.0, 15.0, 15.0, 15.0, 15.0, 15.0] + [15.0] * 10)
 
     with (
         patch("src.news.engine.proxy_pool.loop.fetch_url", mock_fetch),

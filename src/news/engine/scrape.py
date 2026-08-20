@@ -14,15 +14,6 @@ from src.news.platform import ScrapeConfig
 
 REGWALL_FAIL_THRESHOLD = 0.20
 
-_RUN_CFG = CrawlerRunConfig(
-    cache_mode=CacheMode.BYPASS,
-    wait_until="domcontentloaded",
-    delay_before_return_html=0.5,
-    page_timeout=15000,
-    markdown_generator=DefaultMarkdownGenerator(),
-    verbose=False,
-)
-
 
 # ORCHESTRATOR
 

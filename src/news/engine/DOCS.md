@@ -10,12 +10,9 @@ logic lives here. All modules accept platform parameters explicitly (no hardcode
 `run_pipeline`); `"proxy_riding"` → `proxy_riding/scrape.py` (via `run_scrape_only`, CoinDesk
 backfill path — chunk-bypass, full entry set, returns `(manifest, state)`). All three engines wired.
 
-`publish.py` is kept on disk but is NOT called by any pipe path — cleanup+publish are decoupled
-to a future ad-hoc skill.
-
 ## Modules
 
-### scrape.py (197 LOC)
+### scrape.py (188 LOC)
 
 **Purpose:** Browser-engine scraper — fresh `AsyncWebCrawler` per URL, Scrapy gate pacing, regwall guard. Active when `platform.scrape_engine == "browser"`.
 **Reads:** entries list (in-memory), ScrapeConfig, regwall_signals list.
@@ -30,9 +27,6 @@ written before abort) so callers can persist raw data from aborted runs.
 `_fetch_one` delegates its ok/regwall/empty classify-and-log branch to `_classify_fetch` (2026-08-20
 extraction, mirrors `proxy_riding/fetch.py:_classify_crawl_result`) — returns the status-specific
 `result_entry` update fields; write-to-disk (`_write_body`) happens only on `ok`.
-
-`_RUN_CFG` (module-level `CrawlerRunConfig`) is DEAD CODE — `scrape_entries` builds its own `run_cfg`
-locally from `scrape_cfg` instead of using it. Flagged 2026-08-20, not removed (comment-only pass).
 
 ### dedup.py (57 LOC)
 
@@ -50,14 +44,6 @@ Three modes via `mode` param:
 - `"raw"` (all pipe paths): exact match `{hash}{raw_ext}` in raw_dir — dedup on raw corpus.
 - `"pubdate"`: exact match `{source}__{pubdate}__{hash}.md` — legacy, collection-based.
 - `"hash_only"`: glob `{source}__*__{hash}.md` — legacy, collection-based, no pubdate.
-
-### publish.py (132 LOC)
-
-**Purpose:** Copy cleaned MDs to RAG collection dir; write/merge URL manifest; optionally run `rag-cli index`.
-**Reads:** clean_manifest (in-memory), clean_dir (filesystem), existing `{collection}__index.jsonl` if present.
-**Writes:** `{source}__{pubdate}__{hash}.md` to collection_dir; `{collection_name}__index.jsonl` in collection_dir.
-**Called by:** NOT called by any active pipeline path. Kept on disk for future cleanup+publish skill.
-**Calls out:** `rag-cli` (subprocess).
 
 ### scrape_job.py (108 LOC)
 
