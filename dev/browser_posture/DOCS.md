@@ -10,7 +10,11 @@ backgrounding-flag effect, the everyday parallel-user-Chrome collision case, and
 headed. `04` covers the patchright lane: executable resolution (headless-shell vs full Chrome),
 `LSUIElement` no-focus-steal viability, and backgrounding-flag presence, through the real
 crawl4ai/patchright launch path — a DIFFERENT stack from `01`-`03` (no `_lib.py`/pydoll dependency).
-Does NOT measure block/CAPTCHA rates — see `process-docs/engine_expansion/` for why that axis was
+`05` is the follow-up after `04` killed the `LSUIElement` lever: the `cdp_url` route (self-launch
+Chrome via `open -g -n -a` + `--remote-debugging-port`, then crawl4ai/patchright CONNECTS instead
+of launching) — focus behavior across the whole sequence, the working `BrowserConfig` shape, and
+the cmdline delta vs. a patchright-direct launch (the anti-detection surface this route would make
+us own). Does NOT measure block/CAPTCHA rates — see `process-docs/engine_expansion/` for why that axis was
 rejected as a same-IP same-day confound. Backs `process-docs/browser_posture/`.
 
 ## Modules
@@ -88,6 +92,31 @@ introspection), `codesign`/`launchctl`/`pgrep` (macOS signature + process/launch
 
 ---
 
+### 05_cdp_headed_probe.py (497 LOC)
+
+**Purpose:** Milestone 1b — the `cdp_url` route for the ad-hoc chromium lane, after `04` killed
+`LSUIElement`. Self-launches the chromium-1228 `Google Chrome for Testing.app` bundle via
+`open -g -n -a <bundle path> --args --remote-debugging-port=0 --user-data-dir=<throwaway>
+--no-startup-window ...` (no pre-existing tab, deliberately forcing crawl4ai's `get_page()` to call
+`context.new_page()` — the page-creation-over-CDP moment playwright#42343 flags, confirmed by
+reading crawl4ai's own page-reuse-vs-create logic first), waits for `DevToolsActivePort`, then
+connects via `BrowserConfig(cdp_url=..., browser_mode="custom", enable_stealth=True,
+cdp_cleanup_on_close=True)` + `UndetectedAdapter` + `AsyncPlaywrightCrawlerStrategy` and runs a real
+`arun()`. Stage-labeled continuous frontmost-app poll across the whole sequence, split into
+"route under test" (self_launch/cdp_port_wait/cdp_connect_page_navigate/teardown) vs. an internal
+"reference_launch" (a direct, un-backgrounded patchright launch used only to capture a fresh cmdline
+baseline for the args-delta) — the two must never be aggregated into one headline number (caught and
+fixed during this probe's own development, see Gotchas).
+**Reads:** nothing (self-contained; serves its own local throwaway HTTP page via `_lib`).
+**Writes:** MD report to `md/05_cdp_headed_probe_<ts>.md`. Progress to stderr. No plist edits
+anywhere (unlike `04`).
+**Called by:** CLI only. Run: `./venv/bin/python dev/browser_posture/05_cdp_headed_probe.py`.
+**Calls out:** `crawl4ai`/`patchright` (both the `connect_over_cdp` path and, for the reference
+launch, the direct launch path), `psutil`, `open`/`pgrep`/`pkill`/`launchctl` (macOS process +
+launchd checks).
+
+---
+
 ## Gotchas
 
 - Both scripts open real, visible Chrome windows on macOS (headed configs) — not safe to run on a
@@ -131,3 +160,15 @@ introspection), `codesign`/`launchctl`/`pgrep` (macOS signature + process/launch
   round in addition to killing processes, but is not proven sufficient alone — verify manually
   (`pgrep -fl "ms-playwright/chromium"` + `launchctl list | grep chrome.for.testing`) ~20s after this
   script exits before trusting its own "0 orphans" line. One-shot-per-crash, not a repeating loop.
+- `05`'s first draft called `wait_for_devtools_port`/`kill_by_profile`/`kill_survivors`/
+  `self_launch_chrome` as plain synchronous functions from the async orchestrator instead of via
+  `asyncio.to_thread` — their blocking `time.sleep`/`subprocess.run` calls starved the concurrently-
+  running focus-poll task's event loop turns, silently producing 0 samples for the `cdp_port_wait`
+  and `teardown` stages (looked like "these stages are just fast," was actually an instrumentation
+  bug). Fixed by wrapping all of them in `asyncio.to_thread`; re-run confirmed real samples appear.
+- `05`'s focus-poll headline number MUST exclude the `reference_launch` stage (an internal, direct,
+  un-backgrounded patchright launch used only to capture a cmdline baseline for the args-delta, not
+  part of the `cdp_url` route under test) — a first draft aggregated all stages into one percentage,
+  which read as "the route steals focus ~50% of the time" when the actual route was 0% and the
+  reference step (expected to steal focus, not a defect) was the entire cause. Report splits "route"
+  vs. "reference" explicitly; do not re-merge them.
