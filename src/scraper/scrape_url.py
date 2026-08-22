@@ -60,8 +60,10 @@ CDP_PORT_WAIT_TIMEOUT_S = 10.0
 # extraction, HTMLDATE_TIMEOUT_S) = 245.8. The DevToolsActivePort wait does NOT replace the 180s
 # cold-start ceiling as first assumed — it's an addition in front of it, not a substitute.
 TOTAL_SCRAPE_BUDGET_CDP_S = 245.8
-# Headless-direct escape hatch (WEBSEARCH_HEADLESS forced): unchanged mechanism, unchanged figure —
-# 180.0 (launch()'s own cold-start fallback) + 30.0 (nav) + 5.0 (render wait) + 1.3 (consent) + 3.0
+# Headless-direct escape hatch (WEBSEARCH_HEADLESS forced): unchanged mechanism (launch()-based
+# cold start, untouched by this path's own history) — figure dropped 221.3 -> 219.3 this milestone,
+# same -2.0s date-extraction summand cut as the cdp path (HTMLDATE_TIMEOUT_S 5.0 -> 3.0) — 180.0
+# (launch()'s own cold-start fallback) + 30.0 (nav) + 5.0 (render wait) + 1.3 (consent) + 3.0
 # (date) = 219.3.
 TOTAL_SCRAPE_BUDGET_HEADLESS_S = 219.3
 
