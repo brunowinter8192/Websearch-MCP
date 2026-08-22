@@ -1,16 +1,15 @@
 """Tests for scrape_url's acquisition-facts contract: browser-launch/timeout classification, the
 outer time-budget guard, the removed status-code/content-verdict gate, the new return shape that
 surfaces facts (HTTP status, byte counts, crawl4ai's own diagnosis) alongside full content instead
-of judging it, and (milestone 2 of headed-adhoc) the two-path acquisition architecture — the default
-cdp-headed-backgrounded route (self-launch + connect over cdp_url) and the WEBSEARCH_HEADLESS
-escape hatch (the old direct headless-shell launch).
+of judging it, and the single cdp-headed-backgrounded acquisition route (self-launch + connect over
+cdp_url) — the WEBSEARCH_HEADLESS escape hatch (old direct headless-shell launch) was removed.
 
 Runs without a browser: try_scrape's AsyncWebCrawler is patched to raise a synthetic exception,
 simulating a missing patchright/chromium executable, to hang past a (monkeypatched, shortened)
 budget constant, or to return a synthetic result carrying an HTTP error status + real content.
-Tests that exercise the default cdp path additionally patch the self-launch/port-wait/teardown
-mechanics (`_patch_cdp_launch_mechanics`) so no real browser is spawned — those functions get their
-own dedicated, unmocked tests further down.
+Tests additionally patch the self-launch/port-wait/teardown mechanics
+(`_patch_cdp_launch_mechanics`) so no real browser is spawned — those functions get their own
+dedicated, unmocked tests further down.
 """
 import asyncio
 import logging
@@ -324,17 +323,17 @@ async def test_scrape_url_workflow_logs_landed_url(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# try_scrape enforces the launch-mode-specific budget constant as an outer guard
+# try_scrape enforces the budget constant as an outer guard
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
 async def test_try_scrape_times_out_at_budget(monkeypatch, caplog):
     """A hang inside the acquisition (browser call never returns) is cut off at
-    TOTAL_SCRAPE_BUDGET_CDP_S (the default path's budget), yielding acquisition_error=
-    budget_exhausted — not a hang, not a traceback. Budget shortened to keep this a fast
-    regression guard; real-budget timing is verified separately (see completion checklist)."""
+    TOTAL_SCRAPE_BUDGET_S, yielding acquisition_error=budget_exhausted — not a hang, not a
+    traceback. Budget shortened to keep this a fast regression guard; real-budget timing is
+    verified separately (see completion checklist)."""
     _patch_cdp_launch_mechanics(monkeypatch)
-    monkeypatch.setattr(scrape_url, "TOTAL_SCRAPE_BUDGET_CDP_S", 0.05)
+    monkeypatch.setattr(scrape_url, "TOTAL_SCRAPE_BUDGET_S", 0.05)
 
     class _HangingCrawler:
         def __init__(self, *a, **kw):
@@ -360,34 +359,6 @@ async def test_try_scrape_times_out_at_budget(monkeypatch, caplog):
     assert any("budget exhausted" in m.lower() for m in caplog.messages)
 
 
-@pytest.mark.asyncio
-async def test_try_scrape_headless_forced_times_out_at_its_own_budget(monkeypatch, caplog):
-    """The WEBSEARCH_HEADLESS escape hatch uses TOTAL_SCRAPE_BUDGET_HEADLESS_S, not the cdp
-    path's constant — the two are independent, confirmed by shortening only the headless one."""
-    monkeypatch.setenv("WEBSEARCH_HEADLESS", "1")
-    monkeypatch.setattr(scrape_url, "TOTAL_SCRAPE_BUDGET_HEADLESS_S", 0.05)
-    monkeypatch.setattr(scrape_url, "TOTAL_SCRAPE_BUDGET_CDP_S", 999)  # would never fire if wrongly used
-
-    class _HangingCrawler:
-        def __init__(self, *a, **kw):
-            pass
-
-        async def __aenter__(self):
-            await asyncio.sleep(10)
-            return self
-
-        async def __aexit__(self, *a):
-            return False
-
-    monkeypatch.setattr(scrape_url, "AsyncWebCrawler", _HangingCrawler)
-
-    content, meta = await scrape_url.try_scrape("https://example.com")
-
-    assert content == ""
-    assert meta["acquisition_error"] == "budget_exhausted"
-    assert meta["config"]["launch_mode"] == "headless_direct_forced"
-
-
 def test_acquisition_error_messages_has_actionable_browser_missing_fix():
     """The acquisition-error description for browser_missing names the concrete install command."""
     msg = scrape_url._ACQUISITION_ERROR_MESSAGES["browser_missing"]
@@ -396,20 +367,17 @@ def test_acquisition_error_messages_has_actionable_browser_missing_fix():
 
 def test_acquisition_error_message_budget_exhausted_reads_real_budget():
     """budget_exhausted's message reads the REAL budget that was in effect for that call
-    (config.total_budget_s) — not a single hand-typed literal, since the two launch modes have
-    different budgets."""
-    msg_cdp = scrape_url._acquisition_error_message(
-        "budget_exhausted", {"total_budget_s": scrape_url.TOTAL_SCRAPE_BUDGET_CDP_S})
-    msg_headless = scrape_url._acquisition_error_message(
-        "budget_exhausted", {"total_budget_s": scrape_url.TOTAL_SCRAPE_BUDGET_HEADLESS_S})
-    assert str(scrape_url.TOTAL_SCRAPE_BUDGET_CDP_S) in msg_cdp
-    assert str(scrape_url.TOTAL_SCRAPE_BUDGET_HEADLESS_S) in msg_headless
-    assert "budget" in msg_cdp.lower()
+    (config.total_budget_s) — not a re-declared literal."""
+    msg = scrape_url._acquisition_error_message(
+        "budget_exhausted", {"total_budget_s": scrape_url.TOTAL_SCRAPE_BUDGET_S})
+    assert str(scrape_url.TOTAL_SCRAPE_BUDGET_S) in msg
+    assert "budget" in msg.lower()
 
 
 # ---------------------------------------------------------------------------
-# extract_config_stamp — launch_mode discriminator (replaces the dead-on-the-cdp-path
-# browser_config.headless field), total_budget_s now an explicit param (two budgets, not one)
+# extract_config_stamp — launch_mode is a fixed constant (LAUNCH_MODE) now that the
+# WEBSEARCH_HEADLESS escape hatch is gone; replaces the dead-on-the-cdp-path browser_config.headless
+# field. total_budget_s stays an explicit param (read off the real constant, never re-declared).
 # ---------------------------------------------------------------------------
 
 def _real_stamp_args():
@@ -429,16 +397,17 @@ def _real_stamp_args():
 def test_extract_config_stamp_carries_total_budget_s():
     """The config stamp reads total_budget_s off the value passed in, not a re-declared literal."""
     args = _real_stamp_args()
-    stamp = scrape_url.extract_config_stamp(*args, "cdp_headed_backgrounded", scrape_url.TOTAL_SCRAPE_BUDGET_CDP_S)
-    assert stamp["total_budget_s"] == scrape_url.TOTAL_SCRAPE_BUDGET_CDP_S
+    stamp = scrape_url.extract_config_stamp(*args, scrape_url.TOTAL_SCRAPE_BUDGET_S)
+    assert stamp["total_budget_s"] == scrape_url.TOTAL_SCRAPE_BUDGET_S
 
 
 def test_extract_config_stamp_carries_launch_mode_not_headless():
-    """launch_mode is the truthful posture discriminator; the old "headless" boolean field is
-    gone entirely (it was dead on the cdp path — never read inside crawl4ai's cdp_url branch)."""
+    """launch_mode is the truthful posture discriminator (LAUNCH_MODE, a fixed constant now that
+    only one acquisition path exists); the old "headless" boolean field is gone entirely (it was
+    dead on the cdp path — never read inside crawl4ai's cdp_url branch)."""
     args = _real_stamp_args()
-    stamp = scrape_url.extract_config_stamp(*args, "cdp_headed_backgrounded", scrape_url.TOTAL_SCRAPE_BUDGET_CDP_S)
-    assert stamp["launch_mode"] == "cdp_headed_backgrounded"
+    stamp = scrape_url.extract_config_stamp(*args, scrape_url.TOTAL_SCRAPE_BUDGET_S)
+    assert stamp["launch_mode"] == scrape_url.LAUNCH_MODE
     assert "headless" not in stamp
 
 
@@ -446,7 +415,7 @@ def test_extract_config_stamp_no_longer_carries_max_content_length():
     """max_content_length is gone (the parameter it described no longer exists) — build_config_record
     removed, its only job was merging it in."""
     args = _real_stamp_args()
-    stamp = scrape_url.extract_config_stamp(*args, "headless_direct_forced", scrape_url.TOTAL_SCRAPE_BUDGET_HEADLESS_S)
+    stamp = scrape_url.extract_config_stamp(*args, scrape_url.TOTAL_SCRAPE_BUDGET_S)
     assert "max_content_length" not in stamp
     assert not hasattr(scrape_url, "build_config_record")
 
@@ -456,7 +425,7 @@ def test_extract_config_stamp_no_longer_carries_min_content_threshold():
     2026-08-22 — content is always fit_markdown; the stamp no longer carries a field for a
     selection mechanism that no longer exists."""
     args = _real_stamp_args()
-    stamp = scrape_url.extract_config_stamp(*args, "cdp_headed_backgrounded", scrape_url.TOTAL_SCRAPE_BUDGET_CDP_S)
+    stamp = scrape_url.extract_config_stamp(*args, scrape_url.TOTAL_SCRAPE_BUDGET_S)
     assert "min_content_threshold" not in stamp
     assert not hasattr(scrape_url, "MIN_CONTENT_THRESHOLD")
 
@@ -467,7 +436,7 @@ def test_extract_config_stamp_no_longer_carries_excluded_selector_hash():
     consent handling alone now. The stamp no longer hashes an excluded_selector that no longer
     exists."""
     args = _real_stamp_args()
-    stamp = scrape_url.extract_config_stamp(*args, "cdp_headed_backgrounded", scrape_url.TOTAL_SCRAPE_BUDGET_CDP_S)
+    stamp = scrape_url.extract_config_stamp(*args, scrape_url.TOTAL_SCRAPE_BUDGET_S)
     assert "excluded_selector_hash" not in stamp
     assert not hasattr(scrape_url, "COOKIE_CONSENT_SELECTOR")
 
@@ -552,10 +521,10 @@ def test_format_scrape_output_zero_content_is_explicit_not_suppressed():
     text = scrape_url._format_scrape_output(
         "https://x.test", "", _meta(status_code=None, raw_markdown_bytes=0,
                                      acquisition_error="budget_exhausted",
-                                     config={"total_budget_s": scrape_url.TOTAL_SCRAPE_BUDGET_CDP_S}), None)
+                                     config={"total_budget_s": scrape_url.TOTAL_SCRAPE_BUDGET_S}), None)
     assert "(no content returned)" in text
     assert (f"Acquisition error: scrape exceeded the total time budget "
-            f"({scrape_url.TOTAL_SCRAPE_BUDGET_CDP_S}s)") in text
+            f"({scrape_url.TOTAL_SCRAPE_BUDGET_S}s)") in text
     assert "Error scraping" not in text  # the old discard-message phrasing must not reappear
 
 
@@ -614,84 +583,13 @@ def test_format_scrape_output_crawl4ai_diagnosis_labeled_as_observation_not_verd
 
 
 # ---------------------------------------------------------------------------
-# WEBSEARCH_HEADLESS escape hatch — same falsy-value semantics as src/search/browser.py,
-# see process-docs/browser_posture/2026-08-03_headless_escape_hatch_falsy_value_fix.md's area
+# launch_mode is a fixed LAUNCH_MODE constant now that try_scrape unconditionally runs the
+# cdp-headed path — the WEBSEARCH_HEADLESS escape hatch and its dispatch are gone.
 # ---------------------------------------------------------------------------
-
-@pytest.mark.parametrize("value,expected_forced", [
-    (None, False),           # unset -> headed (default)
-    ("", False),
-    ("0", False),
-    ("false", False),
-    ("FALSE", False),
-    ("no", False),
-    ("off", False),
-    ("  ", False),           # whitespace-only
-    ("1", True),
-    ("true", True),
-    ("yes", True),
-    ("anything-else", True),
-])
-def test_headless_env_forced_falsy_value_matrix(monkeypatch, value, expected_forced):
-    if value is None:
-        monkeypatch.delenv("WEBSEARCH_HEADLESS", raising=False)
-    else:
-        monkeypatch.setenv("WEBSEARCH_HEADLESS", value)
-    assert scrape_url._headless_env_forced() is expected_forced
-
-
-@pytest.mark.asyncio
-async def test_try_scrape_default_dispatches_to_cdp_headed(monkeypatch):
-    """No env var set -> the default cdp-headed path is taken, never the headless-direct one."""
-    monkeypatch.delenv("WEBSEARCH_HEADLESS", raising=False)
-    _patch_cdp_launch_mechanics(monkeypatch)
-    called = {"headless_direct": False, "cdp_headed": False}
-
-    async def _fake_headless_direct(*a, **kw):
-        called["headless_direct"] = True
-        return "", _meta()
-
-    async def _fake_cdp_headed(*a, **kw):
-        called["cdp_headed"] = True
-        return "", _meta()
-
-    monkeypatch.setattr(scrape_url, "_acquire_headless_direct", _fake_headless_direct)
-    monkeypatch.setattr(scrape_url, "_acquire_cdp_headed", _fake_cdp_headed)
-
-    await scrape_url.try_scrape("https://example.com")
-
-    assert called["cdp_headed"] is True
-    assert called["headless_direct"] is False
-
-
-@pytest.mark.asyncio
-async def test_try_scrape_headless_env_dispatches_to_headless_direct(monkeypatch):
-    """WEBSEARCH_HEADLESS=1 -> the old direct-launch path is taken, self-launch mechanics never
-    called at all (not just no-op'd — genuinely never invoked)."""
-    monkeypatch.setenv("WEBSEARCH_HEADLESS", "1")
-    called = {"headless_direct": False, "cdp_headed": False}
-
-    async def _fake_headless_direct(*a, **kw):
-        called["headless_direct"] = True
-        return "", _meta()
-
-    async def _fake_cdp_headed(*a, **kw):
-        called["cdp_headed"] = True
-        return "", _meta()
-
-    monkeypatch.setattr(scrape_url, "_acquire_headless_direct", _fake_headless_direct)
-    monkeypatch.setattr(scrape_url, "_acquire_cdp_headed", _fake_cdp_headed)
-
-    await scrape_url.try_scrape("https://example.com")
-
-    assert called["headless_direct"] is True
-    assert called["cdp_headed"] is False
-
 
 @pytest.mark.asyncio
 async def test_launch_mode_truthful_on_cdp_path(monkeypatch):
     _patch_cdp_launch_mechanics(monkeypatch)
-    monkeypatch.delenv("WEBSEARCH_HEADLESS", raising=False)
 
     class _FakeCrawler:
         def __init__(self, *a, **kw):
@@ -709,32 +607,8 @@ async def test_launch_mode_truthful_on_cdp_path(monkeypatch):
     monkeypatch.setattr(scrape_url, "AsyncWebCrawler", _FakeCrawler)
 
     _, meta = await scrape_url.try_scrape("https://example.com")
-    assert meta["config"]["launch_mode"] == "cdp_headed_backgrounded"
-    assert meta["config"]["total_budget_s"] == scrape_url.TOTAL_SCRAPE_BUDGET_CDP_S
-
-
-@pytest.mark.asyncio
-async def test_launch_mode_truthful_on_headless_forced_path(monkeypatch):
-    monkeypatch.setenv("WEBSEARCH_HEADLESS", "1")
-
-    class _FakeCrawler:
-        def __init__(self, *a, **kw):
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *a):
-            return False
-
-        async def arun(self, url, config=None):
-            return _FakeResult(raw_markdown="x" * 300)
-
-    monkeypatch.setattr(scrape_url, "AsyncWebCrawler", _FakeCrawler)
-
-    _, meta = await scrape_url.try_scrape("https://example.com")
-    assert meta["config"]["launch_mode"] == "headless_direct_forced"
-    assert meta["config"]["total_budget_s"] == scrape_url.TOTAL_SCRAPE_BUDGET_HEADLESS_S
+    assert meta["config"]["launch_mode"] == scrape_url.LAUNCH_MODE
+    assert meta["config"]["total_budget_s"] == scrape_url.TOTAL_SCRAPE_BUDGET_S
 
 
 # ---------------------------------------------------------------------------
@@ -770,7 +644,7 @@ async def test_cdp_headed_teardown_fires_on_budget_timeout(monkeypatch):
     _patch_cdp_launch_mechanics(monkeypatch)
     kill_calls = []
     monkeypatch.setattr(scrape_url, "_kill_by_profile", lambda d: kill_calls.append(d))
-    monkeypatch.setattr(scrape_url, "TOTAL_SCRAPE_BUDGET_CDP_S", 0.05)
+    monkeypatch.setattr(scrape_url, "TOTAL_SCRAPE_BUDGET_S", 0.05)
 
     class _HangingCrawler:
         def __init__(self, *a, **kw):
