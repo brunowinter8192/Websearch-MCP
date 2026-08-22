@@ -55,7 +55,6 @@ TOTAL_SCRAPE_BUDGET_CDP_S = 247.8
 TOTAL_SCRAPE_BUDGET_HEADLESS_S = 221.3
 
 _LINK_LINE_RE = re.compile(r'^\[.+\]\(.+\)$')
-MIN_CONTENT_THRESHOLD = 200
 # Mirrors src/search/browser.py's WEBSEARCH_HEADLESS falsy-value semantics exactly (same env var,
 # shared switch across both lanes) — see process-docs/browser_posture/2026-08-03_headless_escape_
 # hatch_falsy_value_fix.md's area for why a naive bool(os.environ.get(...)) is wrong here.
@@ -109,7 +108,6 @@ async def scrape_url_workflow(url: str) -> list[TextContent]:
         "http_status": meta.get("status_code"), "content_type": meta.get("content_type"),
         "bytes_returned": len(content.encode("utf-8")) if content else 0,
         "bytes_raw_markdown": meta.get("raw_markdown_bytes", 0),
-        "fallback_to_raw": meta.get("fallback_to_raw", False),
         "content_path": content_path,
         "published_date": published_date,
         "landed_url": meta.get("landed_url"),
@@ -143,15 +141,9 @@ async def _acquire_scrape(
     meta.update(extract_crawl4ai_diagnosis(result))
     if not result.markdown:
         return "", meta
-    raw_md = result.markdown.raw_markdown or ""
-    meta["raw_markdown_bytes"] = len(raw_md.encode("utf-8"))
+    meta["raw_markdown_bytes"] = len((result.markdown.raw_markdown or "").encode("utf-8"))
     meta["date"] = await extract_date(result.html or "", url)
     content = result.markdown.fit_markdown or ""
-    fallback_to_raw = False
-    if len(content) < MIN_CONTENT_THRESHOLD and raw_md:
-        content = raw_md
-        fallback_to_raw = True
-    meta["fallback_to_raw"] = fallback_to_raw
     return content, meta
 
 
@@ -190,7 +182,7 @@ async def try_scrape(url: str) -> tuple[str, dict]:
     budget_s = TOTAL_SCRAPE_BUDGET_HEADLESS_S if forced_headless else TOTAL_SCRAPE_BUDGET_CDP_S
     _empty_meta: dict = {
         "acquisition_error": None, "status_code": None, "content_type": None,
-        "fallback_to_raw": False, "raw_markdown_bytes": 0, "date": None,
+        "raw_markdown_bytes": 0, "date": None,
         "crawl4ai_success": None, "crawl4ai_error_message": None,
         "crawl4ai_attempts": None, "crawl4ai_resolved_by": None,
         "crawl4ai_fallback_fetch_used": None, "landed_url": None,
@@ -397,7 +389,6 @@ def extract_config_stamp(
         "excluded_selector_hash": hashlib.sha256(run_config.excluded_selector.encode()).hexdigest()[:8],
         "remove_consent_popups": run_config.remove_consent_popups,
         "total_budget_s": total_budget_s,
-        "min_content_threshold": MIN_CONTENT_THRESHOLD,
     }
 
 
@@ -489,13 +480,12 @@ def _format_scrape_output(url: str, content: str, meta: dict, published_date: st
     lines = [f"# Content from: {url}", ""]
     if published_date:
         lines.append(f"Published: {published_date}")
-    selection_note = " + raw fallback" if meta.get("fallback_to_raw") else ""
     lines += [
         "## Acquisition facts",
         f"- HTTP status: {meta.get('status_code')}",
         f"- Landed URL (the URL the browser actually returned content from): {meta.get('landed_url')}",
         f"- Bytes (raw markdown from crawl4ai): {meta.get('raw_markdown_bytes', 0)}",
-        f"- Bytes (content below, after PruningContentFilter{selection_note}): "
+        f"- Bytes (content below, after PruningContentFilter): "
         f"{len(content.encode('utf-8')) if content else 0}",
         "- crawl4ai diagnosis (an OBSERVATION off crawl4ai's own anti-bot detector, NOT a "
         "verdict — it has documented false positives and is not acted on by this scraper): "

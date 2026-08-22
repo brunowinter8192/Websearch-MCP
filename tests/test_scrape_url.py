@@ -160,9 +160,8 @@ async def test_try_scrape_returns_content_on_http_403(monkeypatch):
             return False
 
         async def arun(self, url, config=None):
-            return _FakeResult(raw_markdown="# Real review content, well past the "
-                                             "200-char MIN_CONTENT_THRESHOLD so fit_markdown "
-                                             "itself is used without a raw fallback kicking in.",
+            return _FakeResult(raw_markdown="# Real review content, returned as fit_markdown "
+                                             "unconditionally — no fit/raw selection exists anymore.",
                                 status_code=403,
                                 error_message="Blocked by anti-bot protection: Cloudflare JS challenge")
 
@@ -175,6 +174,72 @@ async def test_try_scrape_returns_content_on_http_403(monkeypatch):
     assert meta["acquisition_error"] is None
     # crawl4ai's diagnosis is recorded, not acted on — content came through despite it
     assert meta["crawl4ai_error_message"] == "Blocked by anti-bot protection: Cloudflare JS challenge"
+
+
+# ---------------------------------------------------------------------------
+# The fit->raw fallback (MIN_CONTENT_THRESHOLD) is gone as of 2026-08-22 — content is ALWAYS
+# fit_markdown, even when short and raw_markdown is longer. An operational-log analysis (69
+# production chromium scrapes) found the fallback fired exactly once, on a degenerate page where
+# both fit and raw were ~1 byte; the one near-threshold case did not fire and its raw excess was
+# category-page link-chrome — exactly what the filter exists to remove.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_try_scrape_returns_short_fit_markdown_unconditionally(monkeypatch):
+    """A short fit_markdown (well under the old 200-char threshold) with a much longer raw_markdown
+    available is returned AS the short fit_markdown — no fallback to raw fires, because the
+    mechanism no longer exists at all."""
+    _patch_cdp_launch_mechanics(monkeypatch)
+    fake_short_fit = "short fit"
+
+    class _FakeCrawler:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def arun(self, url, config=None):
+            result = _FakeResult(raw_markdown="x" * 2537)
+            result.markdown.fit_markdown = fake_short_fit
+            return result
+
+    monkeypatch.setattr(scrape_url, "AsyncWebCrawler", _FakeCrawler)
+
+    content, meta = await scrape_url.try_scrape("https://example.com")
+
+    assert content == fake_short_fit
+    assert meta["raw_markdown_bytes"] == 2537
+
+
+@pytest.mark.asyncio
+async def test_scrape_url_workflow_log_record_has_no_fallback_to_raw_field(monkeypatch):
+    """The removed field must not reappear in the JSONL record — fallback_to_raw described a
+    mechanism that no longer exists."""
+    captured = {}
+
+    async def _fake_try_scrape(url):
+        return "real content", _meta()
+
+    monkeypatch.setattr(scrape_url, "try_scrape", _fake_try_scrape)
+    monkeypatch.setattr(scrape_url, "write_sidecar", lambda *a, **kw: None)
+    monkeypatch.setattr(scrape_url, "log_scrape", lambda record: captured.update(record))
+
+    await scrape_url.scrape_url_workflow("https://example.com")
+
+    assert "fallback_to_raw" not in captured
+    assert captured["bytes_raw_markdown"] == 100  # raw_markdown_bytes still reported, as a fact
+
+
+def test_format_scrape_output_has_no_raw_fallback_note():
+    """The " + raw fallback" selection note is gone from the content-bytes line — there is no
+    selection to note anymore, content is always the filtered fit_markdown."""
+    text = scrape_url._format_scrape_output("https://x.test", "some content", _meta(), None)
+    assert "raw fallback" not in text
+    assert "Bytes (content below, after PruningContentFilter):" in text
 
 
 # ---------------------------------------------------------------------------
@@ -379,14 +444,22 @@ def test_extract_config_stamp_carries_launch_mode_not_headless():
 
 
 def test_extract_config_stamp_no_longer_carries_max_content_length():
-    """max_content_length is gone (the parameter it described no longer exists); the stamp reads
-    min_content_threshold directly off the module constant instead (folded in, build_config_record
-    removed — its only other job was merging the now-gone max_content_length)."""
+    """max_content_length is gone (the parameter it described no longer exists) — build_config_record
+    removed, its only job was merging it in."""
     args = _real_stamp_args()
     stamp = scrape_url.extract_config_stamp(*args, "headless_direct_forced", 221.3)
     assert "max_content_length" not in stamp
-    assert stamp["min_content_threshold"] == scrape_url.MIN_CONTENT_THRESHOLD
     assert not hasattr(scrape_url, "build_config_record")
+
+
+def test_extract_config_stamp_no_longer_carries_min_content_threshold():
+    """The fit->raw fallback mechanism (MIN_CONTENT_THRESHOLD) was removed entirely as of
+    2026-08-22 — content is always fit_markdown; the stamp no longer carries a field for a
+    selection mechanism that no longer exists."""
+    args = _real_stamp_args()
+    stamp = scrape_url.extract_config_stamp(*args, "cdp_headed_backgrounded", 247.8)
+    assert "min_content_threshold" not in stamp
+    assert not hasattr(scrape_url, "MIN_CONTENT_THRESHOLD")
 
 
 # ---------------------------------------------------------------------------
@@ -439,7 +512,7 @@ async def test_try_scrape_does_not_call_is_garbage_content(monkeypatch):
 def _meta(**overrides):
     base = {
         "acquisition_error": None, "status_code": 200, "content_type": "text/html",
-        "fallback_to_raw": False, "raw_markdown_bytes": 100, "date": None,
+        "raw_markdown_bytes": 100, "date": None,
         "crawl4ai_success": True, "crawl4ai_error_message": None,
         "crawl4ai_attempts": 1, "crawl4ai_resolved_by": "direct",
         "crawl4ai_fallback_fetch_used": False, "landed_url": None, "config": {},
