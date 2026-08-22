@@ -1,13 +1,17 @@
 # dev/browser_posture/
 
 ## Role
-Milestone probes backing the headed-vs-headless browser posture decision (`src/search/browser.py`
-switch from headless to headed-backgrounded). Milestone 1: launch/navigation latency and the
-Playwright-default backgrounding-flag effect, plus the everyday parallel-user-Chrome collision case.
-Milestone 2: whether `src/search/browser.py`'s existing JS fingerprint patches (written for headless)
-still make sense under headed. Does NOT measure block/CAPTCHA rates — see
-`process-docs/engine_expansion/` for why that axis was rejected as a same-IP same-day confound.
-Backs `process-docs/browser_posture/`.
+Milestone probes backing headed-vs-headless browser posture decisions across BOTH browser lanes in
+this project: the pydoll-driven DOM search engines (`src/search/browser.py`) and the patchright/
+crawl4ai-driven ad-hoc chromium scrape lane (`src/scraper/scrape_url.py`'s `try_scrape`). `01`-`03`
++ `_lib.py` cover the pydoll lane: launch/navigation latency and the Playwright-default
+backgrounding-flag effect, the everyday parallel-user-Chrome collision case, and whether
+`src/search/browser.py`'s JS fingerprint patches (written for headless) still make sense under
+headed. `04` covers the patchright lane: executable resolution (headless-shell vs full Chrome),
+`LSUIElement` no-focus-steal viability, and backgrounding-flag presence, through the real
+crawl4ai/patchright launch path — a DIFFERENT stack from `01`-`03` (no `_lib.py`/pydoll dependency).
+Does NOT measure block/CAPTCHA rates — see `process-docs/engine_expansion/` for why that axis was
+rejected as a same-IP same-day confound. Backs `process-docs/browser_posture/`.
 
 ## Modules
 
@@ -66,6 +70,24 @@ not production engines.
 
 ---
 
+### 04_headed_chromium_probe.py (449 LOC)
+
+**Purpose:** Milestone 1 of the ad-hoc chromium lane's headed switch. Through `try_scrape`'s exact
+`BrowserConfig`/`UndetectedAdapter`/`AsyncPlaywrightCrawlerStrategy` shape: (1) which binary runs
+under headless=True vs headless=False (read off the real launched process via `psutil`, not registry
+metadata), (2) `LSUIElement=true` viability on the resolved chromium-1228 `Google Chrome for
+Testing.app` bundle — launch success + continuous frontmost-app poll, with and without the fix, (3)
+whether the three Playwright-default backgrounding flags are on the real cmdline and, for each,
+whether crawl4ai's own `_build_browser_args()` put it there or patchright's driver injected it.
+**Reads:** nothing (self-contained; serves its own local throwaway HTTP page via `_lib`).
+**Writes:** MD report to `md/04_headed_chromium_probe_<ts>.md`. Progress to stderr. Mutates (and
+restores byte-exact) the chromium-1228 bundle's `Info.plist` during Run C only.
+**Called by:** CLI only. Run: `./venv/bin/python dev/browser_posture/04_headed_chromium_probe.py`.
+**Calls out:** `crawl4ai`/`patchright` (real launch path, not `_lib`/pydoll), `psutil` (process
+introspection), `codesign`/`launchctl`/`pgrep` (macOS signature + process/launchd supervision checks).
+
+---
+
 ## Gotchas
 
 - Both scripts open real, visible Chrome windows on macOS (headed configs) — not safe to run on a
@@ -90,3 +112,22 @@ not production engines.
 - `03`'s getComputedStyle artifact test is `color: ActiveText` on a dedicated element, NOT a resting
   `<a>` — a plain link computes to the ordinary link color in every mode and never exercises what the
   patch targets (CSS ActiveText, the link's ACTIVE-state system color).
+- `04` writes to the REAL, machine-shared chromium-1228 install under `~/Library/Caches/ms-playwright/`
+  (not an isolated probe profile dir like `01`-`03`) — the `Info.plist` mutation is real, on the
+  actual bundle patchright resolves in production. Hard-verifies the resolved bundle path contains
+  `chromium-1228` before writing (refuses otherwise) — chromium-1223 (Playwright's own, separate
+  revision) must never be touched.
+- `04`'s plist revert is a byte-exact restore from a raw-bytes backup, NOT a `plistlib` round-trip —
+  `plistlib.dump()` defaults to XML and silently converts a binary (`bplist00`) plist to XML even on
+  a content-correct revert (caught during this probe's own development).
+- `04` found that `LSUIElement=true` reliably CRASHES this bundle's launch (`icudtl.dat not found in
+  bundle`, SIGTRAP) — differs from the Camoufox precedent (`process-docs/camoufox_lane/`), where the
+  same mechanism worked. Isolated from plist format (XML-format-no-key launches fine); the crash
+  tracks the `LSUIElement` key specifically.
+- Deliberately triggering that crash makes macOS itself register a launchd per-app supervision job
+  (`application.com.google.chrome.for.testing.<ids>`, visible via `launchctl list`) that auto-relaunches
+  the full browser 10-20s later — independent of this script's own process-tree teardown, and NOT
+  reliably bounded by any in-script sleep. `kill_survivors()` removes the launchd job every sweep
+  round in addition to killing processes, but is not proven sufficient alone — verify manually
+  (`pgrep -fl "ms-playwright/chromium"` + `launchctl list | grep chrome.for.testing`) ~20s after this
+  script exits before trusting its own "0 orphans" line. One-shot-per-crash, not a repeating loop.
