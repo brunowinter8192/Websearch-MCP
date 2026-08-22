@@ -39,15 +39,15 @@ own separate revision, was never touched). Launch reliably CRASHED: `TargetClose
 3x across this session (the tracked probe run plus two manual repros during investigation). Isolated
 the cause from the plist FILE FORMAT: a control launch against the identical bundle in XML format
 with the key ABSENT succeeded — the crash tracks the `LSUIElement` key specifically, not binary-vs-XML
-encoding. This differs from `process-docs/camoufox_lane/pipe_switch_and_no_focus_steal_2026-08-20.md`,
+encoding. This differs from the `process-docs/camoufox_lane/` precedent,
 where the same mechanism worked cleanly on `Camoufox.app`. Root cause not chased further (out of
 scope for a Milestone 1 probe) — plausibly this bundle's ICU-data resource lookup depends on
 `NSApplicationActivationPolicy`/regular-app startup sequencing that `LSUIElement` changes.
 **Verdict: a future Milestone 2 needs a DIFFERENT no-focus-steal lever for this lane** — `LSUIElement`
 is not a transferable pattern across different Chromium-family bundles.
 
-For contrast (plist untouched), a headed launch DID steal focus: 8/14 focus-poll samples (57%)
-showed `Google Chrome for Testing` frontmost during a 3s-dwell run — confirming the no-focus-steal
+For contrast (plist untouched), a headed launch DID steal focus: 8/10 focus-poll samples (80%,
+per the tracked probe report) showed `Google Chrome for Testing` frontmost during a 3s-dwell run — confirming the no-focus-steal
 problem is real for this lane too, same as the pydoll and Camoufox lanes before it; only the fix
 mechanism doesn't transfer.
 
