@@ -28,7 +28,18 @@ from src.scraper.scrape_logger import log_scrape, write_sidecar
 
 logger = logging.getLogger(__name__)
 
-HTMLDATE_TIMEOUT_S = 5.0
+# htmldate's find_date has no per-call timeout param, and its slow-path dependency dateparser
+# exposes none either — an external wrapper guard is therefore NECESSARY, not optional (there is no
+# library-level bound to defer to). Height: dateparser's own worst documented realistic pathology is
+# ~3s (scrapinghub/dateparser#457, a since-fixed locale-accumulation bug; normal calls are ms-range),
+# and htmldate bounds its own work internally (settings.py: MAX_POSSIBLE_CANDIDATES=1000, segment
+# length 6-52 chars, CACHE_SIZE=8192). 3.0 sits at that documented pathology edge, well above normal
+# sub-second completion, bounding a true hang rather than a legitimately slow extraction. Accepted
+# trade-off: the date is an OPTIONAL field (extract_date degrades to None on any timeout/exception),
+# so a genuinely slow 3-5s extraction now loses the date rather than extending the budget for it —
+# the operational log showed find_date normally completing fast (67/68 ad-hoc scrapes got a date,
+# none near the old 5.0s cap).
+HTMLDATE_TIMEOUT_S = 3.0
 # Our own bounded DevToolsActivePort wait (R6: self-owned, deterministic — a real deadline-checked
 # loop, not an unbounded event wait). Value proven in dev/browser_posture/05_cdp_headed_probe.py.
 CDP_PORT_WAIT_TIMEOUT_S = 10.0
@@ -45,14 +56,14 @@ CDP_PORT_WAIT_TIMEOUT_S = 10.0
 # SAME mechanism/constant that governed the old launch()-based path's cold start, STILL applies here:
 # crawl4ai passes no explicit timeout to connect_over_cdp either, confirmed via patchright's
 # _impl/_browser_type.py: "connectOverCDP", TimeoutSettings.launch_timeout, params) + 30.0 (nav,
-# page_timeout) + 5.0 (render wait, delay_before_return_html) + 1.3 (consent handling) + 5.0 (date
-# extraction, HTMLDATE_TIMEOUT_S) = 247.8. The DevToolsActivePort wait does NOT replace the 180s
+# page_timeout) + 5.0 (render wait, delay_before_return_html) + 1.3 (consent handling) + 3.0 (date
+# extraction, HTMLDATE_TIMEOUT_S) = 245.8. The DevToolsActivePort wait does NOT replace the 180s
 # cold-start ceiling as first assumed — it's an addition in front of it, not a substitute.
-TOTAL_SCRAPE_BUDGET_CDP_S = 247.8
+TOTAL_SCRAPE_BUDGET_CDP_S = 245.8
 # Headless-direct escape hatch (WEBSEARCH_HEADLESS forced): unchanged mechanism, unchanged figure —
-# 180.0 (launch()'s own cold-start fallback) + 30.0 (nav) + 5.0 (render wait) + 1.3 (consent) + 5.0
-# (date) = 221.3.
-TOTAL_SCRAPE_BUDGET_HEADLESS_S = 221.3
+# 180.0 (launch()'s own cold-start fallback) + 30.0 (nav) + 5.0 (render wait) + 1.3 (consent) + 3.0
+# (date) = 219.3.
+TOTAL_SCRAPE_BUDGET_HEADLESS_S = 219.3
 
 _LINK_LINE_RE = re.compile(r'^\[.+\]\(.+\)$')
 # Mirrors src/search/browser.py's WEBSEARCH_HEADLESS falsy-value semantics exactly (same env var,

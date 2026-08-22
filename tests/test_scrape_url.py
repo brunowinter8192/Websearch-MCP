@@ -402,8 +402,8 @@ def test_acquisition_error_message_budget_exhausted_reads_real_budget():
         "budget_exhausted", {"total_budget_s": scrape_url.TOTAL_SCRAPE_BUDGET_CDP_S})
     msg_headless = scrape_url._acquisition_error_message(
         "budget_exhausted", {"total_budget_s": scrape_url.TOTAL_SCRAPE_BUDGET_HEADLESS_S})
-    assert "247.8" in msg_cdp
-    assert "221.3" in msg_headless
+    assert str(scrape_url.TOTAL_SCRAPE_BUDGET_CDP_S) in msg_cdp
+    assert str(scrape_url.TOTAL_SCRAPE_BUDGET_HEADLESS_S) in msg_headless
     assert "budget" in msg_cdp.lower()
 
 
@@ -429,15 +429,15 @@ def _real_stamp_args():
 def test_extract_config_stamp_carries_total_budget_s():
     """The config stamp reads total_budget_s off the value passed in, not a re-declared literal."""
     args = _real_stamp_args()
-    stamp = scrape_url.extract_config_stamp(*args, "cdp_headed_backgrounded", 247.8)
-    assert stamp["total_budget_s"] == 247.8
+    stamp = scrape_url.extract_config_stamp(*args, "cdp_headed_backgrounded", scrape_url.TOTAL_SCRAPE_BUDGET_CDP_S)
+    assert stamp["total_budget_s"] == scrape_url.TOTAL_SCRAPE_BUDGET_CDP_S
 
 
 def test_extract_config_stamp_carries_launch_mode_not_headless():
     """launch_mode is the truthful posture discriminator; the old "headless" boolean field is
     gone entirely (it was dead on the cdp path — never read inside crawl4ai's cdp_url branch)."""
     args = _real_stamp_args()
-    stamp = scrape_url.extract_config_stamp(*args, "cdp_headed_backgrounded", 247.8)
+    stamp = scrape_url.extract_config_stamp(*args, "cdp_headed_backgrounded", scrape_url.TOTAL_SCRAPE_BUDGET_CDP_S)
     assert stamp["launch_mode"] == "cdp_headed_backgrounded"
     assert "headless" not in stamp
 
@@ -446,7 +446,7 @@ def test_extract_config_stamp_no_longer_carries_max_content_length():
     """max_content_length is gone (the parameter it described no longer exists) — build_config_record
     removed, its only job was merging it in."""
     args = _real_stamp_args()
-    stamp = scrape_url.extract_config_stamp(*args, "headless_direct_forced", 221.3)
+    stamp = scrape_url.extract_config_stamp(*args, "headless_direct_forced", scrape_url.TOTAL_SCRAPE_BUDGET_HEADLESS_S)
     assert "max_content_length" not in stamp
     assert not hasattr(scrape_url, "build_config_record")
 
@@ -456,7 +456,7 @@ def test_extract_config_stamp_no_longer_carries_min_content_threshold():
     2026-08-22 — content is always fit_markdown; the stamp no longer carries a field for a
     selection mechanism that no longer exists."""
     args = _real_stamp_args()
-    stamp = scrape_url.extract_config_stamp(*args, "cdp_headed_backgrounded", 247.8)
+    stamp = scrape_url.extract_config_stamp(*args, "cdp_headed_backgrounded", scrape_url.TOTAL_SCRAPE_BUDGET_CDP_S)
     assert "min_content_threshold" not in stamp
     assert not hasattr(scrape_url, "MIN_CONTENT_THRESHOLD")
 
@@ -467,7 +467,7 @@ def test_extract_config_stamp_no_longer_carries_excluded_selector_hash():
     consent handling alone now. The stamp no longer hashes an excluded_selector that no longer
     exists."""
     args = _real_stamp_args()
-    stamp = scrape_url.extract_config_stamp(*args, "cdp_headed_backgrounded", 247.8)
+    stamp = scrape_url.extract_config_stamp(*args, "cdp_headed_backgrounded", scrape_url.TOTAL_SCRAPE_BUDGET_CDP_S)
     assert "excluded_selector_hash" not in stamp
     assert not hasattr(scrape_url, "COOKIE_CONSENT_SELECTOR")
 
@@ -552,9 +552,10 @@ def test_format_scrape_output_zero_content_is_explicit_not_suppressed():
     text = scrape_url._format_scrape_output(
         "https://x.test", "", _meta(status_code=None, raw_markdown_bytes=0,
                                      acquisition_error="budget_exhausted",
-                                     config={"total_budget_s": 247.8}), None)
+                                     config={"total_budget_s": scrape_url.TOTAL_SCRAPE_BUDGET_CDP_S}), None)
     assert "(no content returned)" in text
-    assert "Acquisition error: scrape exceeded the total time budget (247.8s)" in text
+    assert (f"Acquisition error: scrape exceeded the total time budget "
+            f"({scrape_url.TOTAL_SCRAPE_BUDGET_CDP_S}s)") in text
     assert "Error scraping" not in text  # the old discard-message phrasing must not reappear
 
 
