@@ -3,16 +3,24 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from urllib.parse import urlparse
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode, UndetectedAdapter
 from crawl4ai.async_crawler_strategy import AsyncPlaywrightCrawlerStrategy
+from crawl4ai.browser_manager import ManagedBrowser
 from crawl4ai.content_filter_strategy import PruningContentFilter
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 from htmldate import find_date
+import psutil
+from patchright.async_api import async_playwright
 
 from mcp.types import TextContent
 # From scrape_logger.py: per-URL JSONL log + sidecar content file
@@ -21,9 +29,37 @@ from src.scraper.scrape_logger import log_scrape, write_sidecar
 logger = logging.getLogger(__name__)
 
 HTMLDATE_TIMEOUT_S = 5.0
-TOTAL_SCRAPE_BUDGET_S = 221.3
+# Our own bounded DevToolsActivePort wait (R6: self-owned, deterministic — a real deadline-checked
+# loop, not an unbounded event wait). Value proven in dev/browser_posture/05_cdp_headed_probe.py.
+CDP_PORT_WAIT_TIMEOUT_S = 10.0
+
+# Two distinct totals — the cdp-headed default and the WEBSEARCH_HEADLESS escape hatch compose
+# differently (process-docs/browser_posture/2026-08-22_*, process-docs/time_budget/'s R-rules).
+#
+# CDP path (default): 1.0 (bundle-path resolution via patchright's own BrowserType.executable_path
+# property — measured ~0.15-0.25s x3 this session, margin added, not independently wait_for'd, same
+# treatment as the project's original cold-start summand) + 10.0 (DevToolsActivePort wait,
+# CDP_PORT_WAIT_TIMEOUT_S) + 15.5 (crawl4ai's own _verify_cdp_ready: 5x2s aiohttp.ClientTimeout +
+# backoff sum 0.5*(1.4**0+1.4**1+1.4**2+1.4**3+1.4**4)=5.4728, source: crawl4ai/browser_manager.py)
+# + 180.0 (connect_over_cdp's own DEFAULT_PLAYWRIGHT_LAUNCH_TIMEOUT_IN_MILLISECONDS fallback — the
+# SAME mechanism/constant that governed the old launch()-based path's cold start, STILL applies here:
+# crawl4ai passes no explicit timeout to connect_over_cdp either, confirmed via patchright's
+# _impl/_browser_type.py: "connectOverCDP", TimeoutSettings.launch_timeout, params) + 30.0 (nav,
+# page_timeout) + 5.0 (render wait, delay_before_return_html) + 1.3 (consent handling) + 5.0 (date
+# extraction, HTMLDATE_TIMEOUT_S) = 247.8. The DevToolsActivePort wait does NOT replace the 180s
+# cold-start ceiling as first assumed — it's an addition in front of it, not a substitute.
+TOTAL_SCRAPE_BUDGET_CDP_S = 247.8
+# Headless-direct escape hatch (WEBSEARCH_HEADLESS forced): unchanged mechanism, unchanged figure —
+# 180.0 (launch()'s own cold-start fallback) + 30.0 (nav) + 5.0 (render wait) + 1.3 (consent) + 5.0
+# (date) = 221.3.
+TOTAL_SCRAPE_BUDGET_HEADLESS_S = 221.3
+
 _LINK_LINE_RE = re.compile(r'^\[.+\]\(.+\)$')
 MIN_CONTENT_THRESHOLD = 200
+# Mirrors src/search/browser.py's WEBSEARCH_HEADLESS falsy-value semantics exactly (same env var,
+# shared switch across both lanes) — see process-docs/browser_posture/2026-08-03_headless_escape_
+# hatch_falsy_value_fix.md's area for why a naive bool(os.environ.get(...)) is wrong here.
+_FALSY_ENV_VALUES = {"", "0", "false", "no", "off"}
 
 COOKIE_CONSENT_SELECTOR = ", ".join([
     "[class*='cookie-banner']", "[id*='cookie-banner']",
@@ -39,13 +75,13 @@ COOKIE_CONSENT_SELECTOR = ", ".join([
 
 _ACQUISITION_ERROR_MESSAGES = {
     "browser_missing": "browser binary missing — run `./venv/bin/python -m patchright install chromium` to install it",
-    "budget_exhausted": f"scrape exceeded the total time budget ({TOTAL_SCRAPE_BUDGET_S}s)",
 }
 
 _BROWSER_LAUNCH_SIGNATURES = (
     "executable doesn't exist",
     "playwright install",
     "browsertype.launch",
+    "devtoolsactiveport did not appear",  # this module's own self-launch bounded-wait timeout (cdp path)
 )
 
 
@@ -119,15 +155,15 @@ async def _acquire_scrape(
     return content, meta
 
 
-# Single-call crawl4ai scrape with native anti-bot baseline; returns (content, meta) unconditionally, no content judgment
-async def try_scrape(url: str) -> tuple[str, dict]:
-    browser_config = BrowserConfig(headless=True, verbose=False, enable_stealth=True)
-    adapter = UndetectedAdapter()
-    crawler_strategy = AsyncPlaywrightCrawlerStrategy(
-        browser_config=browser_config,
-        browser_adapter=adapter
-    )
-    run_config = CrawlerRunConfig(
+# Whether WEBSEARCH_HEADLESS forces the old direct-launch headless path — same falsy-value handling
+# as src/search/browser.py's build_options (shared env var, one switch for both lanes)
+def _headless_env_forced() -> bool:
+    return os.environ.get("WEBSEARCH_HEADLESS", "").strip().lower() not in _FALSY_ENV_VALUES
+
+
+# The run-governing config, identical on both acquisition paths (unchanged by this milestone)
+def _build_run_config() -> CrawlerRunConfig:
+    return CrawlerRunConfig(
         magic=True,
         wait_until="load",
         page_timeout=30000,
@@ -141,22 +177,33 @@ async def try_scrape(url: str) -> tuple[str, dict]:
         remove_consent_popups=True,
         verbose=False,
     )
-    config_stamp = extract_config_stamp(browser_config, adapter, crawler_strategy, run_config)
+
+
+# Single-call crawl4ai scrape with native anti-bot baseline; returns (content, meta) unconditionally,
+# no content judgment. Default acquisition is the cdp-headed-backgrounded route (self-launched
+# chromium-1228, connected over cdp_url); WEBSEARCH_HEADLESS forces the old direct headless-shell
+# launch instead (debugging / no-display machines).
+async def try_scrape(url: str) -> tuple[str, dict]:
+    run_config = _build_run_config()
+    forced_headless = _headless_env_forced()
+    launch_mode = "headless_direct_forced" if forced_headless else "cdp_headed_backgrounded"
+    budget_s = TOTAL_SCRAPE_BUDGET_HEADLESS_S if forced_headless else TOTAL_SCRAPE_BUDGET_CDP_S
     _empty_meta: dict = {
         "acquisition_error": None, "status_code": None, "content_type": None,
         "fallback_to_raw": False, "raw_markdown_bytes": 0, "date": None,
         "crawl4ai_success": None, "crawl4ai_error_message": None,
         "crawl4ai_attempts": None, "crawl4ai_resolved_by": None,
         "crawl4ai_fallback_fetch_used": None, "landed_url": None,
-        "config": config_stamp,
+        "config": {"config_incomplete": True, "launch_mode": launch_mode, "total_budget_s": budget_s},
     }
     try:
-        return await asyncio.wait_for(
-            _acquire_scrape(url, browser_config, crawler_strategy, run_config, _empty_meta),
-            timeout=TOTAL_SCRAPE_BUDGET_S,
-        )
+        if forced_headless:
+            coro = _acquire_headless_direct(url, run_config, _empty_meta, budget_s)
+        else:
+            coro = _acquire_cdp_headed(url, run_config, _empty_meta, budget_s)
+        return await asyncio.wait_for(coro, timeout=budget_s)
     except asyncio.TimeoutError:
-        logger.warning("Scrape budget exhausted (%.1fs): %s", TOTAL_SCRAPE_BUDGET_S, url)
+        logger.warning("Scrape budget exhausted (%.1fs, launch_mode=%s): %s", budget_s, launch_mode, url)
         return "", {**_empty_meta, "acquisition_error": "budget_exhausted"}
     except Exception as e:
         if is_browser_launch_error(e):
@@ -166,11 +213,175 @@ async def try_scrape(url: str) -> tuple[str, dict]:
         return "", {**_empty_meta, "acquisition_error": "exception"}
 
 
-# Read the scrape-governing config back off the actual constructed objects, never re-declared
-def extract_config_stamp(browser_config, adapter, crawler_strategy, run_config) -> dict:
+# The WEBSEARCH_HEADLESS escape hatch: today's original shape, unchanged — direct patchright launch,
+# headless (headless-shell binary per probe 04's finding), no self-launch/cdp machinery at all
+async def _acquire_headless_direct(
+    url: str, run_config: CrawlerRunConfig, empty_meta: dict, budget_s: float,
+) -> tuple[str, dict]:
+    browser_config = BrowserConfig(headless=True, verbose=False, enable_stealth=True)
+    adapter = UndetectedAdapter()
+    crawler_strategy = AsyncPlaywrightCrawlerStrategy(browser_config=browser_config, browser_adapter=adapter)
+    config_stamp = extract_config_stamp(
+        browser_config, adapter, crawler_strategy, run_config, "headless_direct_forced", budget_s
+    )
+    empty_meta = {**empty_meta, "config": config_stamp}
+    return await _acquire_scrape(url, browser_config, crawler_strategy, run_config, empty_meta)
+
+
+# The default route (probe 05's proven shape): self-launch chromium-1228 headed-but-backgrounded via
+# macOS `open -g -n -a`, wait for its DevToolsActivePort, connect crawl4ai over cdp_url. Teardown
+# (kill by profile-dir substring + remove the throwaway dir) runs in `finally` so it fires on every
+# exit path, including the outer budget's cancellation and any exception raised above.
+async def _acquire_cdp_headed(
+    url: str, run_config: CrawlerRunConfig, empty_meta: dict, budget_s: float,
+) -> tuple[str, dict]:
+    flags = _build_self_launch_flags(BrowserConfig(enable_stealth=True))
+    bundle_path = await _resolve_chromium_bundle_path()
+    user_data_dir = tempfile.mkdtemp(prefix="scrape-url-cdp-")
+    try:
+        _self_launch_chrome(bundle_path, user_data_dir, flags)
+        port = await asyncio.to_thread(_wait_for_devtools_port, user_data_dir, CDP_PORT_WAIT_TIMEOUT_S)
+        browser_config = BrowserConfig(
+            cdp_url=f"http://127.0.0.1:{port}",
+            browser_mode="custom",
+            enable_stealth=True,
+            cdp_cleanup_on_close=True,
+            verbose=False,
+        )
+        adapter = UndetectedAdapter()
+        crawler_strategy = AsyncPlaywrightCrawlerStrategy(browser_config=browser_config, browser_adapter=adapter)
+        config_stamp = extract_config_stamp(
+            browser_config, adapter, crawler_strategy, run_config, "cdp_headed_backgrounded", budget_s
+        )
+        empty_meta = {**empty_meta, "config": config_stamp}
+        return await _acquire_scrape(url, browser_config, crawler_strategy, run_config, empty_meta)
+    finally:
+        await asyncio.to_thread(_kill_by_profile, user_data_dir)
+        shutil.rmtree(user_data_dir, ignore_errors=True)
+
+
+# Walk up from a bundle-internal executable path to the .app root — same shape as
+# camoufox_scrape.py's _find_app_bundle, duplicated per this project's own precedent of not sharing
+# small acquisition-lane-specific mechanisms across independent, parallel lanes
+def _find_app_bundle(executable_path: str) -> Path | None:
+    for parent in Path(executable_path).parents:
+        if parent.suffix == ".app":
+            return parent
+    return None
+
+
+# Resolve patchright's OWN currently-installed chromium bundle path dynamically — NOT hardcoded to
+# a revision number (e.g. "chromium-1228"), which would silently go stale on a patchright upgrade.
+# crawl4ai's own get_chromium_path() is NOT usable here: it unconditionally resolves via plain
+# playwright, not patchright (confirmed by reading crawl4ai/utils.py) — that would return
+# Playwright's OWN separate chromium revision, the wrong bundle entirely (probe 04's finding).
+async def _resolve_chromium_bundle_path() -> Path:
+    pw = await async_playwright().start()
+    try:
+        executable_path = pw.chromium.executable_path
+    finally:
+        await pw.stop()
+    bundle = _find_app_bundle(executable_path)
+    if bundle is None:
+        raise RuntimeError(f"No .app bundle found above patchright's resolved executable: {executable_path}")
+    return bundle
+
+
+# Self-launch flag surface: crawl4ai's OWN flag-construction for an externally-managed/CDP-connected
+# browser (ManagedBrowser.build_browser_flags — a live call to the installed package, never pinned,
+# so it can never drift out of sync with whatever crawl4ai version is running), plus --window-size
+# to match ManagedBrowser's own assembly (_get_browser_args adds it separately, same source).
+#
+# Deliberately does NOT reach "full" parity with patchright's own RPC-launched headed cmdline
+# (probe 05's 34-flag delta): those flags are constructed by patchright's internal Node driver
+# specifically for a browserType.launch()/connectOverCDP RPC call — confirmed by reading
+# ManagedBrowser.start() itself, which launches via a raw subprocess.Popen, the exact same class of
+# mechanism our own `open -g` self-launch uses. No raw-subprocess launcher (crawl4ai's own
+# ManagedBrowser included) can ever produce those flags; "full parity" with the RPC cmdline is not
+# achievable by construction, not a maintenance gap to guard against.
+#
+# One deliberate 3-flag deviation from that same delta: build_browser_flags() gates
+# --disable-gpu/--disable-gpu-compositing/--disable-software-rasterizer behind `if not
+# config.enable_stealth` (its own comment: "Keep WebGL working via SwiftShader when stealth mode is
+# active"); the OLDER direct-launch path's sibling function includes them unconditionally, ignoring
+# enable_stealth (an existing inconsistency in installed crawl4ai 0.9.2). Kept as build_browser_flags
+# produces it, i.e. GPU/WebGL stays ON — more consistent with enable_stealth=True's own intent than
+# literal cmdline parity would be.
+def _build_self_launch_flags(browser_config: BrowserConfig) -> list[str]:
+    flags = list(ManagedBrowser.build_browser_flags(browser_config))
+    if browser_config.viewport_width and browser_config.viewport_height:
+        flags.append(f"--window-size={browser_config.viewport_width},{browser_config.viewport_height}")
+    return flags
+
+
+# Launch the resolved chromium bundle headed-but-backgrounded via macOS `open -g -n -a` — the
+# proven no-focus-steal mechanism (src/search/browser.py, dev/browser_posture/05_cdp_headed_probe.py)
+# — targeting the .app PATH directly, never a bare name (deterministic, no Launch Services ambiguity)
+def _self_launch_chrome(bundle_path: Path, user_data_dir: str, flags: list[str]) -> None:
+    open_cmd = [
+        "open", "-g", "-n", "-a", str(bundle_path), "--args",
+        "--remote-debugging-port=0", f"--user-data-dir={user_data_dir}",
+        "--no-startup-window", "--no-first-run", "--no-default-browser-check",
+        *flags,
+    ]
+    subprocess.Popen(open_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+# Poll for Chromium's own DevToolsActivePort file (standard mechanism when --remote-debugging-port=0
+# is used) and return the real assigned port — avoids a pre-probed-free-port TOCTOU race. Bounded by
+# CDP_PORT_WAIT_TIMEOUT_S; the raised message matches a _BROWSER_LAUNCH_SIGNATURES entry so a
+# missing/never-launching bundle is classified as browser_missing, same actionable fix as before.
+def _wait_for_devtools_port(user_data_dir: str, timeout_s: float) -> int:
+    port_file = Path(user_data_dir) / "DevToolsActivePort"
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        if port_file.exists():
+            lines = port_file.read_text().splitlines()
+            if lines and lines[0].strip().isdigit():
+                return int(lines[0].strip())
+        time.sleep(0.1)
+    raise TimeoutError(f"DevToolsActivePort did not appear under {user_data_dir} within {timeout_s}s")
+
+
+# Kill the self-launched Chrome by profile-dir substring — the mandatory teardown path since
+# `open -g`'s own Popen is a short-lived wrapper, never Chrome itself (src/search/browser.py's
+# kill_stale_chrome pattern, extended here to WAIT for actual process death via psutil rather than
+# a fire-and-forget pkill: a plain pkill returns as soon as the signal is sent, not once Chrome
+# actually exits, which raced against the caller's immediately-following shutil.rmtree and left a
+# real, non-empty profile directory behind — confirmed live via a real cli.py scrape_url run.
+def _kill_by_profile(user_data_dir: str) -> None:
+    result = subprocess.run(
+        ["pgrep", "-f", f"user-data-dir={user_data_dir}"], capture_output=True, text=True
+    )
+    pids = [int(p) for p in result.stdout.split() if p.strip().isdigit()]
+    if not pids:
+        return
+    procs = []
+    for pid in pids:
+        try:
+            proc = psutil.Process(pid)
+            proc.terminate()
+            procs.append(proc)
+        except psutil.NoSuchProcess:
+            pass
+    gone, alive = psutil.wait_procs(procs, timeout=3)
+    for proc in alive:
+        try:
+            proc.kill()
+        except psutil.NoSuchProcess:
+            pass
+
+
+# Read the scrape-governing config back off the actual constructed objects, never re-declared.
+# launch_mode is the truthful posture discriminator (browser_config.headless is DEAD on the cdp
+# path — never read inside crawl4ai's cdp_url branch, confirmed by source — so it is not stamped at
+# all; launch_mode replaces it on both paths for a single, always-truthful field).
+def extract_config_stamp(
+    browser_config, adapter, crawler_strategy, run_config, launch_mode: str, total_budget_s: float,
+) -> dict:
     content_filter = run_config.markdown_generator.content_filter
     return {
-        "headless": browser_config.headless,
+        "launch_mode": launch_mode,
         "enable_stealth": browser_config.enable_stealth,
         "adapter": type(adapter).__name__,
         "crawler_strategy": type(crawler_strategy).__name__,
@@ -185,7 +396,7 @@ def extract_config_stamp(browser_config, adapter, crawler_strategy, run_config) 
         "content_filter_preserve_tags": sorted(content_filter.preserve_tags),
         "excluded_selector_hash": hashlib.sha256(run_config.excluded_selector.encode()).hexdigest()[:8],
         "remove_consent_popups": run_config.remove_consent_popups,
-        "total_budget_s": TOTAL_SCRAPE_BUDGET_S,
+        "total_budget_s": total_budget_s,
         "min_content_threshold": MIN_CONTENT_THRESHOLD,
     }
 
@@ -293,7 +504,17 @@ def _format_scrape_output(url: str, content: str, meta: dict, published_date: st
         f"error_message={meta.get('crawl4ai_error_message') or 'none'}",
     ]
     if meta.get("acquisition_error"):
-        reason = _ACQUISITION_ERROR_MESSAGES.get(meta["acquisition_error"], meta["acquisition_error"])
+        reason = _acquisition_error_message(meta["acquisition_error"], meta.get("config") or {})
         lines.append(f"- Acquisition error: {reason}")
     lines += ["", "## Content", "", content if content else "(no content returned)"]
     return "\n".join(lines)
+
+
+# The rendered acquisition-error description — budget_exhausted reads the REAL budget that was in
+# effect for this call (config.total_budget_s, which differs by launch_mode) rather than a single
+# hand-typed literal that could only ever be right for one of the two paths
+def _acquisition_error_message(acquisition_error: str, config: dict) -> str:
+    if acquisition_error == "budget_exhausted":
+        budget = config.get("total_budget_s", "?")
+        return f"scrape exceeded the total time budget ({budget}s)"
+    return _ACQUISITION_ERROR_MESSAGES.get(acquisition_error, acquisition_error)

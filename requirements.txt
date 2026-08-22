@@ -10,3 +10,4 @@ httpx
 pyyaml
 curl_cffi
 camoufox
+psutil
