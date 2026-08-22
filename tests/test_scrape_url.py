@@ -422,7 +422,6 @@ def _real_stamp_args():
         markdown_generator=scrape_url.DefaultMarkdownGenerator(
             content_filter=scrape_url.PruningContentFilter(threshold=0.48, preserve_tags=["pre", "code"])
         ),
-        excluded_selector=scrape_url.COOKIE_CONSENT_SELECTOR,
     )
     return browser_config, adapter, crawler_strategy, run_config
 
@@ -460,6 +459,17 @@ def test_extract_config_stamp_no_longer_carries_min_content_threshold():
     stamp = scrape_url.extract_config_stamp(*args, "cdp_headed_backgrounded", 247.8)
     assert "min_content_threshold" not in stamp
     assert not hasattr(scrape_url, "MIN_CONTENT_THRESHOLD")
+
+
+def test_extract_config_stamp_no_longer_carries_excluded_selector_hash():
+    """The hand-maintained COOKIE_CONSENT_SELECTOR list was removed — crawl4ai's own
+    remove_consent_popups=True (a vendor-maintained clicker, verified a strict superset) carries
+    consent handling alone now. The stamp no longer hashes an excluded_selector that no longer
+    exists."""
+    args = _real_stamp_args()
+    stamp = scrape_url.extract_config_stamp(*args, "cdp_headed_backgrounded", 247.8)
+    assert "excluded_selector_hash" not in stamp
+    assert not hasattr(scrape_url, "COOKIE_CONSENT_SELECTOR")
 
 
 # ---------------------------------------------------------------------------

@@ -60,18 +60,6 @@ _LINK_LINE_RE = re.compile(r'^\[.+\]\(.+\)$')
 # hatch_falsy_value_fix.md's area for why a naive bool(os.environ.get(...)) is wrong here.
 _FALSY_ENV_VALUES = {"", "0", "false", "no", "off"}
 
-COOKIE_CONSENT_SELECTOR = ", ".join([
-    "[class*='cookie-banner']", "[id*='cookie-banner']",
-    "[class*='cookie-consent']", "[id*='cookie-consent']",
-    "[class*='cookie-notice']", "[id*='cookie-notice']",
-    "[class*='cookie-law']", "[id*='cookie-law']",
-    "[class*='cky-consent']", "[class*='cky-banner']", "[class*='cky-modal']",
-    "[class*='onetrust']", "[id*='onetrust']",
-    "[id*='CookiebotDialog']", "[class*='CookiebotWidget']",
-    "[class*='cc-banner']", "[class*='cc-window']",
-    "[class*='gdpr']", "[id*='gdpr']",
-])
-
 _ACQUISITION_ERROR_MESSAGES = {
     "browser_missing": "browser binary missing — run `./venv/bin/python -m patchright install chromium` to install it",
 }
@@ -165,7 +153,6 @@ def _build_run_config() -> CrawlerRunConfig:
         markdown_generator=DefaultMarkdownGenerator(
             content_filter=PruningContentFilter(threshold=0.48, preserve_tags=["pre", "code"])
         ),
-        excluded_selector=COOKIE_CONSENT_SELECTOR,
         remove_consent_popups=True,
         verbose=False,
     )
@@ -386,7 +373,6 @@ def extract_config_stamp(
         "content_filter": type(content_filter).__name__,
         "content_filter_threshold": content_filter.threshold,
         "content_filter_preserve_tags": sorted(content_filter.preserve_tags),
-        "excluded_selector_hash": hashlib.sha256(run_config.excluded_selector.encode()).hexdigest()[:8],
         "remove_consent_popups": run_config.remove_consent_popups,
         "total_budget_s": total_budget_s,
     }
