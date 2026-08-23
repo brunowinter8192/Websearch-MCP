@@ -1,6 +1,6 @@
 # WEBSEARCH_HEADLESS escape hatch removed from the scrape lane — single headed-CDP path (2026-08-22)
 
-Follow-on to this area's `2026-08-22_cdp_headed_route_shipped_to_production.md`, which shipped the
+Follow-on to this area's same-day cdp-headed-route production entry, which shipped the
 headed-CDP default and KEPT `WEBSEARCH_HEADLESS` as an operator-forced headless-direct escape hatch
 for no-display machines. This entry removes that escape hatch from `src/scraper/scrape_url.py`
 entirely: `try_scrape` now unconditionally runs the cdp-headed path.
@@ -41,7 +41,7 @@ was left completely untouched — it is a separate acquisition surface with its 
 the var stays live for the search lane, `.env.example`'s `WEBSEARCH_HEADLESS` block was NOT deleted
 (that would leave a live var undocumented) but REWRITTEN to document the search-engine lane only,
 dropping the scraper sentence. Removing the same hatch from the search lane is tracked as its own
-follow-up (a GitHub issue), not folded in here.
+follow-up, not folded in here.
 
 ## Verification
 

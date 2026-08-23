@@ -4,7 +4,7 @@ Removes the `fit_markdown`→`raw_markdown` selection fallback (`MIN_CONTENT_THR
 `src/scraper/scrape_url.py`'s `_acquire_scrape`. Content is now `fit_markdown` unconditionally. The
 threshold was one of two remaining ungrounded config values on the ad-hoc chromium lane (the other,
 the `COOKIE_CONSENT_SELECTOR` list, is out of scope here). This continues the content-selection
-lineage of this area's `content_judgment_removal_2026-08-05.md` — that removal deliberately KEPT the
+lineage of this area's 2026-08-05 content-judgment-removal entry — that removal deliberately KEPT the
 fit/raw fallback as "selection between two crawl4ai candidates, not a verdict"; this entry retires it
 too, on evidence the earlier one did not have.
 

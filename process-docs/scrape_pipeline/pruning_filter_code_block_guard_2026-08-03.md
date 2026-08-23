@@ -9,7 +9,7 @@ its `fit_markdown`. Filed upstream as crawl4ai issue #2110 (OPEN as of this proj
 0.9.2, reported with `threshold=0.48, threshold_type="fixed"` — this project's exact configuration):
 the filter's block-level scoring treats whitespace-only spans inside syntax-highlighted code as
 near-zero density and decomposes them, corrupting the code around them. This was already known
-locally — `process-docs/scrape_pipeline/scrape_pipeline.md` records under Open Questions that the
+locally — this area's 2026-06 pipeline snapshot records under Open Questions that the
 pruning filter is destructive for code pages, predating the upstream filing.
 
 ## Root Cause, Read From Source

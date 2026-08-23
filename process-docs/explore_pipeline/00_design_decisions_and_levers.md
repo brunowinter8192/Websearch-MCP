@@ -1,4 +1,4 @@
-# crawler_js_render_discovery — Design Decisions & Lever Trade-offs
+# crawler_js_render_discovery — Design Decisions & Lever Trade-offs (2026-05-29)
 
 Framing doc for the topic. Empirical phase results: Phase A (HTTP BFS), Phase B (Playwright-per-page). This file = architectural decisions + time↔completeness lever analysis + hard constraints + open points, captured from the design discussion.
 

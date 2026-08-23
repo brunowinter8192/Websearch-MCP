@@ -11,7 +11,7 @@ status recorded, while plain `curl` on the same URLs returned HTTP 200 with 7927
 same fallback mechanism was evaluated for `src/scraper/scrape_url.py` (the ad-hoc path) and dropped —
 checked against all 19 non-`ok` outcomes in that path's own log (166 records), none matched the
 crossref signature, because `scrape_url` runs `UndetectedAdapter` and is therefore not the weaker
-client (`process-docs/scrape_toolbox/2026-08-03_toolbox_scoping_and_ad_hoc_calibration.md`). The
+client (`process-docs/scrape_pipeline/`, 2026-08-03 toolbox-scoping entry). The
 class the fallback covers only arises where the browser is weaker than a plain client — true for
 `pipe_scraper` (no `UndetectedAdapter`, incompatible with its `CONCURRENCY_PER_DOMAIN=8` per crawl4ai
 issue #1500), not true for `scrape_url`. The drop decision did not transfer; the analysis behind it did.
@@ -67,7 +67,7 @@ thousands of URLs. That trade was rejected.
 Both share `_fallback_fetch` (`curl_cffi.requests.AsyncSession(impersonate="chrome")`), the actual
 fetch primitive. `impersonate="chrome"` chosen for the browser TLS fingerprint specifically — an
 httpx/requests fallback would be the weaker client again and defeat the purpose
-(`process-docs/news_pipeline/18_methods_optimization_and_forward_plan.md`: `impersonate="chrome"` got
+(`process-docs/news_pipeline/`, methods-optimization entry: `impersonate="chrome"` got
 80/425 (18.8%) proxies through Cloudflare with HTTP 200 where another client (rustls-based monosans)
 managed 0/17202, the isolating variable being the TLS fingerprint alone). Not reused from
 `src/news/engine/proxy_pool/fetch.py` — its `(status, bytes)` contract with XML/HTML marker validation

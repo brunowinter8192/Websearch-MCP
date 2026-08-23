@@ -3,8 +3,8 @@
 Removes `COOKIE_CONSENT_SELECTOR` (a ~19-entry hand-maintained CSS list) and its
 `excluded_selector` kwarg from `src/scraper/scrape_url.py`. The second of the ad-hoc chromium lane's
 two ungrounded config values (the first, `MIN_CONTENT_THRESHOLD`, removed the same day — see this
-area's `2026-08-22_min_content_threshold_removed_on_log_evidence.md`). Continues the
-content/consent-handling lineage of this area's `content_judgment_removal_2026-08-05.md`. Consent
+area's same-day entry on that removal). Continues the
+content/consent-handling lineage of this area's 2026-08-05 content-judgment-removal entry. Consent
 handling now rests solely on `remove_consent_popups=True`, which `try_scrape` already passed.
 
 ## What it was, and why it was the wrong shape

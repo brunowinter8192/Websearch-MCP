@@ -1,4 +1,4 @@
-# pydoll_noncoop_teardown — Phase 1: Teardown Design
+# pydoll_noncoop_teardown — Phase 1: Teardown Design (2026-05-31)
 
 ## Problem
 

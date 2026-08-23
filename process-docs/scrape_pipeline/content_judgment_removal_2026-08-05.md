@@ -32,7 +32,7 @@ proves nothing about content quality.
 
 Unrelated to content judgment, but same file, same session's neighborhood: a `curl_cffi` fallback
 mechanism was evaluated for THIS path (`scrape_url.py`) in an earlier session
-(`process-docs/scrape_toolbox/2026-08-03_toolbox_scoping_and_ad_hoc_calibration.md`) and dropped —
+(this area's 2026-08-03 toolbox-scoping entry) and dropped —
 all 19 non-`ok` outcomes in this path's own log at the time were checked, none matched the
 "browser weaker than plain HTTP" signature, because this path runs `UndetectedAdapter` and is
 therefore not the weaker client. That analysis and its conclusion are untouched by this session;

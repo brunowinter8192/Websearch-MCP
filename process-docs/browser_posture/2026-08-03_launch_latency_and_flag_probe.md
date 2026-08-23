@@ -1,8 +1,8 @@
 # Launch-latency + flag probe for a headed-background Chrome launch (2026-08-03)
 
 Milestone 1 of 3 toward switching `src/search/browser.py`'s 9 DOM search engines from headless to a
-headed-but-backgrounded default (`process-docs/engine_expansion/2026-08-02_headed_vs_headless_external_evidence.md`
-covers the WHY of that switch on external evidence). This milestone measures the first of two named
+headed-but-backgrounded default (this area's 2026-08-02 external-evidence entry
+covers the WHY of that switch). This milestone measures the first of two named
 risks: what a headed background launch costs in time, and what happens with the flags Playwright sets
 by default on every Chromium it launches. Probe: `dev/browser_posture/01_launch_latency_probe.py` +
 `02_parallel_chrome_probe.py`, reports in `dev/browser_posture/md/`.

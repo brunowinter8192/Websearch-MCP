@@ -22,7 +22,7 @@ transfers with a different justification on each path in one case (see `remove_c
 - `enable_stealth=True` — verified live, not assumed: crawl4ai 0.9.2's `StealthAdapter`
   (`browser_adapter.py`) imports `playwright_stealth`'s `Stealth` class; playwright-stealth 2.0.3
   (installed) provides it. The historical `stealth_async` ImportError
-  (`process-docs/scrape_pipeline/crawl4ai_stealth_stack_2026-05-31.md`, crawl4ai 0.8.6 +
+  (`process-docs/scrape_pipeline/`, 2026-05-31 stealth-stack entry; crawl4ai 0.8.6 +
   playwright-stealth 2.0.2) targeted a different symbol and no longer applies on this stack — confirmed
   by direct import AND by a wiring test (see Verification). Reachable specifically because
   `pipe_scraper` passes no custom `crawler_strategy`/adapter to `AsyncWebCrawler`: `browser_manager.py`
@@ -60,7 +60,7 @@ transfers with a different justification on each path in one case (see `remove_c
   between the two paths is the actual reason the setting transfers, not just that it worked well on
   the ad-hoc path. Bounded cost: 1.3s worst case, counted from `remove_consent_popups.js`'s six wait
   sites (five 300ms, one 500ms) + the Python-side sleep
-  (`process-docs/time_budget/2026-08-04_config_rules_and_the_promised_maximum.md`).
+  (`process-docs/scrape_pipeline/`, 2026-08-04 config-rules entry).
 - Pacing/timeout values (`page_timeout`, `delay_before_return_html`, `DOWNLOAD_DELAY`,
   `CONCURRENCY_PER_DOMAIN`) — untouched. No external evidence to change them; this milestone's scope
   was anti-bot posture only.

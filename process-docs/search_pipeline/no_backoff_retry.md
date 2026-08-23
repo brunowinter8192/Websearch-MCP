@@ -1,6 +1,6 @@
 # No Retry-with-Backoff on External-Service Failure
 
-**Bound principle for this project.** Documented because the pattern has been re-introduced into the codebase multiple times despite repeated removal — needs an explicit reference so future Worker / refactor passes can cite it when stripping it out again.
+**Bound principle for this project, recorded 2026-05-22.** Documented because the pattern had been re-introduced into the codebase multiple times despite repeated removal — needs an explicit reference so future Worker / refactor passes can cite it when stripping it out again.
 
 ## Rule
 

@@ -1,6 +1,6 @@
 # WEBSEARCH_HEADLESS escape hatch removed from the search lane — single headed-backgrounded path (2026-08-23)
 
-Follow-on to this area's `2026-08-22_headless_escape_hatch_removed_scrape_lane.md`, which removed the
+Follow-on to this area's 2026-08-22 scrape-lane removal entry, which removed the
 same hatch from the scrape lane and explicitly left the search lane (`src/search/browser.py`) as a
 tracked follow-up. This entry closes that follow-up: `src/search/browser.py`'s `get_tab()` now
 unconditionally swaps `_open_background_process_creator` onto `_browser_process_manager` before
@@ -22,7 +22,7 @@ no-display justification does not apply to this deployment (a Mac with a display
   other reader left in the project after this change — the scrape-lane removal already dropped its
   own read on 2026-08-22, this was the last one).
 - Stale "headless" documentation corrected to the headed reality (headed default shipped
-  2026-08-03, `2026-08-03_browser_py_headed_default_rebuild.md`; these claims predated it and were
+  2026-08-03, this area's headed-default rebuild entry; these claims predated it and were
   never updated when that shipped): `src/search/DOCS.md`'s `browser.py` module entry + gotchas (the
   `_FALSY_ENV_VALUES` landmine gotcha removed outright — the guard it warned about no longer exists),
   `src/search/engines/DOCS.md`'s brave/bing/yandex module entries ("via pydoll Chrome tab, headless"

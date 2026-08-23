@@ -2,7 +2,7 @@
 
 Research pass triggered by the question whether driving a real, visible browser (optionally signed into a
 Google account) would defeat what Google throws at us. No code changed in this session; the outcome is
-two issues and this entry.
+this entry and follow-up work tracked elsewhere.
 
 ## Why measurement was rejected as the decision basis
 

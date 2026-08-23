@@ -1,6 +1,6 @@
 # cdp_url route for the ad-hoc chromium lane's headed switch (2026-08-22)
 
-Milestone 1b, continuing this area's `2026-08-22_headed_chromium_ad_hoc_lane_probe.md` entry —
+Milestone 1b, continuing this area's same-day headed-chromium-ad-hoc-lane probe entry —
 that milestone killed `LSUIElement` (crashes the chromium-1228 bundle). External research (digested
 into the milestone prompt, not searched independently this session) established: Playwright/patchright
 have no built-in no-focus-steal option for headed Chromium (playwright#4822 closed unfixed, #41282
