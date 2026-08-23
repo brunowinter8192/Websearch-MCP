@@ -37,7 +37,7 @@ from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 DEFAULT_CONFIG = PROJECT_ROOT / "dev" / "scrape_pipeline" / "04_overview_sweep" / "sweep_config.yml"
-OUTPUT_BASE = PROJECT_ROOT / "dev" / "scrape_pipeline" / "04_overview_sweep" / "sweep_outputs"
+OUTPUT_BASE = PROJECT_ROOT / "dev" / "scrape_pipeline" / "04_overview_sweep" / "sweep_data"
 
 # Smoke-report parsing (copied from 02_raw_smoke.py — dev scripts stay self-contained)
 QUERY_SECTION_RE = re.compile(r"^## Q(\d+): (.+)$")
@@ -254,7 +254,7 @@ def extract_urls(lines: list, start: int, end: int) -> list:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", default=str(DEFAULT_CONFIG), help="Path to sweep_config.yml")
-    parser.add_argument("--output-dir", default=None, help="Output dir (default: sweep_outputs/<timestamp>/)")
+    parser.add_argument("--output-dir", default=None, help="Output dir (default: sweep_data/<timestamp>/)")
     args = parser.parse_args()
 
     config_path = Path(args.config)

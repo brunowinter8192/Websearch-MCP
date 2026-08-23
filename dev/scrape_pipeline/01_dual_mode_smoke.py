@@ -97,7 +97,7 @@ def extract_urls(lines: list[str], start: int, end: int) -> list[tuple[int, str,
 def prepare_output_dirs(output_dir: str | None) -> tuple[Path, Path]:
     if output_dir is None:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        base = WORKTREE_ROOT / "dev" / "scrape_pipeline" / "01_dual_mode_outputs" / ts
+        base = WORKTREE_ROOT / "dev" / "scrape_pipeline" / "01_dual_mode_data" / ts
     else:
         base = Path(output_dir)
     mode1_dir = base / "mode1_raw"
@@ -363,7 +363,7 @@ def main():
     parser.add_argument("--query", type=int, default=1, help="Query number to use (default: 1)")
     parser.add_argument(
         "--output-dir", dest="output_dir", default=None,
-        help="Output directory (default: dev/scrape_pipeline/01_dual_mode_outputs/<timestamp>/)"
+        help="Output directory (default: dev/scrape_pipeline/01_dual_mode_data/<timestamp>/)"
     )
     args = parser.parse_args()
     asyncio.run(dual_mode_smoke_workflow(args.input, args.query, args.output_dir))

@@ -9,14 +9,14 @@ Empirical sweep of Crawl4AI filter dimensions (PruningContentFilter at threshold
 
 **Purpose:** Runs all 36 filter-dimension configs against the Q24 URL set.
 **Reads:** `sweep_config.yml`, Q24 URL set.
-**Writes:** `sweep_outputs/<ts>/<config_name>/<slug>_<hash>.md` per URL + `_run_metadata.json` with timing/sizes.
+**Writes:** `sweep_data/<ts>/<config_name>/<slug>_<hash>.md` per URL + `_run_metadata.json` with timing/sizes.
 **Called by:** CLI only.
 
 ### analyze.py (355 LOC)
 
-**Purpose:** Diffs each sweep candidate against the clean-raw baseline (latest `../03_cleanup/cleaned_outputs/`), computes line-set recall/precision/F1 per (config, URL), aggregates per config (median + per-shape), generates cross-config ranking + per-shape breakdown + unified_diff drill-down for top-3 configs. F1 is symmetric — chrome retention and content loss reduce it equally; for asymmetric preferences (e.g. "strip more chrome at cost of detail"), read `precision` separately and inspect the drill-down diffs.
-**Reads:** `sweep_outputs/<ts>/`, `../03_cleanup/cleaned_outputs/` baseline.
-**Writes:** `sweep_outputs/<ts>/_analysis.md`.
+**Purpose:** Diffs each sweep candidate against the clean-raw baseline (latest `../03_cleanup/cleaned_data/`), computes line-set recall/precision/F1 per (config, URL), aggregates per config (median + per-shape), generates cross-config ranking + per-shape breakdown + unified_diff drill-down for top-3 configs. F1 is symmetric — chrome retention and content loss reduce it equally; for asymmetric preferences (e.g. "strip more chrome at cost of detail"), read `precision` separately and inspect the drill-down diffs.
+**Reads:** `sweep_data/<ts>/`, `../03_cleanup/cleaned_data/` baseline.
+**Writes:** `sweep_data/<ts>/_analysis.md`.
 **Called by:** CLI only.
 
 ## Gotchas
