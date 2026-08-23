@@ -266,7 +266,7 @@ def main():
     print(f"  Total chars before: {total_before:,}")
     print(f"  Total chars after:  {total_after:,}")
     print(f"  Reduction:          {reduction:.1f}%")
-    print(f"\nSCRIPT: dev/cleanup/clean_web_searxng.py")
+    print(f"\nSCRIPT: dev/agentic_discovery/clean_web_searxng.py")
     print(f"OUTPUT: in-place (originals overwritten)")
 
 
