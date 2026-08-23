@@ -121,14 +121,14 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 
 **Purpose:** Download-classify probe — sniff-classifies academic URLs from search pool without saving content. Tier-1 domain transforms (arxiv/aclanthology/openreview/pmc), per-Tier timeout, classifies outcome (PDF_OK/HTML_OK/HTML_HAS_PDF_LINK/HTML_PAYWALL/HTTP_4xx etc.). `doi.org` sampled to 300 (seed=42).
 **Reads:** newest `pipeline_smoke_*.md` + `free_word_injection_probe_*.md` from `md/` (glob-discovered).
-**Writes:** `md/download_classify_<ts>.md`, `data/pool_<ts>.txt`, `data/pool_doi_sample_<ts>.txt`.
+**Writes:** `md/download_classify_<ts>.md`, `txt/pool_<ts>.txt`, `txt/pool_doi_sample_<ts>.txt`.
 **Called by:** CLI only.
 **Calls out:** `httpx`.
 
 ### 15_citation_pdf_followup.py (446 LOC)
 
 **Purpose:** Two-hop `citation_pdf_url` validation — loads HTML_HAS_PDF_LINK URLs from probe 14's report, GETs each (Hop 1 extracts `citation_pdf_url` meta), GETs the extracted PDF URL (Hop 2). Per-domain semaphore keyed on PDF-host domain.
-**Reads:** `md/<SOURCE_REPORT>` (hardcoded filename constant), `data/<SOURCE_POOL>`.
+**Reads:** `md/<SOURCE_REPORT>` (hardcoded filename constant), `txt/<SOURCE_POOL>`.
 **Writes:** `md/citation_pdf_followup_<ts>.md`.
 **Called by:** CLI only.
 **Calls out:** `httpx`.
@@ -245,11 +245,11 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 **Called by:** CLI only.
 **Calls out:** `pydoll` (Chrome, ChromiumOptions, TargetCommands, NetworkCommands) — inline copy of the `src/search/browser.py` session-setup shape, not a shared import.
 
-### _capture_sorry.py (231 LOC)
+### _capture_sorry.py (233 LOC)
 
 **Purpose:** Captures Google `/sorry/` block page — helper script, not a numbered experiment. Navigates to a search URL, checks if redirected to `/sorry/`, saves HTML + screenshot + MD summary.
 **Reads:** `config.yml`.
-**Writes:** `md/sorry_<ts>.md`, `data/sorry_<ts>.html`, `data/sorry_<ts>.png`.
+**Writes:** `md/sorry_<ts>.md`, `html/sorry_<ts>.html`, `png/sorry_<ts>.png`.
 **Called by:** CLI only.
 **Calls out:** `pydoll` (Chrome, ChromiumOptions, PageCommands, NetworkCommands, CookieSameSite), `yaml`. Imports `load_config`/`start_browser` pattern mirrored from `01_google_smoke.py` (not imported directly).
 
@@ -312,8 +312,8 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 ### clean_pool.py (236 LOC)
 
 **Purpose:** Filter helper + oracle cleanup for 7-engine eval. `filter_pool(pool, drop_engines)` removes named engines from each entry's `engines`+`positions`, recomputes `min_position`, drops engine-less URLs. As script: generates `<pair>_oracle_v3clean.json` for all 16 (mode × query) pairs in the v2 ts_dir, backfilling loss-pairs where google/semantic_scholar picks are unavailable after filtering.
-**Reads:** `data/<v2 ts_dir>/*_oracle.json`.
-**Writes:** `data/<v2 ts_dir>/<pair>_oracle_v3clean.json`, `data/<v2 ts_dir>/oracle_v3clean_summary.md`.
+**Reads:** `runs/<v2 ts_dir>/*_oracle.json`.
+**Writes:** `runs/<v2 ts_dir>/<pair>_oracle_v3clean.json`, `runs/<v2 ts_dir>/oracle_v3clean_summary.md`.
 **Called by:** CLI only; `filter_pool` importable by other stage scripts. Flags: `--v2-dir PATH`.
 **Calls out:** none beyond stdlib.
 
@@ -329,7 +329,7 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 
 **Purpose:** Classification probe for 11 Lobsters EMPTY queries from a historical smoke baseline (`smoke_20260504_023641`) — pydoll browser with 3s wait (vs production 600ms). Captures story count, page title, HTML snippet, screenshots for first 3 queries. Status taxonomy: ENGINE_EMPTY/PIPELINE_BUG/BOT_BLOCK/UNKNOWN.
 **Reads:** hardcoded query list embedded in-file (row indices reference `md/search_smoke_20260504_023641.md`).
-**Writes:** `md/empty_classify_lobsters_<ts>.md`, `data/empty_classify_lobsters_screenshots/`.
+**Writes:** `md/empty_classify_lobsters_<ts>.md`, `png/`.
 **Called by:** CLI only.
 **Calls out:** `src.search.browser` (new_tab, close_browser), `src.search.rate_limiter.get_limiter`.
 
@@ -377,14 +377,14 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 
 **Purpose:** No-Google concurrent burst smoke — production `ScholarEngine` (HTTP) vs 8 other production engines under concurrent multi-engine burst pattern, without Google browser present. Architectural discriminator: does HTTP Scholar survive the burst pattern without the Google-driven browser warmup? Import switched from the dev-only `ScholarHTTPProbe` (see `scholar_http_probe.py`) to production `ScholarEngine` as part of an HTTP migration.
 **Reads:** hardcoded 12-query set (academic queries, 3 bursts × 4).
-**Writes:** `data/no_google_burst_<ts>.jsonl` (per-query records); summary table to stderr.
+**Writes:** `jsonl/no_google_burst_<ts>.jsonl` (per-query records); summary table to stderr.
 **Called by:** CLI only.
 **Calls out:** `httpx`, `pydoll.exceptions`, `websockets.exceptions`, `src.search.status`, `src.search.browser.close_browser`, `src.search.engines.{crossref,duckduckgo,lobsters,mojeek,open_library,openalex,semantic_scholar,stack_exchange,scholar}`.
 
 ### pool_diff_v2_v3.py (240 LOC)
 
 **Purpose:** Pool diff — compares URL sets and engine counts across all 16 (mode × query) pairs between a v2 reference dir and a v3 ts_dir. Per-pair overlap_pct, new-in-v3, removed-from-v2, google_count comparison; aggregate mean overlap + per-engine OK% comparison.
-**Reads:** `data/value_eval_v2_20260523_000156/` (hardcoded `V2_REF` default), `data/value_eval_v3_<ts>/` (`--v3-dir` or newest auto-detected).
+**Reads:** `runs/value_eval_v2_20260523_000156/` (hardcoded `V2_REF` default), `runs/value_eval_v3_<ts>/` (`--v3-dir` or newest auto-detected).
 **Writes:** `md/pool_diff_v2_vs_v3.md`.
 **Called by:** CLI only. Flags: `--v3-dir PATH`.
 **Calls out:** none beyond stdlib.
@@ -393,7 +393,7 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 
 **Purpose:** Capped-pool strategy comparison — 4 configs on the same capped pool (each engine contributes ≤ google_count URLs): C1 Overlap-Count, C2 BM25 (BM25Uniform k1=1.2 b=0.75), C3 Cross-Encoder (Qwen3-Reranker-0.6B, port 8082), C4 Embedding-Cosine (Qwen3-Embedding-0.6B, port 8084). Hard-stop: `google_count == 0` → query skipped, no fallback. Requires reranker + embedding GPU services running.
 **Reads:** imports pure BM25/pool utilities from `bm25_sweep_smoke.py`, GPU API helpers + 20-query set from `rerank_probe_smoke.py`.
-**Writes:** `md/pooling_probe_<ts>.md`, `data/pooling_probe_<ts>.queries.jsonl`.
+**Writes:** `md/pooling_probe_<ts>.md`, `jsonl/pooling_probe_<ts>.queries.jsonl`.
 **Called by:** CLI only.
 **Calls out:** `bm25_sweep_smoke.py`, `rerank_probe_smoke.py` (siblings), GPU services (embedding-0.6b, reranker-0.6b).
 
@@ -449,7 +449,7 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 
 **Purpose:** Phase 12+ pool fetch (v3 schema) — 4 modes × 4 queries, per-pair `<mode>_<slug>_pool.json` + `<mode>_<slug>_engine_report.md`, global `engine_report_summary.md`. Every pool entry carries `positions: {engine: rank}` alongside `engines` + `min_position` (invariants: `set(engines)==set(positions.keys())`, `min_position==min(positions.values())`).
 **Reads:** imports pool-build utilities from `bm25_sweep_smoke.py`, `rerank_probe_smoke.py`.
-**Writes:** `data/value_eval_v3_<ts>/` — per-pair `*_pool.json` + `*_engine_report.md`, `engine_report_summary.md`.
+**Writes:** `runs/value_eval_v3_<ts>/` — per-pair `*_pool.json` + `*_engine_report.md`, `engine_report_summary.md`.
 **Called by:** CLI only. Flags: `--smoke` (1-pair), `--ts-dir PATH`.
 **Calls out:** `bm25_sweep_smoke.py`, `rerank_probe_smoke.py` (siblings).
 
@@ -505,7 +505,7 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 
 **Purpose:** Pooling-investigation Stage 1+2 (v1, historical) — per `(mode, query)` pair fetches pool via `_query_engines_concurrent` with mode-specific query modifiers (+book/+pdf/+documentation for general engines) and post-merge URL filter, applies 4 C-methods (C1 Overlap on capped+filtered, C2 BM25 vanilla on full+filtered, C2' BM25-Capped, C3 Cross-Encoder Qwen3-Reranker-0.6B port 8082). Writes oracle-input pool.json (url+title+snippet only, alphabetical, no engine/score signals) and methods.json. Filter logic inlined (no `from src.` imports). `--smoke` runs 1 pair + auto-aggregates with `--no-oracle`.
 **Reads:** hardcoded 4-mode × 4-query matrix, live engine fetch.
-**Writes:** `data/value_eval_<ts>/<mode>_<slug>_pool.json`, `<mode>_<slug>_methods.json`.
+**Writes:** `runs/value_eval_<ts>/<mode>_<slug>_pool.json`, `<mode>_<slug>_methods.json`.
 **Called by:** CLI only. Flags: `--smoke`, `--ts-dir PATH`.
 **Calls out:** `httpx`, reranker GPU service (port 8082).
 
@@ -518,7 +518,7 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 **Calls out:** `src.search.search_web.search_web_workflow`, `src.search.browser.close_browser`.
 
 ## State
-`config.yml` — run params (`queries_file`, `page_load_timeout`, `consent_settle`) and report path (`output_dir`, currently `./md`); consumed by `02_burst_smoke.py`, `_capture_sorry.py`, `00_single_query.py` (latter two via shared helper import, not direct config read). `queries.txt` — 30 baseline queries (Tech 8 + Science 6 + German 6 + Niche 5 + Broad 5), shared across most per-engine smokes. Report outputs live in `md/` (readable reports); run-payload/corpus data lives in `data/` (JSON/JSONL pool dumps, screenshots, raw HTML) — kept separate per the dev/ layout convention.
+`config.yml` — run params (`queries_file`, `page_load_timeout`, `consent_settle`) and report path (`output_dir`, currently `./md`); consumed by `02_burst_smoke.py`, `_capture_sorry.py`, `00_single_query.py` (latter two via shared helper import, not direct config read). `queries.txt` — 30 baseline queries (Tech 8 + Science 6 + German 6 + Niche 5 + Broad 5), shared across most per-engine smokes. Report outputs live in `md/` (readable reports); run-payload/corpus data lives in type-named folders — `jsonl/` (pool/query JSONL dumps), `txt/` (pool dumps), `png`/`html` (screenshots, raw captures), `runs/` (multi-file per-run pool/methods/oracle JSON co-located with their eval MD, `value_eval*_<ts>/` subfolders) — kept separate from `md/` per the dev/ layout convention.
 
 ## Gotchas
-Several scripts (`bm25_capped_smoke.py`, `bm25_idf_engine_smoke.py`, `bm25_compare_smoke.py`, `pooling_probe.py`, `single_query_pool_dump.py`, `stage1_pool_fetch.py`, `stage3_method_run*.py`, `value_eval_probe.py`) import helpers directly from sibling script files (`bm25_sweep_smoke.py`, `rerank_probe_smoke.py`) via `sys.path.insert(0, str(SCRIPT_DIR))` — these are not `_lib/` modules; treat them as informal shared-code sources when editing either base file. GPU-dependent scripts (reranker/embedding/SPLADE/generator-4b at fixed localhost ports) fail hard if the corresponding RAG server isn't running — check `_verify_services()` / `ensure_ready()` calls before assuming a script is broken. `no_google_burst_smoke.py`, `stage1_pool_fetch.py`, `value_eval_probe.py` write to `data/` rather than `md/` — their outputs are JSON/JSONL payloads, not readable reports.
+Several scripts (`bm25_capped_smoke.py`, `bm25_idf_engine_smoke.py`, `bm25_compare_smoke.py`, `pooling_probe.py`, `single_query_pool_dump.py`, `stage1_pool_fetch.py`, `stage3_method_run*.py`, `value_eval_probe.py`) import helpers directly from sibling script files (`bm25_sweep_smoke.py`, `rerank_probe_smoke.py`) via `sys.path.insert(0, str(SCRIPT_DIR))` — these are not `_lib/` modules; treat them as informal shared-code sources when editing either base file. GPU-dependent scripts (reranker/embedding/SPLADE/generator-4b at fixed localhost ports) fail hard if the corresponding RAG server isn't running — check `_verify_services()` / `ensure_ready()` calls before assuming a script is broken. `stage4_aggregate*.py` write eval MD directly into `runs/<ts_dir>/`, co-located with the pool/methods/oracle JSON they score — by design (no separate output dir; ts embedded in the dir name).

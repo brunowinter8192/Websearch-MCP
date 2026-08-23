@@ -22,7 +22,7 @@ import re
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
-V2_DEFAULT = SCRIPT_DIR / "data" / "value_eval_v2_20260523_000156"
+V2_DEFAULT = SCRIPT_DIR / "runs" / "value_eval_v2_20260523_000156"
 
 MODES = ["general", "pdf", "books", "docs"]
 QUERIES = [

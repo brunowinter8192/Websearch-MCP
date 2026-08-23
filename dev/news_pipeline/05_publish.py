@@ -15,7 +15,7 @@ COLLECTION_DIR = Path(
     "/data/documents/coindesk"
 )
 COLLECTION_NAME = "coindesk"
-INPUT_DIR = Path(__file__).parent / "03_output"
+INPUT_DIR = Path(__file__).parent / "03_data"
 DATE_RE = re.compile(r"/(\d{4})/(\d{2})/(\d{2})/")
 
 

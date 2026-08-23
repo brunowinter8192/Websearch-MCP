@@ -46,7 +46,7 @@ from bm25_sweep_smoke import _build_pool
 import logging
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
 
-REPORT_DIR = SCRIPT_DIR / "data"
+REPORT_DIR = SCRIPT_DIR / "runs"
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
 
 MODES = ["general", "pdf", "books", "docs"]

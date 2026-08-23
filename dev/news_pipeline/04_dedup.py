@@ -12,7 +12,7 @@ COLLECTION_DIR = Path(
     "/Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/cli/rag-cli"
     "/data/documents/coindesk"
 )
-OUTPUT_DIR = Path(__file__).parent / "04_output"
+OUTPUT_DIR = Path(__file__).parent / "04_json"
 DATE_RE = re.compile(r"/(\d{4})/(\d{2})/(\d{2})/")
 
 
@@ -84,9 +84,9 @@ def print_summary(total: int, skipped: int, new: int, output_path: Path):
     print(f"Output      : {output_path}")
 
 
-# Auto-pick newest discover_*.json from 01_output/
+# Auto-pick newest discover_*.json from 01_json/
 def pick_latest_input() -> Path:
-    input_dir = Path(__file__).parent / "01_output"
+    input_dir = Path(__file__).parent / "01_json"
     candidates = sorted(input_dir.glob("discover_*.json"), key=lambda p: p.stat().st_mtime)
     if not candidates:
         raise FileNotFoundError(f"No discover_*.json found in {input_dir}")
@@ -99,7 +99,7 @@ def main():
     )
     parser.add_argument(
         "--input", default=None,
-        help="Path to discover_*.json (default: newest in 01_output/)"
+        help="Path to discover_*.json (default: newest in 01_json/)"
     )
     parser.add_argument(
         "--collection-dir", default=str(COLLECTION_DIR),

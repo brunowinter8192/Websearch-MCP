@@ -28,25 +28,26 @@ src/logs/
 dev/scrape_pipeline/failures.jsonl
 
 # Sorry/block capture artifacts (contain IP data — local session evidence only)
-dev/search_pipeline/01_reports/sorry_*.html
-dev/search_pipeline/01_reports/sorry_*.png
-dev/search_pipeline/01_reports/sorry_*.md
+dev/search_pipeline/html/sorry_*.html
+dev/search_pipeline/png/sorry_*.png
+dev/search_pipeline/md/sorry_*.md
 
 # Generated per-run reports (canonical baseline files already tracked, per-run outputs ignored)
-dev/search_pipeline/01_reports/pipeline_smoke_*.md
-dev/search_pipeline/01_reports/engine_distribution_*.md
-dev/search_pipeline/01_reports/snippet_selection_*.md
-dev/search_pipeline/01_reports/snippet_quality_*.md
+dev/search_pipeline/md/pipeline_smoke_*.md
+dev/search_pipeline/md/engine_distribution_*.md
+dev/search_pipeline/md/snippet_selection_*.md
+dev/search_pipeline/md/snippet_quality_*.md
 
 # News pipeline outputs (discover JSONs accumulate — gitignored; cleaned content tracked)
-dev/news_pipeline/01_output/
+dev/news_pipeline/01_json/
 dev/news_pipeline/02_output/
-dev/news_pipeline/02b_output/
-dev/news_pipeline/03_output/
-dev/news_pipeline/04_output/
+dev/news_pipeline/02b_data/
+dev/news_pipeline/03_data/
+dev/news_pipeline/04_json/
 dev/news_pipeline/exploration/01_output/
 dev/news_pipeline/exploration/02_output/
 dev/news_pipeline/exploration/03_output/
+dev/news_pipeline/exploration/05_data/
 
 # src/news prod pipeline working dirs (ephemeral, cleared per run)
 data/news/

@@ -30,7 +30,7 @@ SEED_URL = "https://docs.github.com/de/rest"
 BASE = "https://docs.github.com"
 GOLD_DEFAULT = Path(__file__).parent / "goldstandard" / "docs_github_rest.txt"
 OUTPUT_DIR = Path(__file__).parent / "md"
-DISCOVERED_FILE = Path(__file__).parent / "06_discovered_urls.txt"
+DISCOVERED_FILE = Path(__file__).parent / "txt" / "06_discovered_urls.txt"
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 
 

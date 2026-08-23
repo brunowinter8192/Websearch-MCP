@@ -212,7 +212,7 @@ def main():
     print(f"  - Total chars after:  {total_after:,}")
     print(f"  - Reduction: {reduction:.1f}%")
     print()
-    print(f"SCRIPT: dev/cleanup/clean_web_cookieyes.py")
+    print(f"SCRIPT: dev/agentic_discovery/clean_web_cookieyes.py")
     print(f"OUTPUT: in-place (originals overwritten)")
 
     if errors:

@@ -27,4 +27,4 @@ Regression baseline + browser-config tuning for the production scraper (`scrape_
 **Called by:** CLI only.
 
 ## Gotchas
-`12_reports/` and sibling `*_reports/` dirs are gitignored raw eval data — present on disk locally, never tracked.
+`01_baselines/` is gitignored raw eval data — present on disk locally, never tracked. `md/` reports are tracked (mirrors `garbage_eval/md/`).

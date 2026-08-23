@@ -21,8 +21,8 @@ import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-SWEEP_BASE = PROJECT_ROOT / "dev" / "scrape_pipeline" / "04_overview_sweep" / "sweep_outputs"
-CLEANRAW_BASE = PROJECT_ROOT / "dev" / "scrape_pipeline" / "03_cleanup" / "cleaned_outputs"
+SWEEP_BASE = PROJECT_ROOT / "dev" / "scrape_pipeline" / "04_overview_sweep" / "sweep_data"
+CLEANRAW_BASE = PROJECT_ROOT / "dev" / "scrape_pipeline" / "03_cleanup" / "cleaned_data"
 
 # Shape mapping for Q24 URLs (manually classified — see SKILL Shape catalog)
 SHAPE_MAP = {
@@ -341,8 +341,8 @@ def hashlib_md5(url: str) -> str:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--sweep", default=None, help="Path to sweep_outputs/<ts>/ (default: latest)")
-    parser.add_argument("--cleanraw", default=None, help="Path to cleaned_outputs/<ts>/ (default: latest)")
+    parser.add_argument("--sweep", default=None, help="Path to sweep_data/<ts>/ (default: latest)")
+    parser.add_argument("--cleanraw", default=None, help="Path to cleaned_data/<ts>/ (default: latest)")
     parser.add_argument("--drill", type=int, default=4, help="Number of URLs for diff drill-down (default 4)")
     args = parser.parse_args()
 

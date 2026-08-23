@@ -15,7 +15,7 @@ import httpx
 
 SCRIPT_DIR = Path(__file__).parent
 REPORT_DIR = SCRIPT_DIR / "md"
-DATA_DIR = SCRIPT_DIR / "data"
+DATA_DIR = SCRIPT_DIR / "txt"
 
 SOURCE_REPORT = "download_classify_20260507_172709.md"
 SOURCE_POOL = "pool_20260507_172709.txt"

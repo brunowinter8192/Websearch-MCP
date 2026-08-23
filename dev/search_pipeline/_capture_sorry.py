@@ -19,7 +19,8 @@ from pydoll.protocol.network.types import CookieSameSite
 SCRIPT_DIR = Path(__file__).parent
 CONFIG_PATH = SCRIPT_DIR / "config.yml"
 REPORTS_DIR = SCRIPT_DIR / "md"
-DATA_DIR = SCRIPT_DIR / "data"
+PNG_DIR = SCRIPT_DIR / "png"
+HTML_DIR = SCRIPT_DIR / "html"
 CAPTURE_URL = "https://www.google.com/search?q=test"
 
 
@@ -29,7 +30,8 @@ async def capture_sorry() -> None:
     cfg = load_config(CONFIG_PATH)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    PNG_DIR.mkdir(parents=True, exist_ok=True)
+    HTML_DIR.mkdir(parents=True, exist_ok=True)
 
     browser = await start_browser(cfg)
     try:
@@ -43,7 +45,7 @@ async def capture_sorry() -> None:
     print(f"URL: {url}", file=sys.stderr)
     print(f"Title: {title}", file=sys.stderr)
     print(f"PNG: {png_path}", file=sys.stderr)
-    print(f"HTML: {DATA_DIR / f'sorry_{ts}.html'}", file=sys.stderr)
+    print(f"HTML: {HTML_DIR / f'sorry_{ts}.html'}", file=sys.stderr)
     print(f"MD:  {REPORTS_DIR / f'sorry_{ts}.md'}", file=sys.stderr)
 
 
@@ -197,7 +199,7 @@ async def navigate_and_capture(browser: Chrome, cfg: dict, ts: str):
     title = _extract_scalar(await tab.execute_script("return document.title")) or ""
     html = await tab.page_source
 
-    png_path = DATA_DIR / f"sorry_{ts}.png"
+    png_path = PNG_DIR / f"sorry_{ts}.png"
     await tab.take_screenshot(path=str(png_path))
     await tab.close()
     return url, title, html, png_path
@@ -205,7 +207,7 @@ async def navigate_and_capture(browser: Chrome, cfg: dict, ts: str):
 
 # Write sorry_<ts>.html and sorry_<ts>.md
 def write_outputs(url: str, title: str, html: str, png_path: Path, status: str, ts: str) -> None:
-    html_path = DATA_DIR / f"sorry_{ts}.html"
+    html_path = HTML_DIR / f"sorry_{ts}.html"
     html_path.write_text(html, encoding="utf-8")
 
     md_path = REPORTS_DIR / f"sorry_{ts}.md"
@@ -219,8 +221,8 @@ def write_outputs(url: str, title: str, html: str, png_path: Path, status: str, 
         f"**Status:** {status}",
         f"**URL:** `{url}`",
         f"**Title:** {title}",
-        f"**PNG:** `data/sorry_{ts}.png`",
-        f"**HTML:** `data/sorry_{ts}.html`",
+        f"**PNG:** `png/sorry_{ts}.png`",
+        f"**HTML:** `html/sorry_{ts}.html`",
         "",
         note,
     ]

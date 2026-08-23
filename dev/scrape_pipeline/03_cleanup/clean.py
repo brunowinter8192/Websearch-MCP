@@ -2,8 +2,8 @@
 """
 clean.py — URL-spanning cleanup of raw scraped markdown for RAG indexing.
 
-Reads raw .md files from a 02_raw_outputs/<ts>/ directory, applies cleanup patterns,
-writes cleaned versions to dev/scrape_pipeline/03_cleanup/cleaned_outputs/<ts>/.
+Reads raw .md files from a 02_raw_data/<ts>/ directory, applies cleanup patterns,
+writes cleaned versions to dev/scrape_pipeline/03_cleanup/cleaned_data/<ts>/.
 
 Patterns are URL-spanning heuristics — NOT site-specific. Each pattern is documented
 inline with the URL where it was first discovered. New patterns are added as we
@@ -11,7 +11,7 @@ encounter new chrome variants while iterating through the raw output set.
 
 Usage:
     ./venv/bin/python dev/scrape_pipeline/03_cleanup/clean.py
-    ./venv/bin/python dev/scrape_pipeline/03_cleanup/clean.py --input dev/scrape_pipeline/02_raw_outputs/<ts>/
+    ./venv/bin/python dev/scrape_pipeline/03_cleanup/clean.py --input dev/scrape_pipeline/02_raw_data/<ts>/
 """
 # INFRASTRUCTURE
 import argparse
@@ -21,8 +21,8 @@ from datetime import datetime
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-RAW_DIR_DEFAULT = PROJECT_ROOT / "dev" / "scrape_pipeline" / "02_raw_outputs"
-CLEANED_DIR_BASE = PROJECT_ROOT / "dev" / "scrape_pipeline" / "03_cleanup" / "cleaned_outputs"
+RAW_DIR_DEFAULT = PROJECT_ROOT / "dev" / "scrape_pipeline" / "02_raw_data"
+CLEANED_DIR_BASE = PROJECT_ROOT / "dev" / "scrape_pipeline" / "03_cleanup" / "cleaned_data"
 
 MIN_CONTENT_BYTES = 500  # skip near-empty raw files (PDFs etc.)
 
@@ -316,8 +316,8 @@ def find_latest_raw_dir() -> Path:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", help="Path to raw outputs dir (default: latest in 02_raw_outputs/)")
-    parser.add_argument("--output", help="Output dir (default: 03_cleanup/cleaned_outputs/<ts>/)")
+    parser.add_argument("--input", help="Path to raw outputs dir (default: latest in 02_raw_data/)")
+    parser.add_argument("--output", help="Output dir (default: 03_cleanup/cleaned_data/<ts>/)")
     args = parser.parse_args()
 
     input_dir = Path(args.input) if args.input else find_latest_raw_dir()

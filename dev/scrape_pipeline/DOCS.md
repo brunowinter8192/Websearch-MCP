@@ -23,14 +23,14 @@ Quality monitoring and configuration testing for the URL scraper module (`src/sc
 
 **Purpose:** A/B comparison harness — parses URLs from a chosen query in a search-results markdown report, scrapes each URL through BOTH production CLI modes in parallel via asyncio: Mode 1 (`scrape_url_raw`, raw markdown to file, no filter) and Mode 2 (`scrape_url`, PruningContentFilter@0.48, 15K char cap, in-memory). Reusable for library A/B testing — replace the cli.py-subprocess invocation with another extraction library.
 **Reads:** `--input <path-to-search-md>` (required, e.g. `dev/search_pipeline/md/pipeline_smoke_*.md`), `--query <id-or-text>` (default 1).
-**Writes:** `--output-dir` (default `01_dual_mode_outputs/<ts>/`) — per-mode subdirs (`mode1_raw/`, `mode2_filtered/`) with one .md per URL, plus `01_dual_mode_report.md` at parent level (per-URL byte sizes, garbage detection, first content lines).
+**Writes:** `--output-dir` (default `01_dual_mode_data/<ts>/`) — per-mode subdirs (`mode1_raw/`, `mode2_filtered/`) with one .md per URL, plus `01_dual_mode_report.md` at parent level (per-URL byte sizes, garbage detection, first content lines).
 **Called by:** CLI only.
 
 ### 02_raw_smoke.py (208 LOC)
 
 **Purpose:** Dev-only Mode 1 raw scrape — Crawl4AI direct via `arun_many`, no prod imports, no `cli.py` subprocess. Parses Q24 URLs from a search smoke report, scrapes all in parallel. Slug includes full-URL md5 hash to prevent query-string collisions (e.g. HN `?id=N` URLs both preserved). NO fallback chain (single Crawl4AI config), NO garbage detection, NO cookie strip — fail fast, see what's actually there. Clean baseline for downstream cleanup work + comparison against filter outputs.
 **Reads:** `--input <path-to-search-md>`, `--query 24`.
-**Writes:** `02_raw_outputs/<ts>/` — 20 `<slug>_<6-char-md5>.md` files + `02_raw_report.md` triage table. Status `empty` includes optional annotation `(PDF)` or `(plugin-domain: github)`.
+**Writes:** `02_raw_data/<ts>/` — 20 `<slug>_<6-char-md5>.md` files + `02_raw_report.md` triage table. Status `empty` includes optional annotation `(PDF)` or `(plugin-domain: github)`.
 **Called by:** CLI only.
 
 ### 06_cloudflare_md_adoption.py (282 LOC)

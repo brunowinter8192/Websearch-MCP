@@ -37,7 +37,7 @@ Manual UI exploration probes for CoinDesk. Goal: learn page structure (button se
 
 **Purpose:** Investigates cursor validity and storyType distribution across paginated timeline calls. Walk mode: pages through N calls logging all article `_id`/`storyType`/`pathname`/`displayDate`, producing storyType distribution. Fixed mode: chains cursor calls with optional storyType filtering (retry-fallback on 403: falls back to N-1/N-2 cursor article). Findings: storyType distribution (128 articles) News 91.4% / live_news 5.5% / Opinion 3.1%; a deterministic 403 cursor turned out to be a standard "News" article (storyType hypothesis disproved) — the 403 was transient article unavailability, not a storyType rule (confirmed 200 on fresh session); valid anchor rule: any article can be a cursor anchor, fall back to N-1 on 403.
 **Reads:** live CoinDesk timeline API.
-**Writes:** `05_output/walk_<ts>.md`, `05_output/walk_<ts>_articles.json`, `05_output/fixed_<ts>.md`, `05_output/deep_<ts>.md`.
+**Writes:** `05_data/walk_<ts>.md`, `05_data/walk_<ts>_articles.json`, `05_data/fixed_<ts>.md`, `05_data/deep_<ts>.md`.
 **Called by:** CLI only. `--mode walk|fixed`, `--n N` (default 25), `--invalid-types T1,T2` (fixed mode), `--delay S` (default 0.3).
 
 ### 05b_coindesk_warmth_probe.py (422 LOC)

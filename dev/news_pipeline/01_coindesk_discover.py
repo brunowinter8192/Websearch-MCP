@@ -29,7 +29,7 @@ POLL_MAX = 40          # 20s max wait per click
 PRE_48H_THRESHOLD = 3  # stop when this many articles older than 48h are seen
 CUTOFF_DAYS = 2        # collect back N days; terminate on articles older than cutoff
 DATE_RE = re.compile(r'/(\d{4})/(\d{2})/(\d{2})/')
-OUTPUT_DIR = Path(__file__).parent / "01_output"
+OUTPUT_DIR = Path(__file__).parent / "01_json"
 
 # Extract feed article URLs + title + nearest time label — excludes aside/nav/footer/sidebar noise
 _JS_EXTRACT = """

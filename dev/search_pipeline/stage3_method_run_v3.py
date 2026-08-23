@@ -30,7 +30,7 @@ Requires:
 
 Usage:
   ./venv/bin/python dev/search_pipeline/stage3_method_run_v3.py \\
-      --pool-dir dev/search_pipeline/data/value_eval_v3_<ts> \\
+      --pool-dir dev/search_pipeline/runs/value_eval_v3_<ts> \\
       [--smoke]
 """
 

@@ -35,8 +35,8 @@ REGWALL_SIGNALS = [
     "You've reached your monthly limit",
 ]
 
-INPUT_DIR = Path(__file__).parent / "01_output"
-OUTPUT_DIR = Path(__file__).parent / "02b_output"
+INPUT_DIR = Path(__file__).parent / "01_json"
+OUTPUT_DIR = Path(__file__).parent / "02b_data"
 
 # Shared fetch config — no browser state carried between URLs (each gets a fresh crawler).
 _RUN_CFG = CrawlerRunConfig(
@@ -239,7 +239,7 @@ def print_summary(manifest: list[dict], total_s: float) -> None:
         print(f"  slowest : {slowest['url']} ({slowest.get('elapsed_s', '?')}s)")
 
 
-# Auto-pick newest discover_*.json from 01_output/.
+# Auto-pick newest discover_*.json from 01_json/.
 def pick_latest_input() -> Path:
     candidates = sorted(INPUT_DIR.glob("discover_*.json"), key=lambda p: p.stat().st_mtime)
     if not candidates:
@@ -256,7 +256,7 @@ def main():
     )
     parser.add_argument(
         "--input", default=None,
-        help="Path to discover_*.json (default: newest in 01_output/)"
+        help="Path to discover_*.json (default: newest in 01_json/)"
     )
     args = parser.parse_args()
     input_path = Path(args.input) if args.input else pick_latest_input()

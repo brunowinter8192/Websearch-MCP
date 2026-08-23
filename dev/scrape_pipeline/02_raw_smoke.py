@@ -83,7 +83,7 @@ def extract_urls(lines: list[str], start: int, end: int) -> list[tuple[int, str,
 def prepare_output_dir(output_dir: str | None) -> Path:
     if output_dir is None:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        out = WORKTREE_ROOT / "dev" / "scrape_pipeline" / "02_raw_outputs" / ts
+        out = WORKTREE_ROOT / "dev" / "scrape_pipeline" / "02_raw_data" / ts
     else:
         out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -198,7 +198,7 @@ def main():
     parser.add_argument("--query", type=int, default=24, help="Query number (default: 24)")
     parser.add_argument(
         "--output-dir", dest="output_dir", default=None,
-        help="Output directory (default: dev/scrape_pipeline/02_raw_outputs/<timestamp>/)"
+        help="Output directory (default: dev/scrape_pipeline/02_raw_data/<timestamp>/)"
     )
     args = parser.parse_args()
     asyncio.run(raw_smoke_workflow(args.input, args.query, args.output_dir))

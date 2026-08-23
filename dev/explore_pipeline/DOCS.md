@@ -44,11 +44,11 @@ URL discovery and traversal testing for Crawl4AI's BFS deep crawl strategy — r
 
 **Purpose:** Agentic discovery via `__NEXT_DATA__` nav-tree extraction — fetches seed HTML via plain HTTP (no browser), parses `sidebarTree` from the Next.js SSR blob, detects all versions via `allVersions`, fetches each version's REST root page, unions all sidebar trees normalized to canonical `/de/rest/…` form. Scores recall vs goldstandard. Generic to any Next.js SSR doc site. CLI flags: `--gold PATH`, `--no-ghec`, `--no-ghes`.
 **Reads:** `goldstandard/docs_github_rest.txt`.
-**Writes:** `md/06_gh_live_discovery_<date>_<time>.md` — recall table (found per version/net additions/matched/noise), baseline comparison, per-step discovery log. Discovered URL set → `06_discovered_urls.txt`.
+**Writes:** `md/06_gh_live_discovery_<date>_<time>.md` — recall table (found per version/net additions/matched/noise), baseline comparison, per-step discovery log. Discovered URL set → `txt/06_discovered_urls.txt`.
 **Called by:** CLI only.
 
 ## State
-`domains.txt` — batch-crawl seed list, hand-maintained, one domain per HTML generator/content type for broad test coverage. `goldstandard/docs_github_rest.txt` — 305-URL recall reference for scripts 04-06. `06_discovered_urls.txt` — last discovered URL set from `06_nextdata_probe.py`, overwritten per run. All `md/*` reports are historical run outputs, not maintained.
+`domains.txt` — batch-crawl seed list, hand-maintained, one domain per HTML generator/content type for broad test coverage. `goldstandard/docs_github_rest.txt` — 305-URL recall reference for scripts 04-06. `txt/06_discovered_urls.txt` — last discovered URL set from `06_nextdata_probe.py`, overwritten per run. All `md/*` reports are historical run outputs, not maintained.
 
 ## Gotchas
 `BFSDeepCrawlStrategy` (used by `04_render_recall.py`) uses HTTP for link extraction regardless of `wait_until` — changing to `networkidle` has no recall effect (finding as of 2026-05-29 run, Strategy C 205/305=67.2%). Playwright-per-page BFS (`05_playwright_bfs.py`) reached 248/305=81.3% (2026-05-29) — ceiling is structural, GHEC/deprecated pages unlinked from any FPT sidebar page. `06_nextdata_probe.py` reached 305/305=100% recall in 1.6s (2026-05-31) via nav-tree union — no crawling needed for Next.js SSR doc sites with `__NEXT_DATA__`.
