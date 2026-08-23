@@ -57,7 +57,7 @@ _limiters["brave"] = RateLimiter(max_requests=4, window_seconds=60)
 
 # ORCHESTRATOR
 
-# Brave web search via pydoll stealth browser — own index, headless; PoW/CAPTCHA degrades gracefully to empty+reason
+# Brave web search via pydoll stealth browser — own index, headed; PoW/CAPTCHA degrades gracefully to empty+reason
 class BraveEngine(BaseEngine):
     name = "brave"
 
