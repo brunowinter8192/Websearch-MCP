@@ -56,7 +56,7 @@ Query string in → engine-specific fetch (pydoll tab navigation + JS extraction
 
 ### startpage.py (178 LOC)
 
-**Purpose:** Startpage (Google-index frontend) search via pydoll Chrome tab — two-step React-form flow (homepage load, native-setter query fill, real button click) to obtain a per-session `sc` token, then waits for `div.result` containers and detects block/captcha markers. Form-flow rationale: `process-docs/search_pipeline/2026-08-24_docs_format_salvage.md`.
+**Purpose:** Startpage (Google-index frontend) search via pydoll Chrome tab — two-step React-form flow (homepage load, native-setter query fill, real button click) to obtain a per-session `sc` token, then waits for `div.result` containers and detects block/captcha markers.
 **Reads:** none (network only).
 **Writes:** none (network only).
 **Called by:** `src/search/search_web.py`.
@@ -66,7 +66,7 @@ Query string in → engine-specific fetch (pydoll tab navigation + JS extraction
 
 ### brave.py (161 LOC)
 
-**Purpose:** Brave Search (own index) via pydoll Chrome tab, headed — single GET, waits for `div[data-type="web"]` containers, and returns a graceful `S.EMPTY_BLOCK` (never an exception) on Proof-of-Work CAPTCHA detection. PoW-detection detail: `process-docs/search_pipeline/2026-08-24_docs_format_salvage.md`.
+**Purpose:** Brave Search (own index) via pydoll Chrome tab, headed — single GET, waits for `div[data-type="web"]` containers, and returns a graceful `S.EMPTY_BLOCK` (never an exception) on Proof-of-Work CAPTCHA detection.
 **Reads:** none (network only).
 **Writes:** none (network only).
 **Called by:** `src/search/search_web.py`.
@@ -76,7 +76,7 @@ Query string in → engine-specific fetch (pydoll tab navigation + JS extraction
 
 ### bing.py (204 LOC)
 
-**Purpose:** Bing web search (direct path to the Bing index) via pydoll Chrome tab, headed — single GET, waits for `li.b_algo` containers, unwraps the `bing.com/ck/a?...&u=<base64>` tracking redirect on every href, and detects blocks via an EN+DE marker scan. Unwrap/date-extraction detail: `process-docs/search_pipeline/2026-08-24_docs_format_salvage.md`.
+**Purpose:** Bing web search (direct path to the Bing index) via pydoll Chrome tab, headed — single GET, waits for `li.b_algo` containers, unwraps the `bing.com/ck/a?...&u=<base64>` tracking redirect on every href, and detects blocks via an EN+DE marker scan.
 **Reads:** none (network only).
 **Writes:** none (network only).
 **Called by:** `src/search/search_web.py`.
@@ -86,7 +86,7 @@ Query string in → engine-specific fetch (pydoll tab navigation + JS extraction
 
 ### yandex.py (171 LOC)
 
-**Purpose:** Yandex Search (independent index) via pydoll Chrome tab, headed — waits for `li.serp-item` containers, extracts direct hrefs from `a.OrganicTitle-Link` (no unwrap needed), with fast CAPTCHA-redirect short-circuit and self-referential-result filtering. Refinement detail: `process-docs/search_pipeline/2026-08-24_docs_format_salvage.md`.
+**Purpose:** Yandex Search (independent index) via pydoll Chrome tab, headed — waits for `li.serp-item` containers, extracts direct hrefs from `a.OrganicTitle-Link` (no unwrap needed), with fast CAPTCHA-redirect short-circuit and self-referential-result filtering.
 **Reads:** none (network only).
 **Writes:** none (network only).
 **Called by:** `src/search/search_web.py`.
@@ -166,7 +166,7 @@ Query string in → engine-specific fetch (pydoll tab navigation + JS extraction
 
 ### scholar.py (116 LOC)
 
-**Purpose:** Google Scholar search via `httpx` GET (no browser, migrated off pydoll) — detects concurrent-CAPTCHA via 30x redirect to `/sorry/`; not wired into `search_web.py`'s production engine pool. Migration/timeout derivation: `process-docs/search_pipeline/2026-08-24_docs_format_salvage.md`.
+**Purpose:** Google Scholar search via `httpx` GET (no browser, migrated off pydoll) — detects concurrent-CAPTCHA via 30x redirect to `/sorry/`; not wired into `search_web.py`'s production engine pool.
 **Reads:** none (network only).
 **Writes:** none (network only).
 **Called by:** dev probe scripts only (`dev/search_pipeline/`) — NOT imported by `src/search/search_web.py`. Decoupled/parked from the production 14-engine pool.

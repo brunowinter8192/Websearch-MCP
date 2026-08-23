@@ -24,7 +24,7 @@ URL scraping for the `scrape_url` CLI subcommand and the shared garbage classifi
 
 ### scrape_url.py (472 LOC)
 
-**Purpose:** Scrape orchestrator — single crawl4ai browser call via a self-launched, dynamically-resolved chromium bundle connected over CDP (`_acquire_cdp_headed`, stealth + consent-removal), returns `fit_markdown` unconditionally with acquisition facts only (HTTP status, byte counts, landed URL, crawl4ai's own anti-bot diagnosis) — no content judgment. Full acquisition-path/budget-derivation history: `process-docs/scrape_pipeline/2026-08-24_docs_format_salvage.md`.
+**Purpose:** Scrape orchestrator — single crawl4ai browser call via a self-launched, dynamically-resolved chromium bundle connected over CDP (`_acquire_cdp_headed`, stealth + consent-removal), returns `fit_markdown` unconditionally with acquisition facts only (HTTP status, byte counts, landed URL, crawl4ai's own anti-bot diagnosis) — no content judgment.
 **Reads:** `url` arg (no other parameters — `max_content_length` removed 2026-08-05).
 **Writes:** result content + metadata via scrape_logger (no direct file writes); a throwaway `--user-data-dir` under the OS temp dir on the cdp path (created and removed within one `try_scrape` call).
 **Called by:** `cli.py` (scrape_url_workflow); `src/crawler/crawl_site.py` (is_garbage_content); `src/crawler/pipe_scraper.py` (hash_config); `src/crawler/pipe_scraper_acquisition.py` (extract_crawl4ai_diagnosis — reused as-is, not path-specific).
@@ -32,7 +32,7 @@ URL scraping for the `scrape_url` CLI subcommand and the shared garbage classifi
 
 ### scrape_logger.py (66 LOC)
 
-**Purpose:** Per-URL structured logging for scrape_url — one JSONL record + one full-content `.md` sidecar per call, shared by both the chromium and Camoufox acquisition lanes (`"engine"` field discriminates). Field-provenance/historical-schema detail: `process-docs/scrape_pipeline/2026-08-24_docs_format_salvage.md`.
+**Purpose:** Per-URL structured logging for scrape_url — one JSONL record + one full-content `.md` sidecar per call, shared by both the chromium and Camoufox acquisition lanes (`"engine"` field discriminates).
 **Reads:** `WEBSEARCH_SCRAPE_LOG_PATH` env var (fallback `src/logs/scrape_log.jsonl`); sidecar dir `<log_dir>/scrape_content/`.
 **Writes:** `src/logs/scrape_log.jsonl` (one line per call); `<log_dir>/scrape_content/<ts>_<slug>.md` (per-call sidecar). Both gitignored.
 **Called by:** `scrape_url.py` (end of scrape_url_workflow); `camoufox_scrape.py` (end of scrape_url_camoufox_workflow) — same log file, both lanes, see the engine-discriminator note above.
@@ -40,7 +40,7 @@ URL scraping for the `scrape_url` CLI subcommand and the shared garbage classifi
 
 ### camoufox_scrape.py (227 LOC)
 
-**Purpose:** Calibrated core acquisition module for the Camoufox/Firefox lane — a second, parallel (not fallback) acquisition path: launches headed Camoufox, navigates, converts captured HTML to markdown via crawl4ai's `raw:` pipeline, same fact-only contract as scrape_url.py. Full calibration/budget/no-focus-steal derivation: `process-docs/camoufox_lane/2026-08-24_docs_format_salvage.md`.
+**Purpose:** Calibrated core acquisition module for the Camoufox/Firefox lane — a second, parallel (not fallback) acquisition path: launches headed Camoufox, navigates, converts captured HTML to markdown via crawl4ai's `raw:` pipeline, same fact-only contract as scrape_url.py.
 **Reads:** `url` arg, `block_images` arg.
 **Writes:** `scrape_log.jsonl` + sidecar via scrape_logger.py (as of the ad-hoc CLI wiring — `try_scrape_camoufox` itself still writes nothing, only `scrape_url_camoufox_workflow` does).
 **Called by:** `cli.py` (`scrape_url_camoufox` subcommand → `scrape_url_camoufox_workflow`). Pipe-lane wiring is a later milestone.

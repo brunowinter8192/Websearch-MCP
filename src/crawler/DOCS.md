@@ -21,7 +21,7 @@ pipe_scraper: URL list in → per-domain paced raw crawl → one `.md` per URL +
 
 ### crawl_site.py (359 LOC)
 
-**Purpose:** Discovery engine + content crawl — Playwright-per-page BFS from a seed URL (`discover_urls_playwright`) followed by a parallel content crawl (`crawl_urls`) writing one markdown file per URL. Function-signature/CLI-flag detail: `process-docs/pipe_scraper/2026-08-24_docs_format_salvage.md`.
+**Purpose:** Discovery engine + content crawl — Playwright-per-page BFS from a seed URL (`discover_urls_playwright`) followed by a parallel content crawl (`crawl_urls`) writing one markdown file per URL.
 **Reads:** seed URL / `--url-file` list.
 **Writes:** per-URL `.md` to `--output-dir` (each with source header).
 **Called by:** `crawl_site_workflow` (CLI entry); capture-and-index workflow.
@@ -29,7 +29,7 @@ pipe_scraper: URL list in → per-domain paced raw crawl → one `.md` per URL +
 
 ### pipe_scraper.py (114 LOC) — entry point
 
-**Purpose:** Entry point + orchestrator for the capture-pipeline scrape step — dispatches a URL list per-RUN (never per-URL, never auto-selected) to one of two acquisition engines (chromium: shared crawler; camoufox: fresh browser per URL). Full CLI-flag/dispatch derivation: `process-docs/pipe_scraper/2026-08-24_docs_format_salvage.md`.
+**Purpose:** Entry point + orchestrator for the capture-pipeline scrape step — dispatches a URL list per-RUN (never per-URL, never auto-selected) to one of two acquisition engines (chromium: shared crawler; camoufox: fresh browser per URL).
 **Reads:** URL list from `--url-file` or caller-supplied list.
 **Writes:** delegates all actual writing to sibling modules (see below); prints the console summary and writes the `/tmp` report itself via `pipe_scraper_report.py`.
 **Called by:** capture-and-index skill Scrape step; importable as `scrape_urls_workflow()`.
@@ -49,13 +49,13 @@ pipe_scraper: URL list in → per-domain paced raw crawl → one `.md` per URL +
 
 ### pipe_scraper_config.py (56 LOC)
 
-**Purpose:** `_build_configs()` sets a fixed anti-bot posture for the chromium engine, optimized purely for reachability, not extraction quality (stealth + `magic=False` + `remove_consent_popups=True`); wires the curl_cffi fallback (path a) into `CrawlerRunConfig.fallback_fetch_function`. Full per-flag rationale: `process-docs/pipe_scraper/2026-08-24_docs_format_salvage.md`.
+**Purpose:** `_build_configs()` sets a fixed anti-bot posture for the chromium engine, optimized purely for reachability, not extraction quality (stealth + `magic=False` + `remove_consent_popups=True`); wires the curl_cffi fallback (path a) into `CrawlerRunConfig.fallback_fetch_function`.
 **Called by:** `pipe_scraper.py` (`_scrape_all`).
 **Calls out:** `crawl4ai` (BrowserConfig, CrawlerRunConfig, CacheMode, DefaultMarkdownGenerator); `pipe_scraper_acquisition.py` (`_fallback_fetch`); `pipe_scraper_constants.py`.
 
 ### pipe_scraper_acquisition.py (172 LOC)
 
-**Purpose:** Per-URL engine executors for both acquisition engines (`_scrape_one` chromium, `_scrape_one_camoufox` camoufox) plus the chromium engine's two independent curl_cffi fallback paths for when the browser is the weaker client. Full path-(a)/path-(b)/`landed_url` derivation: `process-docs/pipe_scraper/2026-08-24_docs_format_salvage.md`.
+**Purpose:** Per-URL engine executors for both acquisition engines (`_scrape_one` chromium, `_scrape_one_camoufox` camoufox) plus the chromium engine's two independent curl_cffi fallback paths for when the browser is the weaker client.
 **Reads:** URL list passed in from `pipe_scraper._scrape_all`.
 **Writes:** per-URL `.md` to `--output-dir` (with source header, including path-(b)-rescued content, or camoufox-engine content — markdown OR raw HTML, see `content_is_raw_html`); one JSONL record per URL via `pipe_scraper_records.py`.
 **Called by:** `pipe_scraper.py` (`_scrape_all`).
@@ -75,7 +75,7 @@ pipe_scraper: URL list in → per-domain paced raw crawl → one `.md` per URL +
 
 ### pipe_scrape_logger.py (27 LOC)
 
-**Purpose:** Per-URL JSONL log writer for pipe_scraper — one record per URL (`run_id`-grouped, `ts`=request start), shared by both acquisition engines (`"engine"` field discriminates), separate schema/file from `src/logs/scrape_log.jsonl`. Full field-provenance/historical-schema detail: `process-docs/pipe_scraper/2026-08-24_docs_format_salvage.md`.
+**Purpose:** Per-URL JSONL log writer for pipe_scraper — one record per URL (`run_id`-grouped, `ts`=request start), shared by both acquisition engines (`"engine"` field discriminates), separate schema/file from `src/logs/scrape_log.jsonl`.
 **Reads:** `WEBSEARCH_PIPE_SCRAPE_LOG_PATH` env var (fallback `src/logs/pipe_scrape_log.jsonl`).
 **Writes:** `src/logs/pipe_scrape_log.jsonl` (one line per URL). Gitignored.
 **Called by:** `pipe_scraper_records.py` (`_log_pipe_record` for the chromium engine, `_log_pipe_camoufox_record` for the camoufox engine).

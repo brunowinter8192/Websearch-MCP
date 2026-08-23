@@ -22,7 +22,7 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 
 ### search_web.py (354 LOC)
 
-**Purpose:** Search orchestrator — fans out across the 14 active engines via `asyncio.gather`, then builds pools, caps each to Google's pool size, formats a breakdown table, and caches the result. Threshold/timeout-tier/logging derivation: `process-docs/search_pipeline/2026-08-24_docs_format_salvage.md`.
+**Purpose:** Search orchestrator — fans out across the 14 active engines via `asyncio.gather`, then builds pools, caps each to Google's pool size, formats a breakdown table, and caches the result.
 **Reads:** query + params; per-engine caps in `ENGINE_MAX_RESULTS`; default set via `_DEFAULT_ENGINES`.
 **Writes:** disk cache `~/.cache/websearch/<key>.json` (via cache_write); query log (via log_query).
 **Called by:** `cli.py` (search_web_workflow); dev scripts (fetch_search_results).
@@ -30,7 +30,7 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 
 ### merge.py (32 LOC)
 
-**Purpose:** Cross-engine URL dedup + per-engine pool builder — groups results by URL, assigns each to its lowest-position owner engine, and returns a per-engine pool dict sorted by native position. Constructor/field-drop detail: `process-docs/search_pipeline/2026-08-24_docs_format_salvage.md`.
+**Purpose:** Cross-engine URL dedup + per-engine pool builder — groups results by URL, assigns each to its lowest-position owner engine, and returns a per-engine pool dict sorted by native position.
 **Reads:** flat `list[SearchResult]` from fan-out.
 **Writes:** none (returns the pool dict).
 **Called by:** `search_web.py`.
@@ -38,7 +38,7 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 
 ### cache.py (117 LOC)
 
-**Purpose:** Disk cache for per-engine pools, backing `search_engine_drilldown` — atomic-write JSON keyed by a query/language/engines/time_range hash, 1h TTL, plus `format_engine_pool` for numbered-list rendering with snippet cleanup. Key/TTL/date-field derivation: `process-docs/search_pipeline/2026-08-24_docs_format_salvage.md`.
+**Purpose:** Disk cache for per-engine pools, backing `search_engine_drilldown` — atomic-write JSON keyed by a query/language/engines/time_range hash, 1h TTL, plus `format_engine_pool` for numbered-list rendering with snippet cleanup.
 **Reads:** cache files under `~/.cache/websearch/`.
 **Writes:** `~/.cache/websearch/<key>.json`.
 **Called by:** `cli.py` (cache_key, cache_read, format_engine_pool); `search_web.py` (cache_key, cache_write).
@@ -53,7 +53,7 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 
 ### query_logger.py (27 LOC)
 
-**Purpose:** Append-only JSONL query log (`log_query(record)`) — three record types (`engine_run`, `workflow_summary`, `drilldown`), correlated via a shared `search_key`. Full record-type schema and correlation-limit derivation: `process-docs/search_pipeline/2026-08-24_docs_format_salvage.md`.
+**Purpose:** Append-only JSONL query log (`log_query(record)`) — three record types (`engine_run`, `workflow_summary`, `drilldown`), correlated via a shared `search_key`.
 **Reads:** `WEBSEARCH_QUERY_LOG_PATH` env (fallback `src/logs/query_log.jsonl`).
 **Writes:** `src/logs/query_log.jsonl`.
 **Called by:** `search_web.py` (engine_run, workflow_summary); `cli.py` (drilldown, as of 2026-08-05).
@@ -61,7 +61,7 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 
 ### browser.py (121 LOC)
 
-**Purpose:** pydoll Chrome lifecycle — one shared, headed, backgrounded (macOS `open -g -n`) Chrome, one tab per engine for isolation, no JS fingerprint patches or UA override. Backgrounding-flag/cleanup-path derivation: `process-docs/search_pipeline/2026-08-24_docs_format_salvage.md`.
+**Purpose:** pydoll Chrome lifecycle — one shared, headed, backgrounded (macOS `open -g -n`) Chrome, one tab per engine for isolation, no JS fingerprint patches or UA override.
 **Reads:** nothing (singleton browser on first access).
 **Writes:** Chrome session dir under the user-data-dir.
 **Called by:** `cli.py` (kill_stale_chrome, atexit); `engines/` (new_tab, kill_tab — google, duckduckgo, lobsters, semantic_scholar, scholar).
@@ -82,7 +82,7 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 
 ### status.py (22 LOC)
 
-**Purpose:** Engine-status string constants for the query log + audit — 17 total, 5 legacy coarse plus EMPTY/TIMEOUT/ERROR sub-statuses. Full enumeration: `process-docs/search_pipeline/2026-08-24_docs_format_salvage.md`.
+**Purpose:** Engine-status string constants for the query log + audit — 17 total, 5 legacy coarse plus EMPTY/TIMEOUT/ERROR sub-statuses.
 **Called by:** `search_web.py`, `engines/` (imported as `status as S`).
 **Calls out:** none.
 
