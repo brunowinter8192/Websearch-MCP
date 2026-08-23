@@ -13,7 +13,7 @@ from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-INPUT_DIR = Path(__file__).parent / "01_output"
+INPUT_DIR = Path(__file__).parent / "01_json"
 OUTPUT_DIR = Path(__file__).parent / "02_output"
 
 
@@ -131,7 +131,7 @@ def print_summary(manifest: list[dict], total_s: float):
         print(f"  slowest : {slowest['url']} ({slowest.get('elapsed_s', '?')}s)")
 
 
-# Auto-pick newest discover_*.json from 01_output/
+# Auto-pick newest discover_*.json from 01_json/
 def pick_latest_input() -> Path:
     candidates = sorted(INPUT_DIR.glob("discover_*.json"), key=lambda p: p.stat().st_mtime)
     if not candidates:
@@ -145,7 +145,7 @@ def main():
     )
     parser.add_argument(
         "--input", default=None,
-        help="Path to discover_*.json (default: newest in 01_output/)"
+        help="Path to discover_*.json (default: newest in 01_json/)"
     )
     args = parser.parse_args()
     input_path = Path(args.input) if args.input else pick_latest_input()

@@ -6,8 +6,8 @@ import re
 import statistics
 from pathlib import Path
 
-INPUT_DIR = Path(__file__).parent / "02b_output"
-OUTPUT_DIR = Path(__file__).parent / "03_output"
+INPUT_DIR = Path(__file__).parent / "02b_data"
+OUTPUT_DIR = Path(__file__).parent / "03_data"
 
 # End-anchor patterns — checked in document order; earliest match wins
 _RE_MORE_FOR_YOU     = re.compile(r'^More For You\s*$')

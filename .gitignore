@@ -39,14 +39,15 @@ dev/search_pipeline/01_reports/snippet_selection_*.md
 dev/search_pipeline/01_reports/snippet_quality_*.md
 
 # News pipeline outputs (discover JSONs accumulate — gitignored; cleaned content tracked)
-dev/news_pipeline/01_output/
+dev/news_pipeline/01_json/
 dev/news_pipeline/02_output/
-dev/news_pipeline/02b_output/
-dev/news_pipeline/03_output/
-dev/news_pipeline/04_output/
+dev/news_pipeline/02b_data/
+dev/news_pipeline/03_data/
+dev/news_pipeline/04_json/
 dev/news_pipeline/exploration/01_output/
 dev/news_pipeline/exploration/02_output/
 dev/news_pipeline/exploration/03_output/
+dev/news_pipeline/exploration/05_data/
 
 # src/news prod pipeline working dirs (ephemeral, cleared per run)
 data/news/

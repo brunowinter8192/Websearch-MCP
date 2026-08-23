@@ -19,7 +19,7 @@ from pydoll.browser import Chrome
 TARGET_URL = "https://www.coindesk.com/latest-crypto-news"
 TIMELINE_API_PATH = "/api/v1/articles/timeline"
 TIMELINE_BASE = "https://www.coindesk.com/api/v1/articles/timeline"
-OUTPUT_DIR = Path(__file__).parent / "05_output"
+OUTPUT_DIR = Path(__file__).parent / "05_data"
 
 TARGET_ID = "cc8f264d-ebd5-4749-ba09-63d771ba1df4"
 CLICKS_TO_TRIGGER = 8

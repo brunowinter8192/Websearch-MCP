@@ -24,7 +24,7 @@ DefaultMarkdownGenerator = importlib.import_module(
     "crawl4ai.markdown_generation_strategy"
 ).DefaultMarkdownGenerator
 
-URL_FILE = REPO_ROOT / "dev/news_pipeline/04_output/discover_filtered_20260607T195044Z.json"
+URL_FILE = REPO_ROOT / "dev/news_pipeline/04_json/discover_filtered_20260607T195044Z.json"
 SMOKE_DIR = REPO_ROOT / "dev/news_pipeline/smoke_output"
 B1_RAW = SMOKE_DIR / "b1_raw"
 B2_RAW = SMOKE_DIR / "b2_raw"

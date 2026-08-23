@@ -16,7 +16,7 @@ sys.path.insert(0, str(REPO_ROOT))
 _scraper_mod = importlib.import_module("src.crawler.pipe_scraper")
 scrape_urls_workflow = _scraper_mod.scrape_urls_workflow
 
-URL_FILE = REPO_ROOT / "dev/news_pipeline/04_output/discover_filtered_20260607T195044Z.json"
+URL_FILE = REPO_ROOT / "dev/news_pipeline/04_json/discover_filtered_20260607T195044Z.json"
 OUTPUT_DIR = REPO_ROOT / "dev/news_pipeline/smoke_output/raw"
 REVIEW_FILE = REPO_ROOT / "dev/news_pipeline/smoke_output/regwall_review.md"
 

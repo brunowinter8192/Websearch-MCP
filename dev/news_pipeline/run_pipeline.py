@@ -123,8 +123,8 @@ def check_preconditions(log: logging.Logger) -> bool:
 # Remove stale intermediate files so publish only indexes current-run articles
 def clear_intermediates(log: logging.Logger):
     dirs_to_clear = [
-        PIPELINE_DIR / "02b_output",
-        PIPELINE_DIR / "03_output",
+        PIPELINE_DIR / "02b_data",
+        PIPELINE_DIR / "03_data",
     ]
     for d in dirs_to_clear:
         if d.exists():
