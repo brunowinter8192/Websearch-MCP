@@ -58,16 +58,7 @@ Touch this package when changing proxy-riding engine behaviour. Do NOT touch `en
 
 ### cooldown.py (85 LOC)
 
-**Purpose:** Riding-specific proxy cooldown manager (`RidingCooldownManager`). Isolated from the
-theblock-shared `proxy_pool/cooldown.py` (`PersistentCooldownManager`) — the theblock path is
-untouched. Supports two policies selectable per-run via `RidingScrapeConfig.cooldown_policy`:
-`"fixed"` (60-min flat cooldown, byte-identical to current production control arm) and `"exp"`
-(exponential backoff with full jitter, ported from scrapy-rotating-proxies: base=300s, cap=3600s;
-reset-on-productive-ride: if `ride_ok >= 1` the `failed_attempts` counter resets before computing
-the backoff, so a proxy that delivered a successful fetch re-enters the eligible pool quickly).
-`cooldown_count()` correct under both policies — counts proxies with `now < next_eligible` (exp) or
-`now - burned_at < 3600s` (fixed), used by the watchdog's `pool_samples` A/B telemetry.
-Read-only `.policy` property exposes the active policy string for the reporter.
+**Purpose:** Riding-specific proxy cooldown manager (`RidingCooldownManager`, isolated from the theblock-shared `proxy_pool/cooldown.py`) with two per-run policies via `RidingScrapeConfig.cooldown_policy` — `"fixed"` (60-min flat) and `"exp"` (full-jitter backoff, reset on productive ride).
 **Reads:** `_burned_at` / `_next_eligible` / `_failed_attempts` (in-memory dicts keyed by `proxy_key`).
 **Writes:** same dicts on `mark_burned(proto, hp, ride_ok=0)`.
 **Called by:** `rider.py:_finalize_ride` (via `state.cooldown_mgr.mark_burned`);
@@ -81,9 +72,7 @@ Read-only `.policy` property exposes the active policy string for the reporter.
 
 ### state.py (87 LOC)
 
-**Purpose:** Shared riding dataclasses + calibrated constants — the concern split out of the
-original monolithic `rider.py` so every other module (and the reporter, and dev/ tests) has one
-canonical import source instead of going through `rider.py`.
+**Purpose:** Shared riding dataclasses (`RiderState`, `JobRecord`, `RideRecord`) + calibrated constants — the one canonical import source for every other module and the dev/ tests.
 **Reads:** n/a (data-shape module).
 **Writes:** n/a.
 **Called by:** `rider.py` (imports all of it), `fetch.py` (`DELAY_BEFORE_HTML`, `RAW_SUBDIR`),
@@ -92,32 +81,9 @@ canonical import source instead of going through `rider.py`.
 **Calls out:** `src.news.engine.proxy_riding.cooldown.RidingCooldownManager` (type hint on
 `RiderState.cooldown_mgr`).
 
-Dataclasses: `RiderState` (shared mutable job state — fields: `output_dir` raw writes, `job_dir`
-report writes, `target_urls` frozenset of all distinct targets, `done_urls` set of written URLs,
-`pool_samples` list of `(elapsed_s, n_eligible, n_cooldown)` tuples appended by `_watchdog` each poll,
-`pool_provider` async callable `() -> list[tuple[str,str]]` for 30-min refresh (None = static pool),
-`proxy_pool` raw `(proto, host_port)` tuples from `load_backfill_pool()`;
-`all_resolved = len(done_urls) >= len(target_urls)`); `JobRecord` (per-URL outcome — `status` ∈
-`{ok, regwall, connect_fail, failed, empty}`); `RideRecord` (per-proxy-ride summary — `positions` is
-a list of `(url, status, elapsed_s)` tuples, one per URL attempted on that proxy).
-
-`JobRecord.load_s: float | None` — navigation load time for OK fetches only, computed as
-`max(0, elapsed_s − DELAY_BEFORE_HTML)`. crawl4ai's `CrawlResult` exposes no dedicated nav-timing
-field; subtracting the fixed 0.5 s post-load delay approximates the navigation phase (shifts the
-curve right by ~constant context-setup overhead, reads the timeout conservatively). Non-OK fetches
-leave `load_s = None`.
-
-`RiderState.connect_fail_records: list` — list of `(elapsed_s: float, subtype: str)` tuples, one per
-connect_fail fetch, appended in `rider.py:_apply_fetch_result` BEFORE the `"break"` that exits the
-proxy ride (connect_fail is never appended to `job_records`). Populated even on stall/abort —
-available in every `write_riding_report` call path.
-
 ### fetch.py (108 LOC)
 
-**Purpose:** Per-URL fetch + outcome classification — the crawl4ai call, regwall detection,
-connect-fail subtype classification, and raw-HTML persistence. Isolated from slot orchestration so
-it can be monkeypatched wholesale in `dev/` tests (`_fetch_one_url` replaced with a deterministic
-stub) without touching `rider.py`'s loop control.
+**Purpose:** Per-URL fetch + outcome classification — the crawl4ai call, regwall detection, connect-fail subtype classification, and raw-HTML persistence.
 **Reads:** n/a (pure per-call).
 **Writes:** `output_dir/raw/{url_hash}.html` (`_write_raw`, called from `rider.py:_apply_fetch_result`
 on first-writer OK).
@@ -126,19 +92,9 @@ on first-writer OK).
 **Calls out:** `crawl4ai` (`AsyncWebCrawler`, `CrawlerRunConfig`, `CacheMode`, `ProxyConfig`,
 `DefaultMarkdownGenerator`).
 
-`_fetch_one_url` always closes the Playwright session (`kill_session`) in a `finally`, regardless of
-outcome, so fresh cookies are guaranteed on the next fetch even after an exception.
-`_classify_crawl_result` maps a crawl4ai `CrawlResult` to `(status, html, markdown_len, err)`:
-not-success → `connect_fail` if the lowercased error matches `_PROXY_ERR` substrings else `failed`;
-no `result.html` → `empty`; regwall signal in `raw_markdown` → `regwall`; else `ok`.
-
 ### abort.py (96 LOC)
 
-**Purpose:** The three watchdog/signal abort paths (`_abort_done`, `_abort_interrupted`,
-`_abort_stall`) plus their shared write-report-and-exit helper. Split out of `rider.py` because all
-three previously triplicated ~40 lines of report-write-with-fallback logic; `_abort_write_report_and_exit`
-is the single mechanical dedup of that logic, parametrized by log prefix / exit code / fallback title
-/ extra fallback-stub lines. Output is byte-identical to the pre-split triplicated version.
+**Purpose:** The three watchdog/signal abort paths (`_abort_done`, `_abort_interrupted`, `_abort_stall`) plus their shared write-report-and-exit helper `_abort_write_report_and_exit`.
 **Reads:** `RiderState` (in-memory, for the report + fallback stub).
 **Writes:** `state.job_dir/job.md` (+ `cumulative.png`/histograms via `write_riding_report`, or the
 minimal fallback stub on any reporter error).
@@ -148,21 +104,9 @@ minimal fallback stub on any reporter error).
 (avoids a circular top-level import — `reporter.py` imports `RiderState`/`FAIL_THRESHOLD` from
 `state.py`, not from `abort.py`, but the cycle would still exist through `rider.py`).
 
-Each of the three public functions sets `state.termination` and prints its own log line BEFORE
-calling the shared helper (log line content differs per trigger — done/stall use `[watchdog]`,
-interrupted uses `[rider]`); the helper reads `state.termination` back out for the fallback stub's
-`termination:` line, so the three callers stay thin (10-13 lines each).
+### rider.py (318 LOC)
 
-### rider.py (321 LOC)
-
-**Purpose:** Entry module — orchestrates the browser pool + slot tasks + watchdog
-(`run_riding_pool`), and owns the two loops that need to stay attribute-patchable by
-`dev/news_pipeline/coindesk_proxy_riding/` tests (`_run_slot`, `_watchdog` — `unittest.mock.patch.object`
-on `_fetch_one_url`/`_next_proxy`/`POOL_REFRESH_INTERVAL_S`/`os` only takes effect if the patched
-name is looked up through THIS module's globals, i.e. the patched-against function must be defined
-here, not in `fetch.py`/`state.py`). Manages B `AsyncWebCrawler` instances, N slot coroutines,
-per-URL proxy context, burn/fail rotation, 30-min pool refresh. Installs SIGINT/SIGTERM handlers so
-manual aborts also produce a report.
+**Purpose:** Entry module — orchestrates B `AsyncWebCrawler` instances, N slot coroutines, per-URL proxy context, burn/fail rotation, 30-min pool refresh, and the watchdog (`run_riding_pool`); installs SIGINT/SIGTERM handlers so manual aborts also produce a report.
 **Reads:** URL queue (asyncio.Queue), proxy pool list, `RidingCooldownManager` (shared state).
 **Writes:** `output_dir/raw/{hash}.html` for each ok URL (via `fetch.py:_write_raw`); triggers
 `state.job_dir/job.md` + `cumulative.png` writes on abort (via `abort.py`).
@@ -171,41 +115,9 @@ manual aborts also produce a report.
 `RideRecord`, `JobRecord`, constants); `fetch.py` (`_fetch_one_url`, `_classify_connect_fail`,
 `_write_raw`, `_url_hash`); `abort.py` (`_abort_done`, `_abort_interrupted`, `_abort_stall`).
 
-`_run_slot` (outer proxy-acquisition loop + inner burn loop) delegates the per-fetch status branch
-to `_apply_fetch_result` (returns `"continue"|"append"|"break"` — mirrors the original inline
-`continue`/`break`/fall-through-to-append control flow exactly: `connect_fail` and
-fail-threshold-reached both `"break"` WITHOUT appending to `job_records`; `ok`/`regwall`/below-threshold
-`failed`/`empty` `"append"`; dup-race `ok` `"continue"`s without appending) and the `finally`-block
-`RideRecord` construction to `_finalize_ride`. Both helpers mutate a local `_RideProgress` scratch
-dataclass (`burn_count`, `fail_count`, `ride_ok`, `positions`, `cf_broke`) — ephemeral per-ride
-bookkeeping, never persisted, never reaches a report.
-
-`run_riding_pool` signal handler lifecycle: after `state` is constructed, installs
-`loop.add_signal_handler(SIGINT/SIGTERM, _abort_interrupted, state, signum)`. Removed in
-`_teardown_pool` (before `watchdog.cancel()`) so they don't fire during the normal-completion
-`write_riding_report` call in `pipeline.py`.
-
-`_watchdog` poll loop (every `min(30, stall_timeout_s/4)` s), in order:
-1. Append pool sample `(elapsed_s, n_eligible, n_cooldown)`.
-2. **Pool refresh** (if `pool_provider` set and `POOL_REFRESH_INTERVAL_S = 1800` elapsed): `await
-   state.pool_provider()` via `run_in_executor` thread; guard against empty result; atomic assign
-   `state.proxy_pool = new_pool`; `cooldown_mgr` persists unchanged.
-3. `all_resolved AND in_flight == 0` → `return` (clean drain).
-4. `all_resolved AND in_flight > 0` → `_abort_done(state)`: report + `os._exit(0)` (wedge-after-done).
-5. `idle > stall_timeout_s` → `_abort_stall(state, idle)`: report + `os._exit(1)` (genuine stall).
-
 ### reporter.py (424 LOC)
 
-**Purpose:** Job report writer — `job.md` (counts, throughput, proxy-riding stats, eligible-pool-over-time
-table, regwall counts, connect-fail breakdown, success load-time distribution) + `cumulative.png`
-(step-plot of cumulative OK fetches over time) + `success_load_hist.png` (histogram of OK-fetch load
-times) + `connect_fail_hist.png` (histogram of connect-fail elapsed times). `_compute_stats` (one
-metric-group helper per concern: `_compute_retry_outcome`, `_compute_pool_windows`,
-`_compute_load_percentiles`, `_compute_connect_fail_stats`) and `_write_md` (one section-builder
-helper per `job.md` heading: `_md_header_counts`, `_md_proxy_riding`, `_md_pool_windows`,
-`_md_regwall`, `_md_connect_fail`, `_md_load_time`, `_md_plots`) were split 2026-08-20 to clear the
-100-line function ceiling — mechanical extraction, `job.md` output byte-identical (verified via
-synthetic-state before/after diff, no test suite coverage exists for this module).
+**Purpose:** Job report writer — `job.md` (counts, throughput, riding stats, regwall counts, connect-fail breakdown, load-time distribution) + `cumulative.png` + `success_load_hist.png` + `connect_fail_hist.png` from a completed `RiderState`.
 **Reads:** `RiderState` (in-memory), `t_job_start` (datetime).
 **Writes:** `{job_dir}/job.md`; `{job_dir}/cumulative.png`;
 `{job_dir}/success_load_hist.png` (only when ≥2 OK `load_s` values);
@@ -218,20 +130,6 @@ wedge-after-done); `abort.py:_abort_interrupted` (late import, SIGINT/SIGTERM ab
 `statistics.quantiles` with `method='inclusive'` — bounds p-values within observed [min, max]);
 `math` (stdlib, bin count); `src.news.engine.proxy_riding.state` (`RiderState`, `FAIL_THRESHOLD`).
 
-`_compute_stats` additions:
-- `load_times` / `load_perc` — OK-fetch load times + inclusive percentiles (None when <2 samples)
-- `cf_times` / `cf_perc` — connect-fail elapsed times + inclusive percentiles (None when <2 samples)
-- `cf_subtype_counts` — dict of subtype → count (`page_timeout`, `net_timed_out`, `proxy_connect`, `other`)
-- `page_timeout_s` — from `state.page_timeout_ms / 1000`, shared axis reference for both histograms
-
-job.md section **"Connect-fail breakdown"** (between Regwall and Success load-time): percentile table
-(p50/p90/p95/p99/max, n=count) + subtype table (count + share) computed over `connect_fail_records`.
-Subtypes shown in fixed order (page_timeout, net_timed_out, proxy_connect, other) for cross-run
-comparability. `_Fewer than 2 connect-fail records_` note + no histogram when <2 samples.
-
-job.md section **"Success load-time distribution"**: percentile table computed over OK fetches only.
-`_Fewer than 2 OK fetches_` note when unavailable.
-
 ### scrape.py (111 LOC)
 
 **Purpose:** Pipeline entry point + manifest adapter. Loads pool, shuffles, calls `run_riding_pool`,
@@ -243,22 +141,6 @@ maps `RiderState.job_records` → pipeline manifest.
 `src.news.engine.proxy_riding.cooldown.RidingCooldownManager`;
 `src.news.engine.proxy_riding.rider.run_riding_pool`;
 `src.news.engine.proxy_riding.state.RiderState`.
-
-`_pool_provider()` — shared async helper used for BOTH initial pool load (at `scrape_entries_riding`
-start) AND as the `pool_provider` callable threaded into `RiderState` for 30-min watchdog refresh.
-Runs `load_backfill_pool()` in `run_in_executor` (blocking network I/O), filters to
-`BROWSER_ELIGIBLE_PROTOS = {"http","socks5"}`, shuffles. Single source of truth — no separate
-init-vs-refresh code paths.
-
-Returns `tuple[list[dict], RiderState]` — manifest + state. State is consumed by caller
-(`pipeline.py`) to call `write_riding_report`; manifest is consumed to build `ok_manifest_entries`
-for `_append_to_raw_manifest`. `output_dir` must be `platform_dir` (`data/news/{name}/`) so the
-engine writes to `platform_dir/raw/{hash}.html` = the path dedup checks. `job_dir` must be
-`platform_dir/"scrape_jobs"/{job_id}` (computed in `pipeline.py` before the call).
-
-Status mapping in `_build_manifest`: if any `job_record` for a URL has `status == "ok"` (and a
-written file) → manifest `"ok"`; all other outcomes (regwall, connect_fail, failed, empty, never
-reached) → `"failed"`. No `"dead"` status (CoinDesk doesn't 404/410 through proxy; it regwalls).
 
 ## State
 
@@ -289,6 +171,10 @@ are safe without explicit locking. `proxy_lock` (asyncio.Lock) guards `proxy_cur
   create a cycle through `rider.py` (which imports both `state.py` and `abort.py`).
 - Pool load (`load_backfill_pool`) is blocking network I/O, run via `run_in_executor` to avoid
   blocking the event loop during the async entry point.
+- `_run_slot` and `_watchdog` MUST stay defined in `rider.py`: the dev/ tests patch
+  `_fetch_one_url`/`_next_proxy`/`POOL_REFRESH_INTERVAL_S`/`os` via
+  `unittest.mock.patch.object(rider_mod, ...)`, which only resolves through the DEFINING module's
+  globals — moving these to `fetch.py`/`state.py` silently breaks the test suite.
 - Regwall detection (`fetch.py:_is_regwall`) checks `result.markdown.raw_markdown` (browser-rendered
   visible text), NOT `result.html` — `REGWALL_SIGNALS` are embedded as hidden React components in the
   raw HTML of every CoinDesk page, so an html-based check would silently never fire.

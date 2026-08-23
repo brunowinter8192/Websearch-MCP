@@ -49,25 +49,6 @@ parses `<url>/<loc>/<lastmod>` blocks — no date filtering. Returns `[{url, las
 **Calls out:** `httpx`, `engine/proxy_pool/fetch.py:fetch_url`,
 `engine/proxy_pool/pool_loaders.py:load_backfill_pool`.
 
-Four timeframe modes (read from `self.timeframe`); no `lastmod` date filtering in any mode:
-- `"delta"` (default) — top-2 highest-numbered `post_type_post_*` subs, all URLs. Rollover-safe recurring run.
-- `"full"` — all `post_type_post_*` subs, all URLs. Complete backfill.
-- `"sub:N"` — exactly the sub whose trailing index == N (e.g. `sub:0` → `post_type_post_0.xml`), all URLs.
-- `"sub:A-B"` — all subs with trailing index in [A, B] inclusive, returned descending (newest-first).
-
-Proxy pool is lazy-loaded into `pool_cache` on first fallback; shared across all XML fetches
-in the same discover call (index + sub-sitemaps) to avoid loading the pool twice.
-
-`discover`'s timeframe dispatch (2026-08-20, extracted from `discover()`'s body) lives in
-`_resolve_target_subs(timeframe, post_subs)` — the four-mode branch above, `RuntimeError` messages
-preserved verbatim (pytest-covered: `tests/test_theblock_discover.py`'s `discover("sub:27-24")` /
-`discover("sub:x-y")` / `discover("sub:10-20")` end-to-end error-message assertions).
-
-After `discover()`, both `run_discover_only()` and `run_pipeline()` call
-`_persist_master_list(entries, master_path, log)` → `data/news/theblock/discover/master_urls.txt`
-(format `YYYY-MM-DD\t{url}`, sorted+deduped, set-union append). No timestamped snapshot JSON,
-no per-year shards. Persistence is in `pipeline_support.py:_persist_master_list`, not in discover.py.
-
 ---
 
 ### cleanup.py (117 LOC)
@@ -80,37 +61,14 @@ apply `_post_clean()` regex pass → mutate `entry["publication_date"] = datePub
 **Called by:** `clean_pass.py:_run_clean_pass` (proxy_pool arm, dispatched from `pipeline.py:_run_pipeline_proxy_pool`).
 **Calls out:** `crawl4ai.html2text` (bundled, no new dep).
 
-JSON-LD shape hardening — `_iter_candidates()` handles all common shapes without crashing:
-plain dict, dict with `@graph`, top-level array, non-dict values (int/str) silently skipped.
-
-`_post_clean()` regex pass (applied after html2text, in this order):
-1. Inline-URL strip: `[text](url)` → `text`.
-2. TinyMCE bookmark spans (`_MCE_SPAN_RE`): `<span[^>]*data-mce-type[^>]*>.*?</span>` removed (DOTALL).
-3. Disclaimer line (`_DISCLAIMER_RE`): `^Disclaimer: The Block is an independent media outlet.*$` removed.
-4. Copyright line (`_COPYRIGHT_RE`): covers both `The Block.` and old brand `The Block Crypto, Inc.`.
-5. Newsletter CTA (`_NEWSLETTER_CTA_RE`): `^_.*subscribe to the .*newsletter.*$` (trailing `_` not required).
-6. Commissioned disclaimer (`_COMMISSIONED_RE`): `^_?This post is commissioned\b.*$`.
-7. Podcast subscribe CTA (`_PODCAST_SUB_CTA_RE`): `^[*_]*Listen below[,.]?\s+and subscribe to\b.*$`.
-8. Newsletter promo block (`_NEWSLETTER_PROMO_RE`): `**The Block Newsletters` header + subscribe line.
-9. Campus CTA (`_CAMPUS_CTA_RE`): any line containing `theblock.co/campus`.
-10. Podcast sponsor block (`_SPONSOR_BLOCK_RE`): `\n\*{0,2}This episode is brought to you by\b.*` to EOS (DOTALL).
-11. Trailing whitespace per line; blank-run collapse to single blank; final strip.
-
-Rules validated against full 22,995 raw corpus (per-rule file-count evidence: `refactor_sweep` area).
-Fallback: if no `NewsArticle` or no `articleBody` → returns `""` + stderr log, no crash.
-
-Gotcha: `_SPONSOR_BLOCK_RE` strips from the sponsor-block header to END OF STRING (no closing anchor)
-— corpus-verified safe (zero editorial content follows the header in the validated corpus; only
-sponsor descriptions / community promos / already-stripped copyright lines appear after it), but this
-assumption should be re-checked against new corpus shapes before trusting it on fresh scrapes.
-
 ---
 
 ### __init__.py (32 LOC)
 
-**Purpose:** `TheBlockPlatform` class wrapping config + discover + cleanup; auto-registers on import.
-Fields: `name/collection="theblock"`, `scrape_engine="proxy_pool"`, `regwall_signals=[]`,
-`proxy_scrape_config=PROXY_SCRAPE_CONFIG`, `timeframe="delta"`, `dedup_mode="hash_only"`,
-`uses_master_list=True`.
-`precondition_url="https://www.google.com"` (theblock.co returns 403 on plain urllib).
+**Purpose:** `TheBlockPlatform` class wrapping config + discover + cleanup; auto-registers on import; `scrape_engine="proxy_pool"`, `uses_master_list=True`.
 **Called by:** `__main__.py` (side-effect import).
+
+## Gotchas
+
+- `precondition_url` is `https://www.google.com`, not theblock.co — theblock.co returns 403 on plain urllib.
+- `_SPONSOR_BLOCK_RE` in `cleanup.py` strips from the sponsor-block header to END OF STRING (no closing anchor) — corpus-verified safe on the validated 22,995-file corpus, but re-check that assumption against new corpus shapes before trusting it on fresh scrapes.

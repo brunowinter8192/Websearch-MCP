@@ -37,10 +37,6 @@ the job lifecycle (lock, janitor). Do NOT touch when adding a browser-engine pla
 **Called by:** `pipeline.py:_run_pipeline_proxy_pool`.
 **Calls out:** `loop.py`, `cooldown.py`, `logger.py` (type reference only).
 
-`scrape_entries_proxy` manifest: `[{url, hash, status, file, char_count, error}]` in entries order —
-`status` ∈ `{"ok" (fetched + written), "dead" (404/410 from origin), "failed" (gap — never resolved)}`.
-Only `"ok"` entries proceed to `clean_pass.py:_run_clean_pass`.
-
 ---
 
 ### loop.py (229 LOC)
@@ -50,29 +46,6 @@ Only `"ok"` entries proceed to `clean_pass.py:_run_clean_pass`.
 **Writes:** delegates state to `AcquireLogger` + `PersistentCooldownManager`; calls `content_handler` per ok fetch. Returns `(done, dead, gap)`. After each `pool_provider()` call: `record_pool_refresh(len(pool))` then `record_pool_source(url, ok, count)` per source.
 **Called by:** `scrape.py:scrape_entries_proxy`.
 **Calls out:** `fetch.py`, `cooldown.py`, `logger.py`, `buffer.py`.
-
-Stall-terminate (`STALL_TIMEOUT_S = 3600`): `_last_progress` tracks the last time a URL resolved
-to `done` or `dead` (queue shrinks). If `now - _last_progress >= STALL_TIMEOUT_S` at the top of
-the `while queue:` loop, the loop breaks and returns `gap = list(queue)` — the remaining unresolved
-URLs. These flow through `_build_manifest` as `status="failed"` and land in
-`data/news/{name}/discover/failed_urls.txt` via `_update_blocked_urls`. Only done/dead events advance
-`_last_progress` — a batch of pure proxy-failures does not reset the clock. Stall fires when
-poison URLs (neither 200 nor 404 from origin) consume all proxies for a full pool-cycle with
-no terminal resolution.
-
-Key: `_sleep = time.sleep` is a module-level alias — patch it in tests, not `time.sleep`.
-
-`run_loop` (2026-08-20, 122→52 code lines): startup + refresh-tick pool-load (previously duplicated)
-extracted to `_refresh_pool`; the `ThreadPoolExecutor` batch-processing block extracted to
-`_execute_batch`, which mutates `done`/`dead`/`wset`/`consec_fail` in place and returns `(buf,
-batch_done, batch_failed, last_progress)`. `last_progress` deliberately replicates the ORIGINAL
-per-url-resolution `time.monotonic()` call pattern (captured once per done/dead resolution inside
-the helper, same as before — NOT collapsed to a single post-batch call): `tests/test_proxy_pool.py`'s
-`test_run_loop_refresh_*` tests patch `loop.time` wholesale and drive it with a pre-counted
-`side_effect` sequence keyed to the exact number of `time.monotonic()` calls — collapsing the call
-count would desync that sequence. `_build_batch`'s two near-identical Phase-1 assignment loops
-(wset-first, then buf) deduped into `_assign_batch_slots(proxies, url_iter, batch, assigned_proxies,
-concurrency, wset=None)`.
 
 ---
 
@@ -108,10 +81,6 @@ also `ProxyScrapeConfig`'s `concurrency`/`buffer_size` defaults).
 **Called by:** `loop.py:run_loop`.
 **Calls out:** `cooldown.py:PersistentCooldownManager`.
 
-`build_active_buffer` eligibility is delegated entirely to `cm.eligible_candidates()` (wall-clock UTC
-cooldown check). `refill_buffer` is a no-op if `buf` is already at/above `target_size`; otherwise tops
-up with eligible-pool proxies not already in `buf` (set-membership check), appended in pool order.
-
 ---
 
 ### logger.py (53 LOC)
@@ -126,7 +95,7 @@ up with eligible-pool proxies not already in `buf` (set-membership check), appen
 
 ### janitor.py (278 LOC)
 
-**Purpose:** Job lifecycle — `Janitor(jobs_dir, log_dir, report_dir)`; wipes transient dirs at start; reads JSONL → `job.md` + `cumulative_hits.png` at end. `_compute_window_stats` buckets attempt events into 60-min windows from t0 (window k = `[t0+k*3600s, t0+(k+1)*3600s)`; a refresh at exactly the boundary, e.g. `t0+3600s`, lands in window 1 not window 0 — same `int((ts-t0)/3600)` formula used for both attempts and refreshes) and derives per-window `{probiert, erfolgreich, urls_handled, fetch_attempts, pool_size}` (`urls_handled` = distinct target URLs; `fetch_attempts` = total attempt events) via `_compute_one_window` (2026-08-20 extraction — per-window computation isolated from the windowing setup). `_group_pool_sources` groups `pool_source` events by preceding `pool_refresh` in JSONL order; rendered as a `## Pool source breakdown` section at the bottom of `job.md` (absent when no pool_source events — backward-compatible with old JSONL) via `_md_source_breakdown` (2026-08-20 extraction, alongside `_md_window_table` for the per-window table — both pytest-covered, see `tests/test_proxy_pool.py`). `_group_pool_sources` ignores attempt events falling between a `pool_refresh` and its `pool_source` events — only `pool_refresh`/`pool_source` event types are batched.
+**Purpose:** Job lifecycle — `Janitor(jobs_dir, log_dir, report_dir)` wipes transient dirs at start and derives `job.md` (60-min window stats + pool source breakdown) + `cumulative_hits.png` from the JSONL at end.
 **Reads:** JSONL at `jsonl_path` passed to `end_job`.
 **Writes:** `{jobs_dir}/{job_id}/job.md`, `cumulative_hits.png`; wipes `log_dir` + `report_dir` at start and end.
 **Called by:** `pipeline.py:_run_pipeline_proxy_pool`.
@@ -141,10 +110,6 @@ up with eligible-pool proxies not already in `buf` (set-membership check), appen
 **Writes:** `~/.websearch-locks/{lock_name}.{flock,lock}`.
 **Called by:** `pipeline.py:_run_pipeline_proxy_pool`.
 **Calls out:** `fcntl`, `os` (stdlib).
-
-`cleanup_stale`: checks the sidecar's `pid` via `os.kill(pid, 0)`. Unreadable/corrupt sidecar JSON →
-treated as held (conservative, does not delete). `ProcessLookupError` (pid dead) → sidecar removed.
-`PermissionError` (process alive, owned by another user) → also treated as held.
 
 ---
 
@@ -166,29 +131,15 @@ treated as held (conservative, does not delete). `ProcessLookupError` (pid dead)
 **Called by:** `monosans_loader.py:_fetch_json`, `pool_loaders.py:_fetch_bare_txt` / `_fetch_roosterkid` / `_fetch_proxifly`.
 **Calls out:** stdlib only.
 
-Key: `_sleep = time.sleep` is a module-level alias — patch `pool_retry._sleep` in tests, not `time.sleep`.
-
 ---
 
 ### pool_loaders.py (190 LOC)
 
 **Purpose:** 18 proxy-source loaders + `load_backfill_pool()` — fetches all sources per-URL with retry and per-source failure isolation; returns `(pool, sources)` where `pool` is deduped `[(protocol, host:port)]` (~32k unique) and `sources` is `[{url, ok, count}, …]` one entry per URL.
-
-Sources active in `load_backfill_pool` (46 URLs across 18 repos):
-monosans, roosterkid, TheSpeedX, themiralay, r00tee, iplocate, sunny9577, ALIILAPRO, dpangestuw,
-Zaeem20, zloi-user, hookzof, proxifly (JSON), jetkai (http/https/socks4/socks5),
-prxchk (http/socks5, validated, refreshed every 10 min),
-ShiftyTR (http/socks5, updated hourly),
-vakhov (http/socks5, fresh/working),
-MuRongPIG (http/socks5 validated subset — `_checked` files only; raw dumps excluded).
-databay-labs removed (repo deleted from GitHub — all URLs 404).
-
 **Reads:** 44 GitHub raw proxy-list URLs via httpx (each wrapped in `fetch_with_retry`).
 **Writes:** nothing.
 **Called by:** `theblock/config.py` (via `ProxyScrapeConfig.pool_provider`); `theblock/discover.py:_fetch_xml` (fallback pool, unpacks `pool, _ = load_backfill_pool()`).
 **Calls out:** `httpx`, `pool_retry.py:fetch_with_retry`, `monosans_loader.py:load_monosans_proxies`, `proxy_key.py:proxy_key`.
-
-Key: `_try_source(url, fn, entries, sources)` is the per-URL isolation helper — catches all exceptions after retries exhaust, records `ok=False`, continues. Never raises from `load_backfill_pool`.
 
 ---
 

@@ -15,7 +15,7 @@ Standalone dev suite for scraping CoinDesk article HTML at scale via rotating pr
 
 ### p2_browser_rider.py (498 LOC)
 
-**Purpose:** Core riding pool — B `AsyncWebCrawler` instances (browser pool, default B=1); N rider tasks distributed round-robin across browsers. Each task pulls raw proxies via `_next_proxy()` (atomic cursor over `eligible_candidates()`). Per-URL: `CrawlerRunConfig(proxy_config=ProxyConfig(server=pstr))` → fresh context per config-signature; `kill_session()` closes context after each fetch (fresh cookies). `page_timeout_ms` (CLI-configurable, default 8s) is the dead-proxy timeout lever. Status routing: ok → write HTML; regwall → requeue URL, increment burn_count, rotate after `burn_threshold` hits; connect_fail → requeue URL, rotate proxy immediately; failed/empty → requeue URL, increment fail_count, rotate after `FAIL_THRESHOLD=2` hits (2-strike drop) — ride ends, `finally` calls `mark_burned()` → 60-min cooldown. Watchdog (`_watchdog`, asyncio task, cancelled on normal slot return) polls via `asyncio.sleep(min(30, stall_timeout_s/4))`; on stall (default 3600s, configurable) with no new raw written → `_abort_stall`: drain queue + in-flight URLs → `remaining_urls.txt` + `job.md` via reporter → `os._exit(1)` (bypasses async teardown so wedged Chrome processes cannot re-hang shutdown). `RiderState.in_flight_urls` — set tracking currently-fetching URLs, deliberately NOT in try/finally (wedged slots never reach discard, keeping wedged URL visible until abort — diagnostic capture).
+**Purpose:** Core riding pool — B `AsyncWebCrawler` instances, N rider tasks round-robin across browsers, per-URL proxy context with burn/fail rotation, plus the stall watchdog (`_watchdog` → `_abort_stall` → `os._exit(1)`).
 **Reads:** proxy pool (via `p0_pool`), URL queue.
 **Writes:** `raw/<12-char-sha256-hash>.html` per ok URL; on stall, `remaining_urls.txt`.
 **Called by:** `run_coindesk_riding.py`, `smoke_stage1.py`.
@@ -60,38 +60,21 @@ Standalone dev suite for scraping CoinDesk article HTML at scale via rotating pr
 
 ### smoke_stage1.py (254 LOC)
 
-**Purpose:** Stage 1 smoke — validates `src/news/engine/proxy_riding/` package (`rider.py`/`state.py`/
-`fetch.py`/`abort.py`/`reporter.py`/`scrape.py` — package split into these modules 2026-08-20; import
-lines here point at each symbol's owning module, e.g. `RiderState`/`FAIL_THRESHOLD` from `state.py`,
-`_abort_stall` from `abort.py`, `run_riding_pool`/`_watchdog` still from `rider.py`). Three sections:
-import check (no network — also greps `abort.py`'s source for the late-import-of-reporter pattern,
-not `rider.py`'s); deterministic watchdog test (patches `os._exit`, no network/browser — pre-existing
-stale `RiderState` construction, fails independent of the module split); mini live run (10 inventory
-URLs, 2 slots, 1 browser, 300s stall — validates manifest shape, shuffle, raw `.html` writes).
+**Purpose:** Stage 1 smoke validating the `src/news/engine/proxy_riding/` package — import check, deterministic watchdog test, and a mini live run (10 inventory URLs, 2 slots, 1 browser).
 **Reads:** `src/news/engine/proxy_riding/` package (import validation); 10 inventory URLs (live run).
 **Writes:** live-run raw `.html` files to a temp dir.
 **Called by:** CLI only, run from main checkout: `./venv/bin/python .claude/worktrees/<worktree>/dev/news_pipeline/coindesk_proxy_riding/smoke_stage1.py`.
 
 ### test_sigint_report.py (213 LOC)
 
-**Purpose:** Deterministic SIGINT/SIGTERM report tests for `src/news/engine/proxy_riding/abort.py`'s
-`_abort_interrupted` (`RiderState`/`JobRecord`/`RideRecord` from `state.py`). No browser or proxy
-infrastructure needed; `src/` imports lazy (inside function bodies). Test 1 — `_abort_interrupted`
-SIGINT: constructs `RiderState` with partial job data, patches `os._exit` to raise `SystemExit`,
-calls `_abort_interrupted` directly, asserts exit code 130, `job.md` + `cumulative.png` written,
-`termination=interrupted`. Test 2 — same with SIGTERM → exit code 143.
+**Purpose:** Deterministic SIGINT/SIGTERM report tests for `abort.py:_abort_interrupted` — asserts exit codes 130/143 and report writes, no browser or proxy infrastructure.
 **Reads:** none (constructed state).
 **Writes:** `job.md`, `cumulative.png` to a temp dir (assertion targets).
 **Called by:** CLI only. `./venv/bin/python dev/news_pipeline/coindesk_proxy_riding/test_sigint_report.py`.
 
 ### test_tail_race.py (445 LOC)
 
-**Purpose:** Deterministic tail-race tests for `src/news/engine/proxy_riding/rider.py`'s `_run_slot`/
-`_watchdog` (`RiderState`/`RAW_SUBDIR` from `state.py`). No browser or proxy infrastructure needed —
-`_fetch_one_url` and `_next_proxy` mocked via `unittest.mock.patch.object(rider_mod, ...)`, which
-only works because both stay defined in `rider.py` (attribute-patching resolves through the
-*defining* module's globals, not the importing module's) — see the `refactor_sweep` area for the
-finding that shaped the 2026-08-20 module split. `src/` imports lazy. 5 cases: surplus-slots race (2 URLs, 6 slots → both done, no double-write); write-exactly-once (1 URL, 3 racing slots → exactly 1 raw file); no-spurious-requeue (stale dequeue → no fetch; raced-fail → not re-queued); normal path (4 URLs, 4 slots, no racing); fail-before-success (fails first fetch, re-queued, succeeds second → done exactly once).
+**Purpose:** Deterministic tail-race tests (5 cases) for `rider.py:_run_slot`/`_watchdog` with `_fetch_one_url`/`_next_proxy` mocked — no browser or proxy infrastructure.
 **Reads:** none (mocked fetch/proxy).
 **Writes:** none beyond test assertions.
 **Called by:** CLI only. `./venv/bin/python dev/news_pipeline/coindesk_proxy_riding/test_tail_race.py`.
