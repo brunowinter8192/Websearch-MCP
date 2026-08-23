@@ -1,7 +1,7 @@
-# dev/cleanup/
+# dev/agentic_discovery/
 
 ## Role
-One-shot scripts removing UI chrome, navigation, and formatting artifacts from website-crawled markdown files before RAG indexing. Each script targets a specific domain or collection prefix. Files are overwritten in-place; `<!-- source: URL -->` headers are preserved. Run from project root: `./venv/bin/python dev/cleanup/<script>.py`.
+One-shot scripts removing UI chrome, navigation, and formatting artifacts from website-crawled markdown files before RAG indexing. Each script targets a specific domain or collection prefix. Files are overwritten in-place; `<!-- source: URL -->` headers are preserved. Run from project root: `./venv/bin/python dev/agentic_discovery/<script>.py`.
 
 ## Modules
 
