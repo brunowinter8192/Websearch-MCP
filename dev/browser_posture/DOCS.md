@@ -21,11 +21,7 @@ rejected as a same-IP same-day confound. Backs `process-docs/browser_posture/`.
 
 ### _lib.py (307 LOC)
 
-**Purpose:** Shared launch/teardown/measurement primitives for all probe scripts — isolated probe
-profile dirs, the proven `open -g` headed-backgrounded process_creator, a throwaway local HTTP
-server (timer-harness page at `/`, system-color artifact page at `/artifact`), tick-drift/latency-
-stats helpers, CDP script injection (`inject_before_navigation`, mirrors `apply_fingerprint_patches`),
-system-color/screen-window property readers, and a settle-poll helper for heavy client-side pages.
+**Purpose:** Shared launch/teardown/measurement primitives for all probe scripts — profile isolation, the proven `open -g` process_creator, a throwaway local HTTP server, stats helpers, CDP injection, settle-poll.
 **Reads:** nothing (pure infra + subprocess/CDP calls it makes itself).
 **Writes:** nothing directly — returns data to callers; spawns/kills Chrome processes as a side effect.
 **Called by:** `01_launch_latency_probe.py`, `02_parallel_chrome_probe.py`, `03_fingerprint_patch_probe.py`.
@@ -60,11 +56,7 @@ the already-running Chrome via a throwaway profile (never touches the user's rea
 
 ### 03_fingerprint_patch_probe.py (439 LOC)
 
-**Purpose:** Per-block KEEP/DROP evidence for `src/search/browser.py`'s `JS_FINGERPRINT_PATCHES`
-under headed. 4 variants (full patch set / screen-window-overrides-only / getComputedStyle-Proxy-only
-/ none) + 1 headless reference (artifact test only), each against: the local system-color artifact
-page (`ActiveText`/`LinkText`/`VisitedText`, not a resting `<a>`), real screen/window properties,
-bot.sannysoft.com, and CreepJS (settle-polled, not fixed-sleep).
+**Purpose:** Per-block KEEP/DROP evidence for `src/search/browser.py`'s (since-removed) `JS_FINGERPRINT_PATCHES` under headed — 4 patch variants + 1 headless reference against the local artifact page, real screen properties, sannysoft, and CreepJS.
 **Reads:** nothing (self-contained; serves its own local artifact page via `_lib`).
 **Writes:** MD report to `md/03_fingerprint_patch_probe_<ts>.md`. Progress to stderr.
 **Called by:** CLI only. Run: `./venv/bin/python dev/browser_posture/03_fingerprint_patch_probe.py`.
@@ -76,13 +68,7 @@ not production engines.
 
 ### 04_headed_chromium_probe.py (449 LOC)
 
-**Purpose:** Milestone 1 of the ad-hoc chromium lane's headed switch. Through `try_scrape`'s exact
-`BrowserConfig`/`UndetectedAdapter`/`AsyncPlaywrightCrawlerStrategy` shape: (1) which binary runs
-under headless=True vs headless=False (read off the real launched process via `psutil`, not registry
-metadata), (2) `LSUIElement=true` viability on the resolved chromium-1228 `Google Chrome for
-Testing.app` bundle — launch success + continuous frontmost-app poll, with and without the fix, (3)
-whether the three Playwright-default backgrounding flags are on the real cmdline and, for each,
-whether crawl4ai's own `_build_browser_args()` put it there or patchright's driver injected it.
+**Purpose:** Milestone 1 of the ad-hoc chromium lane's headed switch — binary identity under headless True/False (psutil on the real process), `LSUIElement` viability on the chromium-1228 bundle, and backgrounding-flag provenance on the real cmdline.
 **Reads:** nothing (self-contained; serves its own local throwaway HTTP page via `_lib`).
 **Writes:** MD report to `md/04_headed_chromium_probe_<ts>.md`. Progress to stderr. Mutates (and
 restores byte-exact) the chromium-1228 bundle's `Info.plist` during Run C only.
@@ -94,19 +80,7 @@ introspection), `codesign`/`launchctl`/`pgrep` (macOS signature + process/launch
 
 ### 05_cdp_headed_probe.py (497 LOC)
 
-**Purpose:** Milestone 1b — the `cdp_url` route for the ad-hoc chromium lane, after `04` killed
-`LSUIElement`. Self-launches the chromium-1228 `Google Chrome for Testing.app` bundle via
-`open -g -n -a <bundle path> --args --remote-debugging-port=0 --user-data-dir=<throwaway>
---no-startup-window ...` (no pre-existing tab, deliberately forcing crawl4ai's `get_page()` to call
-`context.new_page()` — the page-creation-over-CDP moment playwright#42343 flags, confirmed by
-reading crawl4ai's own page-reuse-vs-create logic first), waits for `DevToolsActivePort`, then
-connects via `BrowserConfig(cdp_url=..., browser_mode="custom", enable_stealth=True,
-cdp_cleanup_on_close=True)` + `UndetectedAdapter` + `AsyncPlaywrightCrawlerStrategy` and runs a real
-`arun()`. Stage-labeled continuous frontmost-app poll across the whole sequence, split into
-"route under test" (self_launch/cdp_port_wait/cdp_connect_page_navigate/teardown) vs. an internal
-"reference_launch" (a direct, un-backgrounded patchright launch used only to capture a fresh cmdline
-baseline for the args-delta) — the two must never be aggregated into one headline number (caught and
-fixed during this probe's own development, see Gotchas).
+**Purpose:** Milestone 1b — the `cdp_url` route for the ad-hoc chromium lane after `04` killed `LSUIElement`: self-launch the chromium-1228 bundle backgrounded, connect crawl4ai over CDP, run a real `arun()`, with a stage-labeled frontmost-app poll split route-under-test vs. reference_launch.
 **Reads:** nothing (self-contained; serves its own local throwaway HTTP page via `_lib`).
 **Writes:** MD report to `md/05_cdp_headed_probe_<ts>.md`. Progress to stderr. No plist edits
 anywhere (unlike `04`).
