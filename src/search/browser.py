@@ -1,7 +1,6 @@
 # INFRASTRUCTURE
 import asyncio
 import logging
-import os
 import subprocess
 from pathlib import Path
 
@@ -20,8 +19,6 @@ BACKGROUNDING_FLAGS = [
     "--disable-renderer-backgrounding",
 ]
 
-_FALSY_ENV_VALUES = {"", "0", "false", "no", "off"}
-
 _browser = None
 _tab = None
 _init_lock = asyncio.Lock()
@@ -39,7 +36,6 @@ def _open_background_process_creator(command: list[str]) -> subprocess.Popen:
 # Build Chrome options with session persistence and anti-detection
 def build_options() -> ChromiumOptions:
     options = ChromiumOptions()
-    options.headless = os.environ.get("WEBSEARCH_HEADLESS", "").strip().lower() not in _FALSY_ENV_VALUES
     options.add_argument(f"--user-data-dir={SESSION_DIR}")
     options.block_popups = True
     options.block_notifications = True
@@ -84,10 +80,9 @@ async def get_tab():
             kill_stale_chrome()
             options = build_options()
             _browser = Chrome(options)
-            if not options.headless:
-                _browser._browser_process_manager = BrowserProcessManager(
-                    process_creator=_open_background_process_creator
-                )
+            _browser._browser_process_manager = BrowserProcessManager(
+                process_creator=_open_background_process_creator
+            )
             _tab = await _browser.start()
     return _tab
 
