@@ -20,7 +20,7 @@ Services required (preset names: embedding-0.6b, reranker-0.6b):
 
 Output:
   dev/search_pipeline/md/pooling_probe_<ts>.md
-  dev/search_pipeline/data/pooling_probe_<ts>.queries.jsonl
+  dev/search_pipeline/jsonl/pooling_probe_<ts>.queries.jsonl
 
 All src/ dependencies routed through the already-committed dev/ modules that carry those imports.
 """
@@ -62,7 +62,7 @@ logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(mes
 
 REPORT_DIR    = SCRIPT_DIR / "md"
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
-DATA_DIR      = SCRIPT_DIR / "data"
+DATA_DIR      = SCRIPT_DIR / "jsonl"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 BM25_REPR     = "title+snippet"

@@ -15,7 +15,7 @@ pipeline integrity only.
 
 Usage:
   ./venv/bin/python dev/search_pipeline/stage4_aggregate.py \\
-      --ts-dir dev/search_pipeline/data/value_eval_v2_YYYYMMDD_HHmmss \\
+      --ts-dir dev/search_pipeline/runs/value_eval_v2_YYYYMMDD_HHmmss \\
       [--no-oracle]
 """
 

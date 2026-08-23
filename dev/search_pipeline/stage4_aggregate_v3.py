@@ -12,8 +12,8 @@ Summary includes:
 
 Usage:
   ./venv/bin/python dev/search_pipeline/stage4_aggregate_v3.py \\
-      --pool-dir  dev/search_pipeline/data/value_eval_v3_<ts> \\
-      --oracle-dir dev/search_pipeline/data/value_eval_v2_20260523_000156 \\
+      --pool-dir  dev/search_pipeline/runs/value_eval_v3_<ts> \\
+      --oracle-dir dev/search_pipeline/runs/value_eval_v2_20260523_000156 \\
       [--no-oracle]
 """
 
@@ -26,7 +26,7 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
 
-V2_DEFAULT = SCRIPT_DIR / "data" / "value_eval_v2_20260523_000156"
+V2_DEFAULT = SCRIPT_DIR / "runs" / "value_eval_v2_20260523_000156"
 
 MODES = ["general", "pdf", "books", "docs"]
 QUERIES = [

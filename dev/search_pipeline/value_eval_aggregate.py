@@ -10,7 +10,7 @@ pipeline integrity only.
 
 Usage:
   ./venv/bin/python dev/search_pipeline/value_eval_aggregate.py \\
-      --ts-dir dev/search_pipeline/data/value_eval_YYYYMMDD_HHmmss \\
+      --ts-dir dev/search_pipeline/runs/value_eval_YYYYMMDD_HHmmss \\
       [--ts-out YYYYMMDD_HHmmss] [--no-oracle]
 """
 

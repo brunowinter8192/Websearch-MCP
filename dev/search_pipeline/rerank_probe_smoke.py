@@ -106,7 +106,7 @@ QUERY_CATEGORIES: dict[str, str] = {
 
 REPORT_DIR = SCRIPT_DIR / "md"
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
-DATA_DIR = SCRIPT_DIR / "data"
+DATA_DIR = SCRIPT_DIR / "jsonl"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 TOP_N       = 10

@@ -16,7 +16,7 @@ from src.search.browser import new_tab, close_browser
 from src.search.rate_limiter import get_limiter
 
 REPORT_DIR = SCRIPT_DIR / "md"
-SCREENSHOT_DIR = SCRIPT_DIR / "data" / "empty_classify_lobsters_screenshots"
+SCREENSHOT_DIR = SCRIPT_DIR / "png"
 
 SEARCH_URL = "https://lobste.rs/search?q={}&what=stories&order=relevance"
 WAIT_SECONDS = 3.0  # vs production 600ms — deliberate generous margin

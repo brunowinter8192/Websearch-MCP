@@ -15,7 +15,7 @@ Queries: 12 canonical academic queries from ciw_concurrent_block_20260508.md
 Import switched from ScholarHTTPProbe (dev probe) to ScholarEngine (production) 2026-05-09
 as part of bead searxng-f3i HTTP migration.
 
-Output: JSONL per-query records → dev/search_pipeline/data/no_google_burst_<ts>.jsonl
+Output: JSONL per-query records → dev/search_pipeline/jsonl/no_google_burst_<ts>.jsonl
         Summary table → stderr
 """
 
@@ -50,7 +50,7 @@ from src.search.engines.scholar import ScholarEngine
 
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
 
-REPORT_DIR = SCRIPT_DIR / "data"
+REPORT_DIR = SCRIPT_DIR / "jsonl"
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Watchdog timeouts per engine (seconds) — mirrors ENGINE_WATCHDOG_OVERRIDE in search_web.py
