@@ -245,7 +245,7 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 **Called by:** CLI only.
 **Calls out:** `pydoll` (Chrome, ChromiumOptions, TargetCommands, NetworkCommands) — inline copy of the `src/search/browser.py` session-setup shape, not a shared import.
 
-### _capture_sorry.py (231 LOC)
+### _capture_sorry.py (233 LOC)
 
 **Purpose:** Captures Google `/sorry/` block page — helper script, not a numbered experiment. Navigates to a search URL, checks if redirected to `/sorry/`, saves HTML + screenshot + MD summary.
 **Reads:** `config.yml`.
