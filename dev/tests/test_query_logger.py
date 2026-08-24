@@ -281,7 +281,7 @@ def test_log_drilldown_all_cache_status_and_pool_combinations(tmp_path):
     import sys
 
     log_file = tmp_path / "query_log.jsonl"
-    repo_root = Path(__file__).parent.parent
+    repo_root = Path(__file__).parent.parent.parent
     script = f"""
 import sys
 sys.path.insert(0, {str(repo_root)!r})
