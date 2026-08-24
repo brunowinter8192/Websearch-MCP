@@ -6,7 +6,7 @@ Multi-platform news ingestion pipeline, run as `python -m src.news --source <pla
 
 ## Public Interface
 
-`__init__.py` is empty; the package runs as a module (`python -m src.news` → `__main__.py`). Direct async entry: `run_pipeline(platform)`, `run_discover_only(platform)`, `run_scrape_only(platform, year=…, limit=…)` in pipeline.py — import path unchanged across the 2026-08-20 module split (pipeline.py stays the entry module; `pipeline_support.py`/`clean_pass.py` are internal-only, no external caller imports from them except `tests/test_theblock_clean_pass.py` → `clean_pass._run_clean_pass`).
+`__init__.py` is empty; the package runs as a module (`python -m src.news` → `__main__.py`). Direct async entry: `run_pipeline(platform)`, `run_discover_only(platform)`, `run_scrape_only(platform, year=…, limit=…)` in pipeline.py — import path unchanged across the 2026-08-20 module split (pipeline.py stays the entry module; `pipeline_support.py`/`clean_pass.py` are internal-only, no external caller imports from them except `dev/tests/test_theblock_clean_pass.py` → `clean_pass._run_clean_pass`).
 
 ## Flow
 
