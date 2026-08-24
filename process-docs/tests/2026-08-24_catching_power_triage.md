@@ -6,7 +6,7 @@ mock usage. Milestone 2 (relocation of the surviving tests) is separate, not par
 
 ## Baseline vs. the last recorded number
 
-Prior baseline (`process-docs/refactor_sweep/2026-08-20_dead_code_and_baseline_repair.md`): 192
+Prior baseline (`process-docs/refactor_sweep/`, the 2026-08-20 baseline-repair entry): 192
 passed / 0 failed. Actual run at session start: **209 passed / 0 failed** — the suite grew by 17
 tests since that entry (camoufox acquisition lane, pipe_scraper camoufox-engine switch, and other
 work added in sessions not covered by that doc). The 192 figure is stale as a live count; this
