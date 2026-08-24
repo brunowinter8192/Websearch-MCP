@@ -163,7 +163,7 @@ also `ProxyScrapeConfig`'s `concurrency`/`buffer_size` defaults).
 - `box_lock`: SIGTERM kills Python before `finally` runs → sidecar stays; kernel releases flock. Next `acquire()` recovers via `cleanup_stale()` (dead-PID detection).
 - `_sleep` in `loop.py` AND `pool_retry.py` are both module aliases (`_sleep = time.sleep`) — patch the alias in the target module in tests, not `time.sleep` directly. For retry tests patch `pool_retry._sleep`; for exhaustion-sleep tests patch `loop._sleep`.
 - `loop.py:_execute_batch`'s `last_progress` return MUST call `time.monotonic()` once per done/dead
-  URL resolution inside the batch loop (not once per batch) — `tests/test_proxy_pool.py`'s
+  URL resolution inside the batch loop (not once per batch) — `dev/tests/test_proxy_pool.py`'s
   `test_run_loop_refresh_*` tests patch `loop.time` wholesale and drive it with a pre-counted
   `side_effect` sequence keyed to the exact call count; collapsing to a single post-batch call
   desyncs that sequence. Don't "simplify" this without re-checking those tests.
