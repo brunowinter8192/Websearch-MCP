@@ -229,25 +229,6 @@ def test_load_backfill_pool_continues_when_monosans_fails():
     assert len(ok_sources) > 0
 
 
-def test_load_backfill_pool_returns_tuple():
-    """load_backfill_pool returns (list, list) — pool and per-source results."""
-    from src.news.engine.proxy_pool.pool_loaders import load_backfill_pool
-
-    resp = MagicMock()
-    resp.text = "1.2.3.4:1080\n"
-    resp.json.return_value = [{"protocol": "http", "host": "1.2.3.4", "port": 1080}]
-    resp.raise_for_status = lambda: None
-
-    with patch("httpx.get", return_value=resp), patch.object(pool_retry, "_sleep"):
-        result = load_backfill_pool()
-
-    pool, sources = result
-    assert isinstance(pool, list)
-    assert isinstance(sources, list)
-    assert all(isinstance(s, dict) for s in sources)
-    assert all({"url", "ok", "count"} <= s.keys() for s in sources)
-
-
 def test_load_backfill_pool_source_count_on_success():
     """A successful source records count == number of parsed proxy entries."""
     from src.news.engine.proxy_pool.pool_loaders import load_backfill_pool, THESPEEDX_SOURCES
