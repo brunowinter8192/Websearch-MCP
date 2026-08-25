@@ -47,7 +47,7 @@ Hand the worker several seed domains (or a mixed, pre-curated URL list across do
 Confirm the target collection with the user (MANDATORY ASK — never pick it yourself):
 > "Target collection: `<project>-reference`. OUTPUT_DIR: `~/Documents/ai/Meta/ClaudeCode/cli/rag-cli/data/documents/<project>-reference/`. Confirm or override?"
 
-Default is `<current_project>-reference`, but it may be another project's reference collection. Collection names are hyphen-separated (`websearch-reference`), never underscore — an underscore variant creates a second, parallel collection instead of appending to the existing one.
+Default is `<current_project>-reference`, but it may be another project's reference collection.
 
 ### Step 3 — Spawn
 
