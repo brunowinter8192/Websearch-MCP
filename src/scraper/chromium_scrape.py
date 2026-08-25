@@ -80,7 +80,7 @@ _BROWSER_LAUNCH_SIGNATURES = (
 # ORCHESTRATOR
 
 # Scrape one URL end to end: acquire, log, render — returns content as-is plus acquisition facts
-async def scrape_url_workflow(url: str) -> list[TextContent]:
+async def scrape_url_chromium_workflow(url: str) -> list[TextContent]:
     t_total = time.perf_counter()
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
     domain = (urlparse(url).hostname or "").removeprefix("www.")
@@ -304,7 +304,7 @@ def _wait_for_devtools_port(user_data_dir: str, timeout_s: float) -> int:
 # kill_stale_chrome pattern, extended here to WAIT for actual process death via psutil rather than
 # a fire-and-forget pkill: a plain pkill returns as soon as the signal is sent, not once Chrome
 # actually exits, which raced against the caller's immediately-following shutil.rmtree and left a
-# real, non-empty profile directory behind — confirmed live via a real cli.py scrape_url run.
+# real, non-empty profile directory behind — confirmed live via a real cli.py scrape_url_chromium run.
 def _kill_by_profile(user_data_dir: str) -> None:
     result = subprocess.run(
         ["pgrep", "-f", f"user-data-dir={user_data_dir}"], capture_output=True, text=True

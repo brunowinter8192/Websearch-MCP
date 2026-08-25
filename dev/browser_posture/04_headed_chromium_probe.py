@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Headed-launch feasibility probe for the chromium (patchright) ad-hoc scrape lane.
 
-Milestone 1 of the headed-adhoc chromium switch (`src/scraper/scrape_url.py`'s `try_scrape`).
+Milestone 1 of the headed-adhoc chromium switch (`src/scraper/chromium_scrape.py`'s `try_scrape`).
 Measures, through the REAL production launch shape (`BrowserConfig` + `UndetectedAdapter` +
 `AsyncPlaywrightCrawlerStrategy`, patchright's `use_undetected` path):
 

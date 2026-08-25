@@ -15,8 +15,8 @@ from src.crawler.pipe_scraper_constants import FALLBACK_FETCH_TIMEOUT_S, EMPTY_T
 from src.crawler.pipe_scraper_pacing import _ensure_domain_state, _gate_domain
 # From src/crawler/pipe_scraper_records.py: JSONL record assemblers (chromium + camoufox engines)
 from src.crawler.pipe_scraper_records import _log_pipe_record, _log_pipe_camoufox_record
-# From src/scraper/scrape_url.py: crawl4ai diagnosis extraction, reused as-is (generic, not path-specific)
-from src.scraper.scrape_url import extract_crawl4ai_diagnosis
+# From src/scraper/chromium_scrape.py: crawl4ai diagnosis extraction, reused as-is (generic, not path-specific)
+from src.scraper.chromium_scrape import extract_crawl4ai_diagnosis
 # From src/scraper/camoufox_scrape.py: the camoufox engine's own acquisition primitive
 from src.scraper.camoufox_scrape import try_scrape_camoufox
 

@@ -1,7 +1,7 @@
 # dev/scrape_pipeline/05_paper_mode/
 
 ## Role
-Standalone direct-PDF-download prototype — no prod imports, no Crawl4AI. Evaluates plain `requests`-based PDF acquisition as a baseline. PDF download is not a production feature — `scrape_url` rejects `.pdf` URLs and delegates download to the user (see root `DOCS.md` gotcha).
+Standalone direct-PDF-download prototype — no prod imports, no Crawl4AI. Evaluates plain `requests`-based PDF acquisition as a baseline. PDF download is not a production feature — `scrape_url_chromium` rejects `.pdf` URLs and delegates download to the user (see root `DOCS.md` gotcha).
 
 ## Modules
 

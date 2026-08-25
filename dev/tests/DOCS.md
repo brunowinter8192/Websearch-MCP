@@ -78,8 +78,8 @@ on-markdown-conversion-failure, calibration surface (`_build_camoufox_kwargs`/
 `_format_camoufox_output`, no-focus-steal launch (`_find_app_bundle`/`_ensure_no_focus_steal`,
 real plistlib round-trip).
 
-### test_scrape_url.py (736 LOC)
-**Purpose:** `src/scraper/scrape_url.py` — `is_browser_launch_error`, `try_scrape` acquisition-
+### test_chromium_scrape.py (736 LOC)
+**Purpose:** `src/scraper/chromium_scrape.py` — `is_browser_launch_error`, `try_scrape` acquisition-
 error classification + HTTP-error-with-real-content preservation, `_format_scrape_output`,
 `extract_config_stamp`, cdp-headed self-launch teardown-on-every-exit-path, self-launch mechanics
 (`_wait_for_devtools_port`/`_find_app_bundle`, real filesystem), live `crawl4ai.browser_manager.

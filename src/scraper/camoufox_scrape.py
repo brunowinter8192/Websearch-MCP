@@ -17,9 +17,9 @@ from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
 from mcp.types import TextContent
-# From src/scraper/scrape_url.py: same config-hash algorithm used across all scrape paths
-from src.scraper.scrape_url import hash_config
-# From src/scraper/scrape_logger.py: per-URL JSONL log + sidecar content file, shared with scrape_url.py
+# From src/scraper/chromium_scrape.py: same config-hash algorithm used across all scrape paths
+from src.scraper.chromium_scrape import hash_config
+# From src/scraper/scrape_logger.py: per-URL JSONL log + sidecar content file, shared with chromium_scrape.py
 from src.scraper.scrape_logger import log_scrape, write_sidecar
 
 logger = logging.getLogger(__name__)

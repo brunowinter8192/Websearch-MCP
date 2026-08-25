@@ -21,7 +21,7 @@ Quality monitoring and configuration testing for the URL scraper module (`src/sc
 
 ### 01_dual_mode_smoke.py (373 LOC)
 
-**Purpose:** A/B comparison harness — parses URLs from a chosen query in a search-results markdown report, scrapes each URL through BOTH production CLI modes in parallel via asyncio: Mode 1 (`scrape_url_raw`, raw markdown to file, no filter) and Mode 2 (`scrape_url`, PruningContentFilter@0.48, 15K char cap, in-memory). Reusable for library A/B testing — replace the cli.py-subprocess invocation with another extraction library.
+**Purpose:** A/B comparison harness — parses URLs from a chosen query in a search-results markdown report, scrapes each URL through BOTH production CLI modes in parallel via asyncio: Mode 1 (`scrape_url_raw`, raw markdown to file, no filter) and Mode 2 (`scrape_url_chromium`, PruningContentFilter@0.48, 15K char cap, in-memory). Reusable for library A/B testing — replace the cli.py-subprocess invocation with another extraction library.
 **Reads:** `--input <path-to-search-md>` (required, e.g. `dev/search_pipeline/md/pipeline_smoke_*.md`), `--query <id-or-text>` (default 1).
 **Writes:** `--output-dir` (default `01_dual_mode_data/<ts>/`) — per-mode subdirs (`mode1_raw/`, `mode2_filtered/`) with one .md per URL, plus `01_dual_mode_report.md` at parent level (per-URL byte sizes, garbage detection, first content lines).
 **Called by:** CLI only.
@@ -41,7 +41,7 @@ Quality monitoring and configuration testing for the URL scraper module (`src/sc
 **Called by:** CLI only. `--output-dir` overridable.
 
 ## State
-`domains.txt` — shared test URL list for `browser_eval/` and `filter_eval/` scripts, one URL per line, `#` comments. `failures.jsonl` (gitignored) — persistent failure log from production `scrape_url` runs; written by `log_scrape_failure()` in `src/scraper/scrape_url.py` at the final failure exit in `scrape_url_workflow()`. Fields: `ts` (ISO 8601 UTC), `url`, `garbage_type` (`http_error`/`cookie_wall`/`login_wall`/`cloudflare`/`nav_dump`/`crawl4ai_error`/null), `status_code` (int/null). Local analysis only — accumulates across production MCP tool calls, not committed.
+`domains.txt` — shared test URL list for `browser_eval/` and `filter_eval/` scripts, one URL per line, `#` comments. `failures.jsonl` (gitignored) — persistent failure log from production `scrape_url_chromium` runs; written by `log_scrape_failure()` in `src/scraper/chromium_scrape.py` at the final failure exit in `scrape_url_chromium_workflow()`. Fields: `ts` (ISO 8601 UTC), `url`, `garbage_type` (`http_error`/`cookie_wall`/`login_wall`/`cloudflare`/`nav_dump`/`crawl4ai_error`/null), `status_code` (int/null). Local analysis only — accumulates across production MCP tool calls, not committed.
 
 ## Gotchas
 `failures.jsonl` inspection: `cat dev/scrape_pipeline/failures.jsonl | jq .`; by garbage_type: `jq -r '.garbage_type // "none"' | sort | uniq -c | sort -rn`; 404s only: `jq 'select(.status_code == 404)'`.
