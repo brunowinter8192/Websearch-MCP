@@ -67,6 +67,11 @@ depended on getting right) and that the watchdog receives `_owned_pids` with no 
 its no-op path when the browser was never touched, and the PID-safety-net-and-lock-release-still-run
 path when `close_browser()` itself raises (Chrome already dead mid-sweep).
 
+### test_scrape_logger.py (33 LOC)
+**Purpose:** `src/scraper/scrape_logger.py` — `write_sidecar`'s real header content (no prior
+direct coverage; the scrape-lane tests only mock it as a no-op). Engine field present and correct
+per lane (chromium/camoufox), existing fields unaffected, empty-content still returns `None`.
+
 ### test_query_logger.py (319 LOC)
 **Purpose:** `src/search/query_logger.py` (`log_query` fail-soft JSONL write) + per-engine timing
 capture in `src/search/search_web.py` (`_engine_with_timing`, `search_web_workflow` log shape,

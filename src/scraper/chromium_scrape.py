@@ -96,7 +96,7 @@ async def scrape_url_chromium_workflow(url: str) -> list[TextContent]:
     published_date = meta.get("date")
 
     outcome = meta.get("acquisition_error") or ("ok" if content else "empty")
-    content_path = write_sidecar(url, ts, content, outcome, "filtered")
+    content_path = write_sidecar(url, ts, content, outcome, "filtered", "chromium")
     log_scrape({
         "ts": ts, "url": url, "domain": domain, "mode": "filtered", "outcome": outcome,
         "engine": "chromium",
