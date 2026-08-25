@@ -52,15 +52,13 @@ _BROWSER_ENGINES: frozenset[str] = frozenset({
     "startpage", "brave", "bing", "yandex",
 })
 
-ENGINE_WATCHDOG_TIMEOUT: float = 3.6
+# Uniform across all engines (2026-08-25) — a per-engine override (3.6s default, up to 6.0s for
+# open_library/semantic_scholar/crossref/startpage/brave) saved no wall time since engines run
+# concurrently and the sweep already paid the 6.0s class on nearly every run (138 workflow_summary
+# records: bottleneck semantic_scholar 84x/startpage 26x/open_library 19x, google only 3x), while
+# censoring slow-yet-alive engines at the shorter 3.6s (google 19x TIMEOUT_WATCHDOG, duckduckgo 46x).
+ENGINE_WATCHDOG_TIMEOUT: float = 6.0
 RATE_WAIT_TIMEOUT: float = 60.0
-ENGINE_WATCHDOG_OVERRIDE: dict[str, float] = {
-    "open_library": 6.0,
-    "semantic_scholar": 5.0,
-    "crossref": 6.0,
-    "startpage": 6.0,
-    "brave": 6.0,
-}
 
 ENGINE_MAX_RESULTS: dict[str, int] = {
     "google": 100,
@@ -223,7 +221,7 @@ async def _run_engine_fanout(
     if with_timings:
         names_and_engines = list(selected.items())
         tasks = [
-            _engine_with_timing(eng, query, language, 10, ENGINE_WATCHDOG_OVERRIDE.get(eng.name, effective_timeout), query_modifier_map=query_modifier_map)
+            _engine_with_timing(eng, query, language, 10, effective_timeout, query_modifier_map=query_modifier_map)
             for _, eng in names_and_engines
         ]
         timed = await asyncio.gather(*tasks)
@@ -259,7 +257,7 @@ async def _query_engines_concurrent(
     query_modifier_map: dict[str, Callable[[str], str]] | None = None,
 ) -> tuple[list, dict[str, dict]]:
     tasks = [
-        _engine_with_timing(engine, query, language, max_results, ENGINE_WATCHDOG_OVERRIDE.get(engine.name, timeout), query_modifier_map=query_modifier_map)
+        _engine_with_timing(engine, query, language, max_results, timeout, query_modifier_map=query_modifier_map)
         for engine in selected.values()
     ]
     timed = await asyncio.gather(*tasks)

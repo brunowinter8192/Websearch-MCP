@@ -53,7 +53,8 @@ logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(mes
 REPORT_DIR = SCRIPT_DIR / "jsonl"
 REPORT_DIR.mkdir(parents=True, exist_ok=True)
 
-# Watchdog timeouts per engine (seconds) — mirrors ENGINE_WATCHDOG_OVERRIDE in search_web.py
+# Watchdog timeouts per engine (seconds) — this probe's own values, independent of
+# search_web.py's ENGINE_WATCHDOG_TIMEOUT (uniform 6.0s across all engines as of 2026-08-25)
 WATCHDOG: dict[str, float] = {
     "open_library": 6.0,
     "semantic_scholar": 5.0,

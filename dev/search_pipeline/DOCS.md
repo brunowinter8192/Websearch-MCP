@@ -373,7 +373,7 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 **Called by:** CLI only. Flags: `--tail N`, `--log-path PATH`, `--all-types` (include `engine_run` records).
 **Calls out:** none beyond stdlib.
 
-### no_google_burst_smoke.py (212 LOC)
+### no_google_burst_smoke.py (213 LOC)
 
 **Purpose:** No-Google concurrent burst smoke — production `ScholarEngine` (HTTP) vs 8 other production engines under concurrent multi-engine burst pattern, without Google browser present. Architectural discriminator: does HTTP Scholar survive the burst pattern without the Google-driven browser warmup? Import switched from the dev-only `ScholarHTTPProbe` (see `scholar_http_probe.py`) to production `ScholarEngine` as part of an HTTP migration.
 **Reads:** hardcoded 12-query set (academic queries, 3 bursts × 4).

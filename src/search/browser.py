@@ -20,11 +20,12 @@ LOCK_PATH = Path(SESSION_DIR).parent / "browser-session.lock"
 # Hard budget for one search_web sweep, past which a held cross-process lock is presumed stuck
 # (not merely slow) and force-broken (browser_lock.acquire's stale-takeover). Derived from
 # search_web.py's own worst case: RATE_WAIT_TIMEOUT (60s, a single engine's rate-limiter wait) +
-# the slowest per-engine watchdog override (6.0s: open_library/crossref/startpage/brave) + a 15s
-# margin — real two-parallel-CLI-run measurement (2026-08-25) put one full sweep (prewarm+launch
-# through kill_own_chrome teardown) at ~7.25s end to end, so 15s already covers ~2x that observed
-# duration; not imported from search_web.py's own constants to avoid a browser_lock -> browser ->
-# engines -> search_web import cycle — if those constants change, re-derive this by hand.
+# ENGINE_WATCHDOG_TIMEOUT (6.0s, uniform across all engines as of 2026-08-25 — no per-engine
+# override to pick a "slowest" from anymore) + a 15s margin — real two-parallel-CLI-run measurement
+# (2026-08-25) put one full sweep (prewarm+launch through kill_own_chrome teardown) at ~7.25s end
+# to end, so 15s already covers ~2x that observed duration; not imported from search_web.py's own
+# constants to avoid a browser_lock -> browser -> engines -> search_web import cycle — if those
+# constants change, re-derive this by hand.
 LOCK_HARD_BUDGET_S = 60.0 + 6.0 + 15.0
 
 BACKGROUNDING_FLAGS = [
