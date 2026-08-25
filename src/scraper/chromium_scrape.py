@@ -24,6 +24,9 @@ from patchright.async_api import async_playwright
 from mcp.types import TextContent
 # From scrape_logger.py: per-URL JSONL log + sidecar content file
 from src.scraper.scrape_logger import log_scrape, write_sidecar
+# From death_pipe.py: net-2 crash backstop (per-call watchdog) — net-3 orphan reap reuses its
+# terminate/kill primitive
+from src import death_pipe
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +164,7 @@ def _build_run_config() -> CrawlerRunConfig:
 # no content judgment. Acquisition is always the cdp-headed-backgrounded route (self-launched
 # chromium, connected over cdp_url).
 async def try_scrape(url: str) -> tuple[str, dict]:
+    await asyncio.to_thread(_reap_orphaned_scrapes)
     run_config = _build_run_config()
     budget_s = TOTAL_SCRAPE_BUDGET_S
     _empty_meta: dict = {
@@ -189,7 +193,9 @@ async def try_scrape(url: str) -> tuple[str, dict]:
 # The default route (probe 05's proven shape): self-launch chromium-1228 headed-but-backgrounded via
 # macOS `open -g -n -a`, wait for its DevToolsActivePort, connect crawl4ai over cdp_url. Teardown
 # (kill by profile-dir substring + remove the throwaway dir) runs in `finally` so it fires on every
-# exit path, including the outer budget's cancellation and any exception raised above.
+# exit path, including the outer budget's cancellation and any exception raised above (net 1). A
+# death_pipe watchdog is ALSO spawned once the port resolves (net 2) — the crash backstop for when
+# this whole CLI process dies before the `finally` below ever gets a chance to run at all.
 async def _acquire_cdp_headed(
     url: str, run_config: CrawlerRunConfig, empty_meta: dict, budget_s: float,
 ) -> tuple[str, dict]:
@@ -199,6 +205,8 @@ async def _acquire_cdp_headed(
     try:
         _self_launch_chrome(bundle_path, user_data_dir, flags)
         port = await asyncio.to_thread(_wait_for_devtools_port, user_data_dir, CDP_PORT_WAIT_TIMEOUT_S)
+        pids = await asyncio.to_thread(_pids_on_profile, user_data_dir)
+        death_pipe.spawn_watchdog(pids, cleanup_dir=user_data_dir)
         browser_config = BrowserConfig(
             cdp_url=f"http://127.0.0.1:{port}",
             browser_mode="custom",
@@ -299,33 +307,80 @@ def _wait_for_devtools_port(user_data_dir: str, timeout_s: float) -> int:
     raise TimeoutError(f"DevToolsActivePort did not appear under {user_data_dir} within {timeout_s}s")
 
 
-# Kill the self-launched Chrome by profile-dir substring — the mandatory teardown path since
-# `open -g`'s own Popen is a short-lived wrapper, never Chrome itself (src/search/browser.py's
-# kill_stale_chrome pattern, extended here to WAIT for actual process death via psutil rather than
-# a fire-and-forget pkill: a plain pkill returns as soon as the signal is sent, not once Chrome
-# actually exits, which raced against the caller's immediately-following shutil.rmtree and left a
-# real, non-empty profile directory behind — confirmed live via a real cli.py scrape_url_chromium run.
-def _kill_by_profile(user_data_dir: str) -> None:
+# PIDs of processes whose cmdline names this exact profile dir — the shared identification
+# primitive behind _kill_by_profile, the death_pipe watchdog spawn, and _reap_orphaned_scrapes
+def _pids_on_profile(user_data_dir: str) -> list[int]:
     result = subprocess.run(
         ["pgrep", "-f", f"user-data-dir={user_data_dir}"], capture_output=True, text=True
     )
-    pids = [int(p) for p in result.stdout.split() if p.strip().isdigit()]
-    if not pids:
-        return
-    procs = []
-    for pid in pids:
+    return [int(p) for p in result.stdout.split() if p.strip().isdigit()]
+
+
+# Kill the self-launched Chrome by profile-dir substring — the mandatory teardown path since
+# `open -g`'s own Popen is a short-lived wrapper, never Chrome itself (src/search/browser.py's
+# original kill_stale_chrome pattern; death_pipe._terminate_then_kill WAITS for actual process
+# death via psutil rather than a fire-and-forget pkill: a plain pkill returns as soon as the signal
+# is sent, not once Chrome actually exits, which raced against the caller's immediately-following
+# shutil.rmtree and left a real, non-empty profile directory behind — confirmed live via a real
+# cli.py scrape_url_chromium run.
+def _kill_by_profile(user_data_dir: str) -> None:
+    pids = _pids_on_profile(user_data_dir)
+    if pids:
+        death_pipe._terminate_then_kill(pids, timeout_s=3.0)
+
+
+# Net 3 — pre-launch reap for the scrape lane, called at the start of every try_scrape. Parallel
+# scrapes are legitimate (every call gets its own unique throwaway profile dir), so a live process
+# is NEVER killed just for existing — only once its age exceeds TOTAL_SCRAPE_BUDGET_S, the SAME
+# bound any legitimate scrape is itself bounded by (asyncio.wait_for in try_scrape); a still-running
+# process past that age cannot be a legitimate in-flight scrape, only an orphan (net 1 and net 2 both
+# failed for it — e.g. a pre-death_pipe-milestone leak). Directories are swept on a separate,
+# stricter criterion: any scrape-url-cdp-* dir with NO live process at all, any age, is unambiguously
+# orphaned regardless of the process-age threshold above.
+def _reap_orphaned_scrapes() -> None:
+    candidate_pids = _pids_matching_scrape_profiles()
+    now = time.time()
+    orphaned_pids = []
+    for pid in candidate_pids:
         try:
-            proc = psutil.Process(pid)
-            proc.terminate()
-            procs.append(proc)
+            age_s = now - psutil.Process(pid).create_time()
         except psutil.NoSuchProcess:
-            pass
-    gone, alive = psutil.wait_procs(procs, timeout=3)
-    for proc in alive:
+            continue
+        if age_s > TOTAL_SCRAPE_BUDGET_S:
+            orphaned_pids.append(pid)
+    if orphaned_pids:
+        logger.warning(
+            "Reaping orphaned scrape-cdp Chrome (age > %.1fs): pids=%s", TOTAL_SCRAPE_BUDGET_S, orphaned_pids
+        )
+        death_pipe._terminate_then_kill(orphaned_pids)
+
+    live_dirs = _live_scrape_profile_dirs()
+    for entry in Path(tempfile.gettempdir()).glob("scrape-url-cdp-*"):
+        if str(entry) not in live_dirs:
+            shutil.rmtree(entry, ignore_errors=True)
+
+
+# All PIDs currently on ANY scrape-url-cdp-* profile (broad prefix match, not one literal dir)
+def _pids_matching_scrape_profiles() -> list[int]:
+    result = subprocess.run(
+        ["pgrep", "-f", "user-data-dir=.*scrape-url-cdp-"], capture_output=True, text=True
+    )
+    return [int(p) for p in result.stdout.split() if p.strip().isdigit()]
+
+
+# The set of scrape-url-cdp-* profile dir paths that currently have at least one live process —
+# read fresh (after any kill above) so a just-orphaned dir is correctly seen as sweepable this pass
+def _live_scrape_profile_dirs() -> set[str]:
+    dirs = set()
+    for pid in _pids_matching_scrape_profiles():
         try:
-            proc.kill()
+            cmdline = psutil.Process(pid).cmdline()
         except psutil.NoSuchProcess:
-            pass
+            continue
+        for arg in cmdline:
+            if arg.startswith("--user-data-dir=") and "scrape-url-cdp-" in arg:
+                dirs.add(arg.removeprefix("--user-data-dir="))
+    return dirs
 
 
 # Read the scrape-governing config back off the actual constructed objects, never re-declared.
