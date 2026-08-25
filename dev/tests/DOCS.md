@@ -47,14 +47,25 @@ challenge).
 immediate acquire when free, genuine blocking until a background thread's `release()`, and the
 stale-takeover path (a real held flock + a backdated sidecar triggers `on_stale` then reacquires).
 
-### test_browser.py (247 LOC)
+### test_death_pipe.py (149 LOC)
+**Purpose:** `src/death_pipe.py` — real spawned-watchdog-subprocess behavior (no mocking for
+`spawn_watchdog` itself): a dummy `python -c "time.sleep(60)"` process is protected, then
+`os.close()` on the fd `spawn_watchdog` returns simulates this process dying WITHOUT actually
+exiting the test process; asserts the watchdog kills the dummy and removes `cleanup_dir` once that
+happens, stays completely silent when the target was already dead (net-1-already-handled path),
+and logs an intervention line only when it actually had to act. `_terminate_then_kill` gets its own
+mocked-psutil pure-logic tests separately. A killed dummy is OUR OWN child (unlike a real detached
+Chrome/Firefox) so it zombies until reaped — tests check `Popen.poll()`, not `psutil.pid_exists()`.
+
+### test_browser.py (268 LOC)
 **Purpose:** `src/search/browser.py` — `_reap_session_profile`/`_record_own_pids`/
 `_terminate_then_kill` pgrep-output parsing and psutil dispatch (subprocess+psutil mocked);
-`get_tab()`'s critical-section ordering (lock -> reap -> launch -> record-own-pids, the exact
-sequence the browser-lifecycle milestone's live parallel-run bug depended on getting right);
-`kill_own_chrome()`'s full teardown sequence, its no-op path when the browser was never touched,
-and the PID-safety-net-and-lock-release-still-run path when `close_browser()` itself raises
-(Chrome already dead mid-sweep).
+`get_tab()`'s critical-section ordering (lock -> reap -> launch -> record-own-pids -> spawn
+death_pipe watchdog, the exact sequence the browser-lifecycle milestone's live parallel-run bug
+depended on getting right) and that the watchdog receives `_owned_pids` with no `cleanup_dir`
+(the session profile is persistent, never deleted); `kill_own_chrome()`'s full teardown sequence,
+its no-op path when the browser was never touched, and the PID-safety-net-and-lock-release-still-run
+path when `close_browser()` itself raises (Chrome already dead mid-sweep).
 
 ### test_query_logger.py (319 LOC)
 **Purpose:** `src/search/query_logger.py` (`log_query` fail-soft JSONL write) + per-engine timing
@@ -92,12 +103,16 @@ on-markdown-conversion-failure, calibration surface (`_build_camoufox_kwargs`/
 `_format_camoufox_output`, no-focus-steal launch (`_find_app_bundle`/`_ensure_no_focus_steal`,
 real plistlib round-trip).
 
-### test_chromium_scrape.py (736 LOC)
+### test_chromium_scrape.py (918 LOC)
 **Purpose:** `src/scraper/chromium_scrape.py` — `is_browser_launch_error`, `try_scrape` acquisition-
 error classification + HTTP-error-with-real-content preservation, `_format_scrape_output`,
 `extract_config_stamp`, cdp-headed self-launch teardown-on-every-exit-path, self-launch mechanics
 (`_wait_for_devtools_port`/`_find_app_bundle`, real filesystem), live `crawl4ai.browser_manager.
-ManagedBrowser.build_browser_flags` parity guard + `_build_self_launch_flags` GPU/window-size.
+ManagedBrowser.build_browser_flags` parity guard + `_build_self_launch_flags` GPU/window-size;
+net 2 (`_acquire_cdp_headed` spawns `death_pipe.spawn_watchdog` with this call's real pids +
+throwaway dir once the cdp port resolves) and net 3 (`_reap_orphaned_scrapes` kills only
+`scrape-url-cdp-*` pids older than `TOTAL_SCRAPE_BUDGET_S`, never a young/legitimate parallel
+scrape, and sweeps only dirs with zero live processes) — subprocess/psutil mocked throughout.
 
 ### test_pipe_scraper.py (952 LOC)
 **Purpose:** `src/crawler/pipe_scraper*.py` — config stamp extraction off real

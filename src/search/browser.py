@@ -11,6 +11,9 @@ from pydoll.browser.managers import BrowserProcessManager
 from pydoll.commands import TargetCommands
 
 from src.search import browser_lock
+# From death_pipe.py: net-2 crash backstop — kills our own Chrome if this process dies without
+# tearing it down itself
+from src import death_pipe
 
 logger = logging.getLogger(__name__)
 
@@ -127,10 +130,13 @@ def _terminate_then_kill(pids: list[int], timeout_s: float = 5.0) -> None:
 
 # Get or create the shared browser and tab — first call in a run blocks on the cross-process lock
 # (held until kill_own_chrome tears the browser down), reaps any orphaned survivor of a crashed
-# prior run, then launches. Must be called OUTSIDE any per-engine watchdog (search_web.py's
-# _prewarm_browser does this) — a per-engine timeout (3.6-6.0s) is far shorter than a legitimate
-# cross-process lock wait, and asyncio.wait_for cancelling this coroutine mid-wait would abandon
-# the blocking asyncio.to_thread call as an orphaned background thread, never releasing the lock.
+# prior run, then launches and spawns a death_pipe watchdog (net 2 — a crash backstop for when THIS
+# run itself dies before kill_own_chrome/net 1 ever runs; no cleanup_dir, the session profile is
+# persistent by design, only the processes get reaped). Must be called OUTSIDE any per-engine
+# watchdog (search_web.py's _prewarm_browser does this) — a per-engine timeout (3.6-6.0s) is far
+# shorter than a legitimate cross-process lock wait, and asyncio.wait_for cancelling this coroutine
+# mid-wait would abandon the blocking asyncio.to_thread call as an orphaned background thread,
+# never releasing the lock.
 async def get_tab():
     global _browser, _tab, _lock_handle
     async with _init_lock:
@@ -149,6 +155,7 @@ async def get_tab():
                 )
                 _tab = await _browser.start()
                 _record_own_pids()
+                death_pipe.spawn_watchdog(_owned_pids)
             except Exception:
                 _browser = None
                 _tab = None

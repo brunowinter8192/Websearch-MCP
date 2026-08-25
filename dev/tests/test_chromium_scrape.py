@@ -13,6 +13,7 @@ dedicated, unmocked tests further down.
 """
 import asyncio
 import logging
+import time
 
 import pytest
 
@@ -33,6 +34,9 @@ def _patch_cdp_launch_mechanics(monkeypatch):
     monkeypatch.setattr(chromium_scrape, "_self_launch_chrome", lambda *a, **kw: None)
     monkeypatch.setattr(chromium_scrape, "_wait_for_devtools_port", lambda *a, **kw: 9999)
     monkeypatch.setattr(chromium_scrape, "_kill_by_profile", lambda *a, **kw: None)
+    monkeypatch.setattr(chromium_scrape, "_pids_on_profile", lambda *a, **kw: [])
+    monkeypatch.setattr(chromium_scrape, "_reap_orphaned_scrapes", lambda: None)
+    monkeypatch.setattr(chromium_scrape.death_pipe, "spawn_watchdog", lambda *a, **kw: None)
 
 
 # ---------------------------------------------------------------------------
@@ -734,3 +738,181 @@ def test_build_self_launch_flags_includes_window_size_when_viewport_set():
     config = chromium_scrape.BrowserConfig(enable_stealth=True, viewport_width=1080, viewport_height=600)
     flags = chromium_scrape._build_self_launch_flags(config)
     assert "--window-size=1080,600" in flags
+
+
+# ---------------------------------------------------------------------------
+# Net 2 — death_pipe watchdog spawned once the cdp port resolves, with this call's real PIDs and
+# its own throwaway profile dir as cleanup_dir (unlike the search lane, which never deletes its
+# persistent session profile)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_acquire_cdp_headed_spawns_watchdog_with_pids_and_cleanup_dir(monkeypatch):
+    _patch_cdp_launch_mechanics(monkeypatch)
+    monkeypatch.setattr(chromium_scrape, "_pids_on_profile", lambda d: [555, 666])
+    calls = []
+    monkeypatch.setattr(chromium_scrape.death_pipe, "spawn_watchdog", lambda pids, cleanup_dir=None: calls.append((pids, cleanup_dir)))
+
+    class _FakeCrawler:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def arun(self, url, config=None):
+            return _FakeResult(raw_markdown="x" * 300)
+
+    monkeypatch.setattr(chromium_scrape, "AsyncWebCrawler", _FakeCrawler)
+
+    await chromium_scrape.try_scrape("https://example.com")
+
+    assert len(calls) == 1
+    pids, cleanup_dir = calls[0]
+    assert pids == [555, 666]
+    assert cleanup_dir is not None  # this call's own tempfile.mkdtemp(prefix="scrape-url-cdp-") dir
+
+
+# ---------------------------------------------------------------------------
+# _pids_on_profile — pgrep output parsing, shared by _kill_by_profile and the watchdog spawn
+# ---------------------------------------------------------------------------
+
+def test_pids_on_profile_parses_pgrep_output(monkeypatch):
+    class _FakeCompleted:
+        stdout = "111\n222\n"
+
+    monkeypatch.setattr(chromium_scrape.subprocess, "run", lambda *a, **kw: _FakeCompleted())
+    assert chromium_scrape._pids_on_profile("/tmp/some-dir") == [111, 222]
+
+
+def test_pids_on_profile_empty_when_no_match(monkeypatch):
+    class _FakeCompleted:
+        stdout = ""
+
+    monkeypatch.setattr(chromium_scrape.subprocess, "run", lambda *a, **kw: _FakeCompleted())
+    assert chromium_scrape._pids_on_profile("/tmp/some-dir") == []
+
+
+def test_kill_by_profile_delegates_to_death_pipe_terminate_then_kill(monkeypatch):
+    monkeypatch.setattr(chromium_scrape, "_pids_on_profile", lambda d: [42])
+    calls = []
+    monkeypatch.setattr(chromium_scrape.death_pipe, "_terminate_then_kill", lambda pids, timeout_s=5.0: calls.append((pids, timeout_s)))
+    chromium_scrape._kill_by_profile("/tmp/some-dir")
+    assert calls == [([42], 3.0)]
+
+
+def test_kill_by_profile_noop_when_no_pids(monkeypatch):
+    monkeypatch.setattr(chromium_scrape, "_pids_on_profile", lambda d: [])
+    calls = []
+    monkeypatch.setattr(chromium_scrape.death_pipe, "_terminate_then_kill", lambda *a, **kw: calls.append(1))
+    chromium_scrape._kill_by_profile("/tmp/some-dir")
+    assert calls == []
+
+
+# ---------------------------------------------------------------------------
+# Net 3 — _reap_orphaned_scrapes: kill only processes older than TOTAL_SCRAPE_BUDGET_S (parallel
+# scrapes under budget are legitimate, never killed), sweep dirs with zero live processes
+# ---------------------------------------------------------------------------
+
+def test_reap_orphaned_scrapes_kills_only_pids_older_than_budget(monkeypatch, tmp_path):
+    now = time.time()
+    young_pid, old_pid = 1001, 1002
+
+    class _FakeProc:
+        def __init__(self, pid):
+            self.pid = pid
+
+        def create_time(self):
+            return now - (10.0 if self.pid == young_pid else chromium_scrape.TOTAL_SCRAPE_BUDGET_S + 5.0)
+
+    monkeypatch.setattr(chromium_scrape, "_pids_matching_scrape_profiles", lambda: [young_pid, old_pid])
+    monkeypatch.setattr(chromium_scrape.psutil, "Process", _FakeProc)
+    monkeypatch.setattr(chromium_scrape, "_live_scrape_profile_dirs", lambda: set())
+    killed = []
+    monkeypatch.setattr(chromium_scrape.death_pipe, "_terminate_then_kill", lambda pids: killed.append(pids))
+    monkeypatch.setattr(chromium_scrape, "tempfile", type("T", (), {"gettempdir": staticmethod(lambda: str(tmp_path))}))
+
+    chromium_scrape._reap_orphaned_scrapes()
+
+    assert killed == [[old_pid]]
+
+
+def test_reap_orphaned_scrapes_never_kills_pid_under_budget_even_if_only_candidate(monkeypatch, tmp_path):
+    now = time.time()
+
+    class _FakeProc:
+        def create_time(self):
+            return now - 5.0  # well under TOTAL_SCRAPE_BUDGET_S — a legitimate in-flight scrape
+
+    monkeypatch.setattr(chromium_scrape, "_pids_matching_scrape_profiles", lambda: [2001])
+    monkeypatch.setattr(chromium_scrape.psutil, "Process", lambda pid: _FakeProc())
+    monkeypatch.setattr(chromium_scrape, "_live_scrape_profile_dirs", lambda: {"/tmp/scrape-url-cdp-live"})
+    killed = []
+    monkeypatch.setattr(chromium_scrape.death_pipe, "_terminate_then_kill", lambda pids: killed.append(pids))
+    monkeypatch.setattr(chromium_scrape, "tempfile", type("T", (), {"gettempdir": staticmethod(lambda: str(tmp_path))}))
+
+    chromium_scrape._reap_orphaned_scrapes()
+
+    assert killed == []
+
+
+def test_reap_orphaned_scrapes_sweeps_dirs_with_no_live_process(monkeypatch, tmp_path):
+    live_dir = tmp_path / "scrape-url-cdp-live"
+    orphan_dir = tmp_path / "scrape-url-cdp-orphan"
+    live_dir.mkdir()
+    orphan_dir.mkdir()
+
+    monkeypatch.setattr(chromium_scrape, "_pids_matching_scrape_profiles", lambda: [])
+    monkeypatch.setattr(chromium_scrape, "_live_scrape_profile_dirs", lambda: {str(live_dir)})
+    monkeypatch.setattr(chromium_scrape, "tempfile", type("T", (), {"gettempdir": staticmethod(lambda: str(tmp_path))}))
+
+    chromium_scrape._reap_orphaned_scrapes()
+
+    assert live_dir.exists()
+    assert not orphan_dir.exists()
+
+
+def test_live_scrape_profile_dirs_reads_user_data_dir_from_cmdline(monkeypatch):
+    class _FakeProc:
+        def cmdline(self):
+            return ["/fake/Chrome", "--remote-debugging-port=0", "--user-data-dir=/tmp/scrape-url-cdp-abc123", "--flag"]
+
+    monkeypatch.setattr(chromium_scrape, "_pids_matching_scrape_profiles", lambda: [7777])
+    monkeypatch.setattr(chromium_scrape.psutil, "Process", lambda pid: _FakeProc())
+
+    assert chromium_scrape._live_scrape_profile_dirs() == {"/tmp/scrape-url-cdp-abc123"}
+
+
+def test_live_scrape_profile_dirs_skips_already_dead_pid(monkeypatch):
+    def raise_no_such_process(pid):
+        raise chromium_scrape.psutil.NoSuchProcess(pid)
+
+    monkeypatch.setattr(chromium_scrape, "_pids_matching_scrape_profiles", lambda: [8888])
+    monkeypatch.setattr(chromium_scrape.psutil, "Process", raise_no_such_process)
+
+    assert chromium_scrape._live_scrape_profile_dirs() == set()
+
+
+@pytest.mark.asyncio
+async def test_try_scrape_calls_reap_orphaned_scrapes_at_start(monkeypatch):
+    _patch_cdp_launch_mechanics(monkeypatch)
+    calls = []
+    monkeypatch.setattr(chromium_scrape, "_reap_orphaned_scrapes", lambda: calls.append(1))
+
+    class _RaisingCrawler:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            raise Exception("boom")
+
+        async def __aexit__(self, *a):
+            return False
+
+    monkeypatch.setattr(chromium_scrape, "AsyncWebCrawler", _RaisingCrawler)
+    await chromium_scrape.try_scrape("https://example.com")
+
+    assert calls == [1]

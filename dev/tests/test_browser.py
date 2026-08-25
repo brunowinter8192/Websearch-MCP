@@ -140,12 +140,33 @@ async def test_get_tab_orders_lock_reap_launch_record(monkeypatch):
     monkeypatch.setattr(browser, "Chrome", lambda options: order.append("launch") or FakeChrome(options))
     monkeypatch.setattr(browser, "BrowserProcessManager", lambda process_creator: None)
     monkeypatch.setattr(browser, "_record_own_pids", lambda: order.append("record"))
+    monkeypatch.setattr(browser.death_pipe, "spawn_watchdog", lambda *a, **kw: order.append("watchdog"))
 
     tab = await browser.get_tab()
 
-    assert order == ["lock", "reap", "launch", "record"]
+    assert order == ["lock", "reap", "launch", "record", "watchdog"]
     assert tab == "fake-tab"
     assert browser._lock_handle == "fake-lock-handle"
+
+
+@pytest.mark.asyncio
+async def test_get_tab_spawns_watchdog_with_owned_pids_no_cleanup_dir(monkeypatch):
+    _reset_state(monkeypatch)
+    monkeypatch.setattr(browser.browser_lock, "acquire", lambda *a, **kw: "fake-lock-handle")
+    monkeypatch.setattr(browser, "_reap_session_profile", lambda: None)
+    monkeypatch.setattr(browser, "Chrome", lambda options: FakeChrome(options))
+    monkeypatch.setattr(browser, "BrowserProcessManager", lambda process_creator: None)
+    def _fake_record_own_pids():
+        monkeypatch.setattr(browser, "_owned_pids", [111, 222])
+
+    monkeypatch.setattr(browser, "_record_own_pids", _fake_record_own_pids)
+
+    calls = []
+    monkeypatch.setattr(browser.death_pipe, "spawn_watchdog", lambda pids, cleanup_dir=None: calls.append((pids, cleanup_dir)))
+
+    await browser.get_tab()
+
+    assert calls == [([111, 222], None)]
 
 
 @pytest.mark.asyncio
