@@ -405,7 +405,7 @@ async def test_config_hash_stable_for_identical_kwargs(monkeypatch):
 
 # ---------------------------------------------------------------------------
 # scrape_url_camoufox_workflow: milestone 2 — the ad-hoc CLI wiring. Logs into the SAME
-# scrape_log.jsonl / log_scrape / write_sidecar as scrape_url.py's chromium lane, discriminated by
+# scrape_log.jsonl / log_scrape / write_sidecar as chromium_scrape.py's chromium lane, discriminated by
 # the "engine" field. try_scrape_camoufox is faked at the module boundary; log_scrape/write_sidecar
 # are faked to capture the record instead of touching the filesystem.
 # ---------------------------------------------------------------------------

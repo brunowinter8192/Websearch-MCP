@@ -1,13 +1,13 @@
 # dev/scrape_pipeline/browser_eval/
 
 ## Role
-Regression baseline + browser-config tuning for the production scraper (`scrape_url_workflow`). Baseline/regression workflow: run 01 to snapshot, run 02 to diff against the previous iteration. 03 is a standalone browser-config comparison for JS-heavy sites failing under default settings.
+Regression baseline + browser-config tuning for the production scraper (`scrape_url_chromium_workflow`). Baseline/regression workflow: run 01 to snapshot, run 02 to diff against the previous iteration. 03 is a standalone browser-config comparison for JS-heavy sites failing under default settings.
 
 ## Modules
 
 ### 01_baseline.py (135 LOC)
 
-**Purpose:** Scrapes all test domains using the production `scrape_url_workflow` and saves results as numbered iterations with metadata (char count, word count, timestamp).
+**Purpose:** Scrapes all test domains using the production `scrape_url_chromium_workflow` and saves results as numbered iterations with metadata (char count, word count, timestamp).
 **Reads:** `domains.txt` (pipeline root).
 **Writes:** `01_baselines/<domain>/iteration_<N>.md` + `metadata_<N>.json`.
 **Called by:** CLI only.

@@ -26,7 +26,7 @@ from src.scraper.markdown_converter import (
     clean_generic_artifacts,
     clean_whitespace,
 )
-from src.scraper.scrape_url import init_browser, fetch_url_content, cleanup_browser
+from src.scraper.chromium_scrape import init_browser, fetch_url_content, cleanup_browser
 
 REPORT_DIR = Path(__file__).parent / "md"
 DOMAINS_FILE = Path(__file__).parent.parent / "domains.txt"

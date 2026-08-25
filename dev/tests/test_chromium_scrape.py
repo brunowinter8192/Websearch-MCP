@@ -1,4 +1,4 @@
-"""Tests for scrape_url's acquisition-facts contract: browser-launch/timeout classification, the
+"""Tests for chromium_scrape's acquisition-facts contract: browser-launch/timeout classification, the
 outer time-budget guard, the removed status-code/content-verdict gate, the new return shape that
 surfaces facts (HTTP status, byte counts, crawl4ai's own diagnosis) alongside full content instead
 of judging it, and the single cdp-headed-backgrounded acquisition route (self-launch + connect over
@@ -16,7 +16,7 @@ import logging
 
 import pytest
 
-from src.scraper import scrape_url
+from src.scraper import chromium_scrape
 
 
 # ---------------------------------------------------------------------------
@@ -27,12 +27,12 @@ from src.scraper import scrape_url
 
 def _patch_cdp_launch_mechanics(monkeypatch):
     async def _fake_resolve_bundle():
-        return scrape_url.Path("/fake/chromium-1228/Google Chrome for Testing.app")
+        return chromium_scrape.Path("/fake/chromium-1228/Google Chrome for Testing.app")
 
-    monkeypatch.setattr(scrape_url, "_resolve_chromium_bundle_path", _fake_resolve_bundle)
-    monkeypatch.setattr(scrape_url, "_self_launch_chrome", lambda *a, **kw: None)
-    monkeypatch.setattr(scrape_url, "_wait_for_devtools_port", lambda *a, **kw: 9999)
-    monkeypatch.setattr(scrape_url, "_kill_by_profile", lambda *a, **kw: None)
+    monkeypatch.setattr(chromium_scrape, "_resolve_chromium_bundle_path", _fake_resolve_bundle)
+    monkeypatch.setattr(chromium_scrape, "_self_launch_chrome", lambda *a, **kw: None)
+    monkeypatch.setattr(chromium_scrape, "_wait_for_devtools_port", lambda *a, **kw: 9999)
+    monkeypatch.setattr(chromium_scrape, "_kill_by_profile", lambda *a, **kw: None)
 
 
 # ---------------------------------------------------------------------------
@@ -48,7 +48,7 @@ def _patch_cdp_launch_mechanics(monkeypatch):
 def test_is_browser_launch_error_detects_signatures(msg):
     """Known launch-failure signatures (both the old direct-launch and the new cdp self-launch's
     own timeout) are classified as browser_missing."""
-    assert scrape_url.is_browser_launch_error(Exception(msg)) is True
+    assert chromium_scrape.is_browser_launch_error(Exception(msg)) is True
 
 
 @pytest.mark.parametrize("msg", [
@@ -59,7 +59,7 @@ def test_is_browser_launch_error_detects_signatures(msg):
 ])
 def test_is_browser_launch_error_ignores_ordinary_errors(msg):
     """Ordinary per-URL network/timeout errors are NOT misclassified as browser problems."""
-    assert scrape_url.is_browser_launch_error(Exception(msg)) is False
+    assert chromium_scrape.is_browser_launch_error(Exception(msg)) is False
 
 
 # ---------------------------------------------------------------------------
@@ -84,10 +84,10 @@ async def test_try_scrape_maps_launch_failure_to_browser_missing(monkeypatch, ca
         async def __aexit__(self, *a):
             return False
 
-    monkeypatch.setattr(scrape_url, "AsyncWebCrawler", _RaisingCrawler)
+    monkeypatch.setattr(chromium_scrape, "AsyncWebCrawler", _RaisingCrawler)
 
-    with caplog.at_level(logging.ERROR, logger="src.scraper.scrape_url"):
-        content, meta = await scrape_url.try_scrape("https://example.com")
+    with caplog.at_level(logging.ERROR, logger="src.scraper.chromium_scrape"):
+        content, meta = await chromium_scrape.try_scrape("https://example.com")
 
     assert content == ""
     assert meta["acquisition_error"] == "browser_missing"
@@ -110,9 +110,9 @@ async def test_try_scrape_names_the_generic_exception_state(monkeypatch):
         async def __aexit__(self, *a):
             return False
 
-    monkeypatch.setattr(scrape_url, "AsyncWebCrawler", _RaisingCrawler)
+    monkeypatch.setattr(chromium_scrape, "AsyncWebCrawler", _RaisingCrawler)
 
-    content, meta = await scrape_url.try_scrape("https://example.com")
+    content, meta = await chromium_scrape.try_scrape("https://example.com")
 
     assert content == ""
     assert meta["acquisition_error"] == "exception"
@@ -164,9 +164,9 @@ async def test_try_scrape_returns_content_on_http_403(monkeypatch):
                                 status_code=403,
                                 error_message="Blocked by anti-bot protection: Cloudflare JS challenge")
 
-    monkeypatch.setattr(scrape_url, "AsyncWebCrawler", _FakeCrawler)
+    monkeypatch.setattr(chromium_scrape, "AsyncWebCrawler", _FakeCrawler)
 
-    content, meta = await scrape_url.try_scrape("https://de.trustpilot.com/review/entega.de")
+    content, meta = await chromium_scrape.try_scrape("https://de.trustpilot.com/review/entega.de")
 
     assert content.startswith("# Real review content")
     assert meta["status_code"] == 403
@@ -206,16 +206,16 @@ async def test_try_scrape_returns_short_fit_markdown_unconditionally(monkeypatch
             result.markdown.fit_markdown = fake_short_fit
             return result
 
-    monkeypatch.setattr(scrape_url, "AsyncWebCrawler", _FakeCrawler)
+    monkeypatch.setattr(chromium_scrape, "AsyncWebCrawler", _FakeCrawler)
 
-    content, meta = await scrape_url.try_scrape("https://example.com")
+    content, meta = await chromium_scrape.try_scrape("https://example.com")
 
     assert content == fake_short_fit
     assert meta["raw_markdown_bytes"] == 2537
 
 
 @pytest.mark.asyncio
-async def test_scrape_url_workflow_log_record_has_no_fallback_to_raw_field(monkeypatch):
+async def test_scrape_url_chromium_workflow_log_record_has_no_fallback_to_raw_field(monkeypatch):
     """The removed field must not reappear in the JSONL record — fallback_to_raw described a
     mechanism that no longer exists."""
     captured = {}
@@ -223,11 +223,11 @@ async def test_scrape_url_workflow_log_record_has_no_fallback_to_raw_field(monke
     async def _fake_try_scrape(url):
         return "real content", _meta()
 
-    monkeypatch.setattr(scrape_url, "try_scrape", _fake_try_scrape)
-    monkeypatch.setattr(scrape_url, "write_sidecar", lambda *a, **kw: None)
-    monkeypatch.setattr(scrape_url, "log_scrape", lambda record: captured.update(record))
+    monkeypatch.setattr(chromium_scrape, "try_scrape", _fake_try_scrape)
+    monkeypatch.setattr(chromium_scrape, "write_sidecar", lambda *a, **kw: None)
+    monkeypatch.setattr(chromium_scrape, "log_scrape", lambda record: captured.update(record))
 
-    await scrape_url.scrape_url_workflow("https://example.com")
+    await chromium_scrape.scrape_url_chromium_workflow("https://example.com")
 
     assert "fallback_to_raw" not in captured
     assert captured["bytes_raw_markdown"] == 100  # raw_markdown_bytes still reported, as a fact
@@ -236,7 +236,7 @@ async def test_scrape_url_workflow_log_record_has_no_fallback_to_raw_field(monke
 def test_format_scrape_output_has_no_raw_fallback_note():
     """The " + raw fallback" selection note is gone from the content-bytes line — there is no
     selection to note anymore, content is always the filtered fit_markdown."""
-    text = scrape_url._format_scrape_output("https://x.test", "some content", _meta(), None)
+    text = chromium_scrape._format_scrape_output("https://x.test", "some content", _meta(), None)
     assert "raw fallback" not in text
     assert "Bytes (content below, after PruningContentFilter):" in text
 
@@ -267,9 +267,9 @@ async def test_try_scrape_captures_landed_url_raw(monkeypatch):
                                "203078159_-woman-hybrid-jacket-fix-hood-33z6026-cmp-campagnolo.html",
             )
 
-    monkeypatch.setattr(scrape_url, "AsyncWebCrawler", _FakeCrawler)
+    monkeypatch.setattr(chromium_scrape, "AsyncWebCrawler", _FakeCrawler)
 
-    _, meta = await scrape_url.try_scrape(
+    _, meta = await chromium_scrape.try_scrape(
         "https://www.idealo.de/preisvergleich/OffersOfProduct/203078159_-fritz-box-7510-avm.html")
 
     assert meta["landed_url"] == (
@@ -293,17 +293,17 @@ async def test_try_scrape_landed_url_is_none_on_launch_failure(monkeypatch):
         async def __aexit__(self, *a):
             return False
 
-    monkeypatch.setattr(scrape_url, "AsyncWebCrawler", _RaisingCrawler)
+    monkeypatch.setattr(chromium_scrape, "AsyncWebCrawler", _RaisingCrawler)
 
-    _, meta = await scrape_url.try_scrape("https://example.com")
+    _, meta = await chromium_scrape.try_scrape("https://example.com")
 
     assert meta["acquisition_error"] == "browser_missing"
     assert meta["landed_url"] is None
 
 
 @pytest.mark.asyncio
-async def test_scrape_url_workflow_logs_landed_url(monkeypatch):
-    """scrape_url_workflow's log_scrape record carries the raw landed_url off meta — no verdict
+async def test_scrape_url_chromium_workflow_logs_landed_url(monkeypatch):
+    """scrape_url_chromium_workflow's log_scrape record carries the raw landed_url off meta — no verdict
     computed or stored alongside it (removed: an agent reading the log has both "url" and
     "landed_url" in the same record and compares them itself)."""
     captured = {}
@@ -312,11 +312,11 @@ async def test_scrape_url_workflow_logs_landed_url(monkeypatch):
         return "real content", _meta(
             landed_url="https://platform.claude.com/en/api/getting-started")
 
-    monkeypatch.setattr(scrape_url, "try_scrape", _fake_try_scrape)
-    monkeypatch.setattr(scrape_url, "write_sidecar", lambda *a, **kw: None)
-    monkeypatch.setattr(scrape_url, "log_scrape", lambda record: captured.update(record))
+    monkeypatch.setattr(chromium_scrape, "try_scrape", _fake_try_scrape)
+    monkeypatch.setattr(chromium_scrape, "write_sidecar", lambda *a, **kw: None)
+    monkeypatch.setattr(chromium_scrape, "log_scrape", lambda record: captured.update(record))
 
-    await scrape_url.scrape_url_workflow("https://docs.anthropic.com/en/api/getting-started")
+    await chromium_scrape.scrape_url_chromium_workflow("https://docs.anthropic.com/en/api/getting-started")
 
     assert captured["landed_url"] == "https://platform.claude.com/en/api/getting-started"
     assert "same_target" not in captured
@@ -333,7 +333,7 @@ async def test_try_scrape_times_out_at_budget(monkeypatch, caplog):
     traceback. Budget shortened to keep this a fast regression guard; real-budget timing is
     verified separately (see completion checklist)."""
     _patch_cdp_launch_mechanics(monkeypatch)
-    monkeypatch.setattr(scrape_url, "TOTAL_SCRAPE_BUDGET_S", 0.05)
+    monkeypatch.setattr(chromium_scrape, "TOTAL_SCRAPE_BUDGET_S", 0.05)
 
     class _HangingCrawler:
         def __init__(self, *a, **kw):
@@ -349,10 +349,10 @@ async def test_try_scrape_times_out_at_budget(monkeypatch, caplog):
         async def arun(self, *a, **kw):
             await asyncio.sleep(10)
 
-    monkeypatch.setattr(scrape_url, "AsyncWebCrawler", _HangingCrawler)
+    monkeypatch.setattr(chromium_scrape, "AsyncWebCrawler", _HangingCrawler)
 
-    with caplog.at_level(logging.WARNING, logger="src.scraper.scrape_url"):
-        content, meta = await scrape_url.try_scrape("https://example.com")
+    with caplog.at_level(logging.WARNING, logger="src.scraper.chromium_scrape"):
+        content, meta = await chromium_scrape.try_scrape("https://example.com")
 
     assert content == ""
     assert meta["acquisition_error"] == "budget_exhausted"
@@ -361,16 +361,16 @@ async def test_try_scrape_times_out_at_budget(monkeypatch, caplog):
 
 def test_acquisition_error_messages_has_actionable_browser_missing_fix():
     """The acquisition-error description for browser_missing names the concrete install command."""
-    msg = scrape_url._ACQUISITION_ERROR_MESSAGES["browser_missing"]
+    msg = chromium_scrape._ACQUISITION_ERROR_MESSAGES["browser_missing"]
     assert "patchright install chromium" in msg
 
 
 def test_acquisition_error_message_budget_exhausted_reads_real_budget():
     """budget_exhausted's message reads the REAL budget that was in effect for that call
     (config.total_budget_s) — not a re-declared literal."""
-    msg = scrape_url._acquisition_error_message(
-        "budget_exhausted", {"total_budget_s": scrape_url.TOTAL_SCRAPE_BUDGET_S})
-    assert str(scrape_url.TOTAL_SCRAPE_BUDGET_S) in msg
+    msg = chromium_scrape._acquisition_error_message(
+        "budget_exhausted", {"total_budget_s": chromium_scrape.TOTAL_SCRAPE_BUDGET_S})
+    assert str(chromium_scrape.TOTAL_SCRAPE_BUDGET_S) in msg
     assert "budget" in msg.lower()
 
 
@@ -381,14 +381,14 @@ def test_acquisition_error_message_budget_exhausted_reads_real_budget():
 # ---------------------------------------------------------------------------
 
 def _real_stamp_args():
-    browser_config = scrape_url.BrowserConfig(headless=True, verbose=False, enable_stealth=True)
-    adapter = scrape_url.UndetectedAdapter()
-    crawler_strategy = scrape_url.AsyncPlaywrightCrawlerStrategy(
+    browser_config = chromium_scrape.BrowserConfig(headless=True, verbose=False, enable_stealth=True)
+    adapter = chromium_scrape.UndetectedAdapter()
+    crawler_strategy = chromium_scrape.AsyncPlaywrightCrawlerStrategy(
         browser_config=browser_config, browser_adapter=adapter
     )
-    run_config = scrape_url.CrawlerRunConfig(
-        markdown_generator=scrape_url.DefaultMarkdownGenerator(
-            content_filter=scrape_url.PruningContentFilter(threshold=0.48, preserve_tags=["pre", "code"])
+    run_config = chromium_scrape.CrawlerRunConfig(
+        markdown_generator=chromium_scrape.DefaultMarkdownGenerator(
+            content_filter=chromium_scrape.PruningContentFilter(threshold=0.48, preserve_tags=["pre", "code"])
         ),
     )
     return browser_config, adapter, crawler_strategy, run_config
@@ -397,8 +397,8 @@ def _real_stamp_args():
 def test_extract_config_stamp_carries_total_budget_s():
     """The config stamp reads total_budget_s off the value passed in, not a re-declared literal."""
     args = _real_stamp_args()
-    stamp = scrape_url.extract_config_stamp(*args, scrape_url.TOTAL_SCRAPE_BUDGET_S)
-    assert stamp["total_budget_s"] == scrape_url.TOTAL_SCRAPE_BUDGET_S
+    stamp = chromium_scrape.extract_config_stamp(*args, chromium_scrape.TOTAL_SCRAPE_BUDGET_S)
+    assert stamp["total_budget_s"] == chromium_scrape.TOTAL_SCRAPE_BUDGET_S
 
 
 def test_extract_config_stamp_carries_launch_mode_not_headless():
@@ -406,8 +406,8 @@ def test_extract_config_stamp_carries_launch_mode_not_headless():
     only one acquisition path exists); the old "headless" boolean field is gone entirely (it was
     dead on the cdp path — never read inside crawl4ai's cdp_url branch)."""
     args = _real_stamp_args()
-    stamp = scrape_url.extract_config_stamp(*args, scrape_url.TOTAL_SCRAPE_BUDGET_S)
-    assert stamp["launch_mode"] == scrape_url.LAUNCH_MODE
+    stamp = chromium_scrape.extract_config_stamp(*args, chromium_scrape.TOTAL_SCRAPE_BUDGET_S)
+    assert stamp["launch_mode"] == chromium_scrape.LAUNCH_MODE
     assert "headless" not in stamp
 
 
@@ -415,9 +415,9 @@ def test_extract_config_stamp_no_longer_carries_max_content_length():
     """max_content_length is gone (the parameter it described no longer exists) — build_config_record
     removed, its only job was merging it in."""
     args = _real_stamp_args()
-    stamp = scrape_url.extract_config_stamp(*args, scrape_url.TOTAL_SCRAPE_BUDGET_S)
+    stamp = chromium_scrape.extract_config_stamp(*args, chromium_scrape.TOTAL_SCRAPE_BUDGET_S)
     assert "max_content_length" not in stamp
-    assert not hasattr(scrape_url, "build_config_record")
+    assert not hasattr(chromium_scrape, "build_config_record")
 
 
 def test_extract_config_stamp_no_longer_carries_min_content_threshold():
@@ -425,9 +425,9 @@ def test_extract_config_stamp_no_longer_carries_min_content_threshold():
     2026-08-22 — content is always fit_markdown; the stamp no longer carries a field for a
     selection mechanism that no longer exists."""
     args = _real_stamp_args()
-    stamp = scrape_url.extract_config_stamp(*args, scrape_url.TOTAL_SCRAPE_BUDGET_S)
+    stamp = chromium_scrape.extract_config_stamp(*args, chromium_scrape.TOTAL_SCRAPE_BUDGET_S)
     assert "min_content_threshold" not in stamp
-    assert not hasattr(scrape_url, "MIN_CONTENT_THRESHOLD")
+    assert not hasattr(chromium_scrape, "MIN_CONTENT_THRESHOLD")
 
 
 def test_extract_config_stamp_no_longer_carries_excluded_selector_hash():
@@ -436,9 +436,9 @@ def test_extract_config_stamp_no_longer_carries_excluded_selector_hash():
     consent handling alone now. The stamp no longer hashes an excluded_selector that no longer
     exists."""
     args = _real_stamp_args()
-    stamp = scrape_url.extract_config_stamp(*args, scrape_url.TOTAL_SCRAPE_BUDGET_S)
+    stamp = chromium_scrape.extract_config_stamp(*args, chromium_scrape.TOTAL_SCRAPE_BUDGET_S)
     assert "excluded_selector_hash" not in stamp
-    assert not hasattr(scrape_url, "COOKIE_CONSENT_SELECTOR")
+    assert not hasattr(chromium_scrape, "COOKIE_CONSENT_SELECTOR")
 
 
 # ---------------------------------------------------------------------------
@@ -448,9 +448,9 @@ def test_extract_config_stamp_no_longer_carries_excluded_selector_hash():
 
 def test_is_garbage_content_still_importable_and_functioning():
     """Guard against accidentally deleting the function itself — only its use as a gate inside
-    this module's own try_scrape/scrape_url_workflow was removed."""
-    assert scrape_url.is_garbage_content("short") == "minimal_content"
-    assert scrape_url.is_garbage_content("A" * 5000 + " ordinary long real content " * 20) is None
+    this module's own try_scrape/scrape_url_chromium_workflow was removed."""
+    assert chromium_scrape.is_garbage_content("short") == "minimal_content"
+    assert chromium_scrape.is_garbage_content("A" * 5000 + " ordinary long real content " * 20) is None
 
 
 @pytest.mark.asyncio
@@ -459,7 +459,7 @@ async def test_try_scrape_does_not_call_is_garbage_content(monkeypatch):
     like a historical garbage category (short 403-flavored text) must come back as content."""
     _patch_cdp_launch_mechanics(monkeypatch)
     called = []
-    monkeypatch.setattr(scrape_url, "is_garbage_content",
+    monkeypatch.setattr(chromium_scrape, "is_garbage_content",
                          lambda content: called.append(content) or "http_error")
 
     class _FakeCrawler:
@@ -477,9 +477,9 @@ async def test_try_scrape_does_not_call_is_garbage_content(monkeypatch):
                                              "on that basis, the agent judges now" + "x" * 200,
                                 status_code=403)
 
-    monkeypatch.setattr(scrape_url, "AsyncWebCrawler", _FakeCrawler)
+    monkeypatch.setattr(chromium_scrape, "AsyncWebCrawler", _FakeCrawler)
 
-    await scrape_url.try_scrape("https://example.com")
+    await chromium_scrape.try_scrape("https://example.com")
     assert called == []
 
 
@@ -501,7 +501,7 @@ def _meta(**overrides):
 
 
 def test_format_scrape_output_facts_precede_content():
-    text = scrape_url._format_scrape_output("https://x.test", "the real page content here",
+    text = chromium_scrape._format_scrape_output("https://x.test", "the real page content here",
                                               _meta(), None)
     facts_idx = text.index("## Acquisition facts")
     content_idx = text.index("## Content")
@@ -512,19 +512,19 @@ def test_format_scrape_output_facts_precede_content():
 def test_format_scrape_output_never_replaces_content_with_a_message():
     """Content appears verbatim in the output — not summarized, not replaced."""
     real_content = "SPECIFIC_MARKER_TEXT_12345 that must appear byte-for-byte in the output"
-    text = scrape_url._format_scrape_output("https://x.test", real_content, _meta(), None)
+    text = chromium_scrape._format_scrape_output("https://x.test", real_content, _meta(), None)
     assert real_content in text
 
 
 def test_format_scrape_output_zero_content_is_explicit_not_suppressed():
     """Zero content renders as an explicit fact, not a discard message standing in for the page."""
-    text = scrape_url._format_scrape_output(
+    text = chromium_scrape._format_scrape_output(
         "https://x.test", "", _meta(status_code=None, raw_markdown_bytes=0,
                                      acquisition_error="budget_exhausted",
-                                     config={"total_budget_s": scrape_url.TOTAL_SCRAPE_BUDGET_S}), None)
+                                     config={"total_budget_s": chromium_scrape.TOTAL_SCRAPE_BUDGET_S}), None)
     assert "(no content returned)" in text
     assert (f"Acquisition error: scrape exceeded the total time budget "
-            f"({scrape_url.TOTAL_SCRAPE_BUDGET_S}s)") in text
+            f"({chromium_scrape.TOTAL_SCRAPE_BUDGET_S}s)") in text
     assert "Error scraping" not in text  # the old discard-message phrasing must not reappear
 
 
@@ -538,7 +538,7 @@ def test_format_scrape_output_zero_content_is_explicit_not_suppressed():
 def test_format_scrape_output_renders_landed_url_line_when_it_differs():
     """A landed URL on a genuinely different host renders as an explicit, readable fact — wording
     makes no claim about "redirect" or "different target", since nothing decides that anymore."""
-    text = scrape_url._format_scrape_output(
+    text = chromium_scrape._format_scrape_output(
         "https://docs.anthropic.com/en/api/getting-started",
         "the real landed page content",
         _meta(landed_url="https://platform.claude.com/en/api/getting-started"),
@@ -550,7 +550,7 @@ def test_format_scrape_output_renders_landed_url_line_when_it_differs():
 def test_format_scrape_output_renders_landed_url_line_when_it_matches():
     """landed_url identical to the requested URL — the overwhelming majority case — still renders
     the line, unconditionally, exactly like HTTP status does."""
-    text = scrape_url._format_scrape_output(
+    text = chromium_scrape._format_scrape_output(
         "https://www.rfc-editor.org/info/rfc2616/", "the rfc content",
         _meta(landed_url="https://www.rfc-editor.org/info/rfc2616/"), None)
     assert ("Landed URL (the URL the browser actually returned content from): "
@@ -562,7 +562,7 @@ def test_format_scrape_output_renders_landed_url_line_when_absent():
     line — the absence itself is the fact, rendered literally (None), matching how every other
     absent value in this block reads (e.g. HTTP status on a budget_exhausted record) rather than
     being suppressed into a missing line."""
-    text = scrape_url._format_scrape_output(
+    text = chromium_scrape._format_scrape_output(
         "https://x.test/a", "", _meta(landed_url=None, acquisition_error="browser_missing"), None)
     assert "Landed URL (the URL the browser actually returned content from): None" in text
 
@@ -570,7 +570,7 @@ def test_format_scrape_output_renders_landed_url_line_when_absent():
 def test_format_scrape_output_crawl4ai_diagnosis_labeled_as_observation_not_verdict():
     """The diagnosis line itself carries the observation-not-verdict caveat — a caller reading
     only the output text (not the source) must see this, not just a code comment."""
-    text = scrape_url._format_scrape_output(
+    text = chromium_scrape._format_scrape_output(
         "https://x.test", "full product page content here, well past any thin-page threshold",
         _meta(status_code=403,
               crawl4ai_error_message="Blocked by anti-bot protection: Cloudflare JS challenge"),
@@ -604,11 +604,11 @@ async def test_launch_mode_truthful_on_cdp_path(monkeypatch):
         async def arun(self, url, config=None):
             return _FakeResult(raw_markdown="x" * 300)
 
-    monkeypatch.setattr(scrape_url, "AsyncWebCrawler", _FakeCrawler)
+    monkeypatch.setattr(chromium_scrape, "AsyncWebCrawler", _FakeCrawler)
 
-    _, meta = await scrape_url.try_scrape("https://example.com")
-    assert meta["config"]["launch_mode"] == scrape_url.LAUNCH_MODE
-    assert meta["config"]["total_budget_s"] == scrape_url.TOTAL_SCRAPE_BUDGET_S
+    _, meta = await chromium_scrape.try_scrape("https://example.com")
+    assert meta["config"]["launch_mode"] == chromium_scrape.LAUNCH_MODE
+    assert meta["config"]["total_budget_s"] == chromium_scrape.TOTAL_SCRAPE_BUDGET_S
 
 
 # ---------------------------------------------------------------------------
@@ -620,7 +620,7 @@ async def test_launch_mode_truthful_on_cdp_path(monkeypatch):
 async def test_cdp_headed_teardown_fires_on_exception(monkeypatch):
     _patch_cdp_launch_mechanics(monkeypatch)
     kill_calls = []
-    monkeypatch.setattr(scrape_url, "_kill_by_profile", lambda d: kill_calls.append(d))
+    monkeypatch.setattr(chromium_scrape, "_kill_by_profile", lambda d: kill_calls.append(d))
 
     class _RaisingCrawler:
         def __init__(self, *a, **kw):
@@ -632,9 +632,9 @@ async def test_cdp_headed_teardown_fires_on_exception(monkeypatch):
         async def __aexit__(self, *a):
             return False
 
-    monkeypatch.setattr(scrape_url, "AsyncWebCrawler", _RaisingCrawler)
+    monkeypatch.setattr(chromium_scrape, "AsyncWebCrawler", _RaisingCrawler)
 
-    await scrape_url.try_scrape("https://example.com")
+    await chromium_scrape.try_scrape("https://example.com")
 
     assert len(kill_calls) == 1
 
@@ -643,8 +643,8 @@ async def test_cdp_headed_teardown_fires_on_exception(monkeypatch):
 async def test_cdp_headed_teardown_fires_on_budget_timeout(monkeypatch):
     _patch_cdp_launch_mechanics(monkeypatch)
     kill_calls = []
-    monkeypatch.setattr(scrape_url, "_kill_by_profile", lambda d: kill_calls.append(d))
-    monkeypatch.setattr(scrape_url, "TOTAL_SCRAPE_BUDGET_S", 0.05)
+    monkeypatch.setattr(chromium_scrape, "_kill_by_profile", lambda d: kill_calls.append(d))
+    monkeypatch.setattr(chromium_scrape, "TOTAL_SCRAPE_BUDGET_S", 0.05)
 
     class _HangingCrawler:
         def __init__(self, *a, **kw):
@@ -657,9 +657,9 @@ async def test_cdp_headed_teardown_fires_on_budget_timeout(monkeypatch):
         async def __aexit__(self, *a):
             return False
 
-    monkeypatch.setattr(scrape_url, "AsyncWebCrawler", _HangingCrawler)
+    monkeypatch.setattr(chromium_scrape, "AsyncWebCrawler", _HangingCrawler)
 
-    _, meta = await scrape_url.try_scrape("https://example.com")
+    _, meta = await chromium_scrape.try_scrape("https://example.com")
 
     assert meta["acquisition_error"] == "budget_exhausted"
     assert len(kill_calls) == 1
@@ -672,24 +672,24 @@ async def test_cdp_headed_teardown_fires_on_budget_timeout(monkeypatch):
 def test_wait_for_devtools_port_reads_real_port_file(tmp_path):
     port_file = tmp_path / "DevToolsActivePort"
     port_file.write_text("54321\n/devtools/browser/fake-uuid\n")
-    port = scrape_url._wait_for_devtools_port(str(tmp_path), timeout_s=2.0)
+    port = chromium_scrape._wait_for_devtools_port(str(tmp_path), timeout_s=2.0)
     assert port == 54321
 
 
 def test_wait_for_devtools_port_times_out_when_file_never_appears(tmp_path):
     with pytest.raises(TimeoutError, match="DevToolsActivePort did not appear"):
-        scrape_url._wait_for_devtools_port(str(tmp_path), timeout_s=0.3)
+        chromium_scrape._wait_for_devtools_port(str(tmp_path), timeout_s=0.3)
 
 
 def test_find_app_bundle_walks_up_to_app_suffix():
-    bundle = scrape_url._find_app_bundle(
+    bundle = chromium_scrape._find_app_bundle(
         "/Users/x/Library/Caches/ms-playwright/chromium-1228/chrome-mac-arm64/"
         "Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing")
     assert str(bundle).endswith("Google Chrome for Testing.app")
 
 
 def test_find_app_bundle_returns_none_when_no_app_ancestor():
-    assert scrape_url._find_app_bundle("/usr/local/bin/chrome") is None
+    assert chromium_scrape._find_app_bundle("/usr/local/bin/chrome") is None
 
 
 # ---------------------------------------------------------------------------
@@ -711,7 +711,7 @@ def test_build_browser_flags_symbol_resolves_and_is_callable():
     assert params, "build_browser_flags must accept at least one parameter (the BrowserConfig)"
 
     # Real call, real BrowserConfig — not mocked. Raises loudly if the signature is incompatible.
-    flags = ManagedBrowser.build_browser_flags(scrape_url.BrowserConfig(enable_stealth=True))
+    flags = ManagedBrowser.build_browser_flags(chromium_scrape.BrowserConfig(enable_stealth=True))
     assert isinstance(flags, list)
     assert all(isinstance(f, str) for f in flags)
     assert len(flags) > 0
@@ -723,7 +723,7 @@ def test_build_self_launch_flags_keeps_gpu_on_under_stealth():
     (its own comment: keep WebGL working under stealth). Deliberate 3-flag deviation from literal
     parity with the old direct-launch path's cmdline, confirmed here so it can't silently regress
     back to disabling GPU."""
-    flags = scrape_url._build_self_launch_flags(scrape_url.BrowserConfig(enable_stealth=True))
+    flags = chromium_scrape._build_self_launch_flags(chromium_scrape.BrowserConfig(enable_stealth=True))
     assert "--disable-gpu" not in flags
     assert "--disable-gpu-compositing" not in flags
     assert "--disable-software-rasterizer" not in flags
@@ -731,6 +731,6 @@ def test_build_self_launch_flags_keeps_gpu_on_under_stealth():
 
 
 def test_build_self_launch_flags_includes_window_size_when_viewport_set():
-    config = scrape_url.BrowserConfig(enable_stealth=True, viewport_width=1080, viewport_height=600)
-    flags = scrape_url._build_self_launch_flags(config)
+    config = chromium_scrape.BrowserConfig(enable_stealth=True, viewport_width=1080, viewport_height=600)
+    flags = chromium_scrape._build_self_launch_flags(config)
     assert "--window-size=1080,600" in flags

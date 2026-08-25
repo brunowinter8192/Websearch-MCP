@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
-from src.scraper.scrape_url import scrape_url_workflow
+from src.scraper.chromium_scrape import scrape_url_chromium_workflow
 
 
 # ORCHESTRATOR
@@ -48,7 +48,7 @@ async def process_single_domain(url: str) -> None:
     print(f"\nProcessing: {domain_name}")
     print(f"URL: {url}")
 
-    response = await scrape_url_workflow(url)
+    response = await scrape_url_chromium_workflow(url)
 
     if isinstance(response, list) and len(response) > 0:
         content = response[0].text

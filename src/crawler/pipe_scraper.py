@@ -7,8 +7,8 @@ from pathlib import Path
 
 from crawl4ai import AsyncWebCrawler
 
-# From src/scraper/scrape_url.py: same config-hash algorithm used by the ad-hoc path's log
-from src.scraper.scrape_url import hash_config
+# From src/scraper/chromium_scrape.py: same config-hash algorithm used by the ad-hoc path's log
+from src.scraper.chromium_scrape import hash_config
 # From src/crawler/pipe_scraper_constants.py: shared pacing constants
 from src.crawler.pipe_scraper_constants import DOWNLOAD_DELAY, CONCURRENCY_PER_DOMAIN, CAMOUFOX_CONCURRENCY_PER_DOMAIN
 # From src/crawler/pipe_scraper_config.py: chromium browser/run config construction + config stamp

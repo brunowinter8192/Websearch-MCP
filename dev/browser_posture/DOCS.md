@@ -3,7 +3,7 @@
 ## Role
 Milestone probes backing headed-vs-headless browser posture decisions across BOTH browser lanes in
 this project: the pydoll-driven DOM search engines (`src/search/browser.py`) and the patchright/
-crawl4ai-driven ad-hoc chromium scrape lane (`src/scraper/scrape_url.py`'s `try_scrape`). `01`-`03`
+crawl4ai-driven ad-hoc chromium scrape lane (`src/scraper/chromium_scrape.py`'s `try_scrape`). `01`-`03`
 + `_lib.py` cover the pydoll lane: launch/navigation latency and the Playwright-default
 backgrounding-flag effect, the everyday parallel-user-Chrome collision case, and whether
 `src/search/browser.py`'s JS fingerprint patches (written for headless) still make sense under

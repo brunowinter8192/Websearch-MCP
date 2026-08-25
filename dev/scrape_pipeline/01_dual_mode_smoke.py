@@ -130,9 +130,9 @@ async def run_mode1(url: str, output_dir: Path) -> dict:
     return parse_mode1_result(stdout)
 
 
-# Run Mode 2 (scrape_url): captures stdout to file, returns result dict
+# Run Mode 2 (scrape_url_chromium): captures stdout to file, returns result dict
 async def run_mode2(url: str, output_dir: Path) -> dict:
-    cmd = [PYTHON, CLI, "scrape_url", url]
+    cmd = [PYTHON, CLI, "scrape_url_chromium", url]
     rc, stdout, _ = await run_subprocess_async(cmd, SUBPROCESS_TIMEOUT)
     if rc == -1:
         stdout = f"[Timeout after {SUBPROCESS_TIMEOUT}s]"
