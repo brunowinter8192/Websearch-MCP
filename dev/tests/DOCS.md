@@ -47,12 +47,14 @@ challenge).
 immediate acquire when free, genuine blocking until a background thread's `release()`, and the
 stale-takeover path (a real held flock + a backdated sidecar triggers `on_stale` then reacquires).
 
-### test_browser.py (217 LOC)
+### test_browser.py (247 LOC)
 **Purpose:** `src/search/browser.py` — `_reap_session_profile`/`_record_own_pids`/
 `_terminate_then_kill` pgrep-output parsing and psutil dispatch (subprocess+psutil mocked);
 `get_tab()`'s critical-section ordering (lock -> reap -> launch -> record-own-pids, the exact
 sequence the browser-lifecycle milestone's live parallel-run bug depended on getting right);
-`kill_own_chrome()`'s full teardown sequence and its no-op path when the browser was never touched.
+`kill_own_chrome()`'s full teardown sequence, its no-op path when the browser was never touched,
+and the PID-safety-net-and-lock-release-still-run path when `close_browser()` itself raises
+(Chrome already dead mid-sweep).
 
 ### test_query_logger.py (319 LOC)
 **Purpose:** `src/search/query_logger.py` (`log_query` fail-soft JSONL write) + per-engine timing

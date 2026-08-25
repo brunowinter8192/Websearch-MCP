@@ -200,6 +200,36 @@ async def test_kill_own_chrome_full_teardown_sequence(monkeypatch):
     assert browser._lock_handle is None
 
 
+@pytest.mark.asyncio
+async def test_kill_own_chrome_runs_safety_net_and_release_when_close_browser_raises(monkeypatch):
+    _reset_state(monkeypatch)
+    monkeypatch.setattr(browser, "_browser", FakeChrome(None))
+    monkeypatch.setattr(browser, "_owned_pids", [7])
+
+    async def raising_close_browser():
+        raise ConnectionError("dead websocket")
+
+    monkeypatch.setattr(browser, "close_browser", raising_close_browser)
+    kill_called = []
+    monkeypatch.setattr(browser, "_terminate_then_kill", lambda pids, timeout_s=5.0: kill_called.append((pids, timeout_s)))
+
+    released = []
+
+    class FakeLockHandle:
+        def release(self):
+            released.append(1)
+
+    monkeypatch.setattr(browser, "_lock_handle", FakeLockHandle())
+
+    await browser.kill_own_chrome()
+
+    assert kill_called == [([7], 10.0)]
+    assert released == [1]
+    assert browser._browser is None
+    assert browser._owned_pids == []
+    assert browser._lock_handle is None
+
+
 def _make_async_recorder(sink):
     async def recorder():
         sink.append(1)

@@ -191,16 +191,24 @@ async def close_browser():
         _tab = None
 
 
-# Deterministic own-run teardown: graceful CDP close_browser() first, a PID-scoped psutil
-# terminate/kill safety net for anything that survives it (never a profile-pattern kill of a live
-# foreign browser — that PID list is only ever this run's own, per _record_own_pids' guarantee),
-# then release the cross-process lock. Safe to call even if this run never touched the browser
-# (pure-HTTP-engine runs) — every step is a no-op in that case. Called once, from
+# Deterministic own-run teardown: graceful CDP close_browser() first (caught — Chrome dying mid-
+# sweep, crash or manual close, makes _browser.stop() raise on the dead websocket before its own
+# `_browser = None` reset runs; a bare `await close_browser()` here would then skip the PID safety
+# net and the lock release below it, leaking the lock until the 81s stale-takeover), a PID-scoped
+# psutil terminate/kill safety net for anything that survives it (never a profile-pattern kill of a
+# live foreign browser — that PID list is only ever this run's own, per _record_own_pids'
+# guarantee), then release the cross-process lock. Safe to call even if this run never touched the
+# browser (pure-HTTP-engine runs) — every step is a no-op in that case. Called once, from
 # search_web_workflow's finally around the engine sweep, and as cli.py's atexit backstop.
 async def kill_own_chrome() -> None:
-    global _owned_pids, _lock_handle
+    global _browser, _tab, _owned_pids, _lock_handle
     if _browser is not None:
-        await close_browser()
+        try:
+            await close_browser()
+        except Exception as e:
+            logger.warning("close_browser failed (Chrome likely already dead): %s", e)
+            _browser = None
+            _tab = None
     if _owned_pids:
         logger.info("Killing own Chrome (safety net): pids=%s", _owned_pids)
         _terminate_then_kill(_owned_pids, timeout_s=10.0)
