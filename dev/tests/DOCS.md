@@ -100,13 +100,21 @@ fetch_with_retry` backoff/re-raise, `pool_loaders.load_backfill_pool` per-source
 `logger.AcquireLogger`/`_group_pool_sources`, `loop.run_loop` refresh-boundary integration
 (pool swap + wset state-continuity, confirmed production-correct not a test bug).
 
-### test_camoufox_scrape.py (606 LOC)
+### test_camoufox_scrape.py (810 LOC)
 **Purpose:** `src/scraper/camoufox_scrape.py` — `try_scrape_camoufox` acquisition-error states
 (budget/browser_missing/exception), the "Invalid IPv6 URL" urlsplit regression, HTML-preserved-
 on-markdown-conversion-failure, calibration surface (`_build_camoufox_kwargs`/
 `_extract_camoufox_config_stamp`/config_hash stability), `scrape_url_camoufox_workflow` logging,
-`_format_camoufox_output`, no-focus-steal launch (`_find_app_bundle`/`_ensure_no_focus_steal`,
-real plistlib round-trip).
+`_format_camoufox_output`, no-focus-steal launch layer 1 (`_find_app_bundle`/
+`_ensure_no_focus_steal`, real plistlib round-trip). As of 2026-08-25, layer 2 (mock-level, no real
+launches): `ignore_default_args` kwarg presence, `_get_frontmost_app`/`_activate_app`/
+`_is_key_window_owner` (subprocess mocked), `_key_window_steal_watchdog`'s reactivation logic (a
+real `asyncio.Task` driven by faked polling primitives), and `_acquire_camoufox`'s watchdog
+wiring — created scoped to the real resolved app name, cancelled on success, cancelled when the
+browser context raises (via a fake `AsyncCamoufox.__aenter__` that yields once before raising —
+see the test file's own comment on why a no-yield raise would starve the watchdog task of its
+first scheduling turn and false-negative the assertion), and never created when no `.app` ancestor
+resolves.
 
 ### test_chromium_scrape.py (918 LOC)
 **Purpose:** `src/scraper/chromium_scrape.py` — `is_browser_launch_error`, `try_scrape` acquisition-
