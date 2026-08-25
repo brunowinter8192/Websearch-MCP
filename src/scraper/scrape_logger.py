@@ -29,7 +29,7 @@ def _url_slug(url: str) -> str:
 
 
 # Write sidecar .md to <log_dir>/scrape_content/; return relative path or None on empty/error
-def write_sidecar(url: str, ts: str, content: str, outcome: str, mode: str) -> str | None:
+def write_sidecar(url: str, ts: str, content: str, outcome: str, mode: str, engine: str) -> str | None:
     if not content:
         return None
     env = os.environ.get("WEBSEARCH_SCRAPE_LOG_PATH")
@@ -42,6 +42,7 @@ def write_sidecar(url: str, ts: str, content: str, outcome: str, mode: str) -> s
         f"<!-- outcome: {outcome} -->\n"
         f"<!-- bytes: {len(content.encode('utf-8'))} -->\n"
         f"<!-- mode: {mode} -->\n"
+        f"<!-- engine: {engine} -->\n"
     )
     try:
         sidecar_dir.mkdir(parents=True, exist_ok=True)

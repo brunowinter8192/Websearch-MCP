@@ -30,9 +30,9 @@ URL scraping for the `scrape_url_chromium` CLI subcommand and the shared garbage
 **Called by:** `cli.py` (scrape_url_chromium_workflow); `src/crawler/crawl_site.py` (is_garbage_content); `src/crawler/pipe_scraper.py` (hash_config); `src/crawler/pipe_scraper_acquisition.py` (extract_crawl4ai_diagnosis — reused as-is, not path-specific).
 **Calls out:** `crawl4ai` (AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode, UndetectedAdapter, AsyncPlaywrightCrawlerStrategy, PruningContentFilter, DefaultMarkdownGenerator); `crawl4ai.browser_manager.ManagedBrowser` (build_browser_flags, live call); `patchright.async_api` (async_playwright, for bundle-path resolution only — connecting/scraping itself goes through crawl4ai); `htmldate` (find_date); `psutil` (age checks in `_reap_orphaned_scrapes`); `death_pipe` (spawn_watchdog, _terminate_then_kill); `mcp.types.TextContent`; `scrape_logger` (log_scrape, write_sidecar); macOS `open`/`pgrep` (self-launch + teardown, cdp path only).
 
-### scrape_logger.py (66 LOC)
+### scrape_logger.py (67 LOC)
 
-**Purpose:** Per-URL structured logging for scrape_url_chromium — one JSONL record + one full-content `.md` sidecar per call, shared by both the chromium and Camoufox acquisition lanes (`"engine"` field discriminates).
+**Purpose:** Per-URL structured logging for scrape_url_chromium — one JSONL record + one full-content `.md` sidecar per call, shared by both the chromium and Camoufox acquisition lanes (`"engine"` field discriminates both the JSONL record and, as of 2026-08-25, the sidecar's own HTML-comment header).
 **Reads:** `WEBSEARCH_SCRAPE_LOG_PATH` env var (fallback `src/logs/scrape_log.jsonl`); sidecar dir `<log_dir>/scrape_content/`.
 **Writes:** `src/logs/scrape_log.jsonl` (one line per call); `<log_dir>/scrape_content/<ts>_<slug>.md` (per-call sidecar). Both gitignored.
 **Called by:** `chromium_scrape.py` (end of scrape_url_chromium_workflow); `camoufox_scrape.py` (end of scrape_url_camoufox_workflow) — same log file, both lanes, see the engine-discriminator note above.

@@ -49,7 +49,7 @@ async def scrape_url_camoufox_workflow(url: str, block_images: bool = False) -> 
 
     outcome = meta.get("acquisition_error") or ("ok" if content else "empty")
     mode = "raw_html" if meta.get("content_is_raw_html") else "markdown"
-    content_path = write_sidecar(url, ts, content, outcome, mode)
+    content_path = write_sidecar(url, ts, content, outcome, mode, "camoufox")
     log_scrape({
         "ts": ts, "url": url, "domain": domain, "mode": mode, "outcome": outcome,
         "engine": "camoufox",
