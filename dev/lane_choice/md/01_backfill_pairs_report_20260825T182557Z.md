@@ -1,0 +1,148 @@
+## Funnel (this invocation)
+- Distinct URLs in production log: 106
+- Skipped (.pdf, CLI rejects anyway): 0
+- Target URLs this invocation: 57
+- Pairs already done this backfill session (resumed, skipped): 110
+- Fired this invocation: chromium=2, camoufox=2
+- Wall time this invocation: 53.6s
+
+## Cumulative (all invocations, from resume-state)
+- Total pairs recorded: 124
+- Distinct URLs with BOTH lanes recorded: 62
+
+## Outcome counts per engine (cumulative)
+
+**chromium** (62 total):
+- `ok`: 61
+- `empty`: 1
+
+**camoufox** (62 total):
+- `ok`: 61
+- `exception`: 1
+
+## Per-URL+engine outcomes (cumulative)
+
+- `chromium ` ok                    11456ms  https://www.cheaney.co.uk/blog/how-to-wear-loafers-professionally-the-dos-and-donts-of-wearing-loafers-in-the-office/
+- `camoufox ` ok                    10181ms  https://www.cheaney.co.uk/blog/how-to-wear-loafers-professionally-the-dos-and-donts-of-wearing-loafers-in-the-office/
+- `chromium ` ok                    10262ms  https://www.ruidos.org/Noise/WHO_Noise_guidelines_summary.html
+- `camoufox ` ok                     8125ms  https://www.ruidos.org/Noise/WHO_Noise_guidelines_summary.html
+- `chromium ` ok                     9907ms  https://musicamagica.de/kuehlschrank-geraeusche-reduzieren/
+- `camoufox ` ok                     8940ms  https://musicamagica.de/kuehlschrank-geraeusche-reduzieren/
+- `chromium ` ok                    16783ms  https://www.amazon.de/dp/B08532X8DC
+- `camoufox ` ok                    13357ms  https://www.amazon.de/dp/B08532X8DC
+- `chromium ` ok                    11739ms  https://www.dhl.de/de/privatkunden/pakete-empfangen/verfolgen.html?piececode=JJD149990200054114728
+- `camoufox ` ok                     8679ms  https://www.dhl.de/de/privatkunden/pakete-empfangen/verfolgen.html?piececode=JJD149990200054114728
+- `chromium ` ok                    10183ms  https://www.scrapingbee.com/blog/how-to-find-all-urls-on-a-domains-website-multiple-methods/
+- `camoufox ` ok                     8335ms  https://www.scrapingbee.com/blog/how-to-find-all-urls-on-a-domains-website-multiple-methods/
+- `chromium ` ok                    11665ms  https://docs.crawl4ai.com/core/url-seeding/
+- `camoufox ` ok                    10508ms  https://docs.crawl4ai.com/core/url-seeding/
+- `chromium ` ok                    10762ms  https://www.context.dev/blog/how-to-discover-every-url-on-any-domain-3-methods-compared
+- `camoufox ` ok                     8233ms  https://www.context.dev/blog/how-to-discover-every-url-on-any-domain-3-methods-compared
+- `chromium ` ok                    10151ms  https://www.firecrawl.dev/glossary/web-scraping-apis/get-all-links-from-webpage
+- `camoufox ` ok                     9236ms  https://www.firecrawl.dev/glossary/web-scraping-apis/get-all-links-from-webpage
+- `chromium ` ok                    10585ms  https://tracemind.app/blog/how-to-find-all-pages-on-a-website
+- `camoufox ` ok                     8132ms  https://tracemind.app/blog/how-to-find-all-pages-on-a-website
+- `chromium ` ok                    11426ms  https://docs.crawl4ai.com/core/domain-mapping/
+- `camoufox ` ok                    10696ms  https://docs.crawl4ai.com/core/domain-mapping/
+- `chromium ` ok                    11465ms  https://www.bedienungsanleitu.ng/gorenje/rk4182pw4/anleitung
+- `camoufox ` ok                     8713ms  https://www.bedienungsanleitu.ng/gorenje/rk4182pw4/anleitung
+- `chromium ` ok                    10941ms  https://woolworth.de/
+- `camoufox ` ok                    10171ms  https://woolworth.de/
+- `chromium ` ok                    11576ms  https://www.dm.de/search?query=perwoll%20color
+- `camoufox ` ok                    21796ms  https://www.dm.de/search?query=perwoll%20color
+- `chromium ` ok                     9984ms  https://www.rossmann.de/de/search?text=perwoll+color
+- `camoufox ` ok                     8045ms  https://www.rossmann.de/de/search?text=perwoll+color
+- `chromium ` ok                    10043ms  https://www.galeria.de/search?q=wmf%20diadem%20plus%20kochtopf%2020
+- `camoufox ` ok                     8027ms  https://www.galeria.de/search?q=wmf%20diadem%20plus%20kochtopf%2020
+- `chromium ` ok                    11451ms  https://www.lorey.de/search?sSearch=zwilling+vier+sterne+kochmesser
+- `camoufox ` ok                     8880ms  https://www.lorey.de/search?sSearch=zwilling+vier+sterne+kochmesser
+- `chromium ` ok                    10105ms  https://newsroom.dm.de/news/vollwaschmittel-der-dm-marke-denkmit-siegt-bei-stiftung-warentest-495282
+- `camoufox ` ok                     8196ms  https://newsroom.dm.de/news/vollwaschmittel-der-dm-marke-denkmit-siegt-bei-stiftung-warentest-495282
+- `chromium ` ok                    10816ms  https://www.kik.de/suche/?q=duschtuch
+- `camoufox ` ok                     9385ms  https://www.kik.de/suche/?q=duschtuch
+- `chromium ` empty                 33189ms  https://www.tedi-shop.com/de-de/search/?q=duschtuch
+- `camoufox ` exception             32186ms  https://www.tedi-shop.com/de-de/search/?q=duschtuch
+- `chromium ` ok                    10152ms  https://woolworth.de/sortiment/badezimmer
+- `camoufox ` ok                     8072ms  https://woolworth.de/sortiment/badezimmer
+- `chromium ` ok                    10362ms  https://woolworth.de/sortiment/heimtextilien
+- `camoufox ` ok                     8371ms  https://woolworth.de/sortiment/heimtextilien
+- `chromium ` ok                    10758ms  https://www.fsis.usda.gov/food-safety/safe-food-handling-and-preparation/emergencies/keep-your-food-safe-during-emergencies
+- `camoufox ` ok                     8978ms  https://www.fsis.usda.gov/food-safety/safe-food-handling-and-preparation/emergencies/keep-your-food-safe-during-emergencies
+- `chromium ` ok                    11107ms  https://www.hornbach.de/s/Kleiderstangenhalter
+- `camoufox ` ok                     9413ms  https://www.hornbach.de/s/Kleiderstangenhalter
+- `chromium ` ok                    13012ms  https://www.ikea.com/de/de/p/boaxel-kleiderstange-weiss-70448742/
+- `camoufox ` ok                    10469ms  https://www.ikea.com/de/de/p/boaxel-kleiderstange-weiss-70448742/
+- `chromium ` ok                    11015ms  https://www.hornbach.de/p/traeger-fuer-kleiderstange-1-reihig-330-mm-silber/7023243/
+- `camoufox ` ok                     8989ms  https://www.hornbach.de/p/traeger-fuer-kleiderstange-1-reihig-330-mm-silber/7023243/
+- `chromium ` ok                    11566ms  https://www.hornbach.de/c/maschinen-werkzeug-werkstatt/regale/S866/f/Marke=Dolle%20Regale
+- `camoufox ` ok                    10570ms  https://www.hornbach.de/c/maschinen-werkzeug-werkstatt/regale/S866/f/Marke=Dolle%20Regale
+- `chromium ` ok                    11632ms  https://www.hornbach.de/s/Dolle%20Wandschiene
+- `camoufox ` ok                     9591ms  https://www.hornbach.de/s/Dolle%20Wandschiene
+- `chromium ` ok                     9876ms  https://www.blitzrechner.de/waschmaschinengroesse/
+- `camoufox ` ok                     8012ms  https://www.blitzrechner.de/waschmaschinengroesse/
+- `chromium ` ok                    11570ms  https://www.josephjoseph.com/blogs/news/laundry-basket-size-guide
+- `camoufox ` ok                    11613ms  https://www.josephjoseph.com/blogs/news/laundry-basket-size-guide
+- `chromium ` ok                    11195ms  https://laundrypile.com/how-much-does-a-basket-of-laundry-weigh/
+- `camoufox ` ok                     9402ms  https://laundrypile.com/how-much-does-a-basket-of-laundry-weigh/
+- `chromium ` ok                    11723ms  https://www.mainova.de/de/wissenswertes/ratgeber/wasserqualitaet-und-wasserhaerte-mainova-trinkwasser
+- `camoufox ` ok                     8883ms  https://www.mainova.de/de/wissenswertes/ratgeber/wasserqualitaet-und-wasserhaerte-mainova-trinkwasser
+- `chromium ` ok                    12931ms  https://www.charlestyrwhitt.com/de/buegelfreies-stretch-oxfordhemd-mit-streifen%C2%A0--himmelblau/SCS0070SKY15H4S.html
+- `camoufox ` ok                    10949ms  https://www.charlestyrwhitt.com/de/buegelfreies-stretch-oxfordhemd-mit-streifen%C2%A0--himmelblau/SCS0070SKY15H4S.html
+- `chromium ` ok                    10335ms  https://www.kvhessen.de/terminservicestelle-tss
+- `camoufox ` ok                     8094ms  https://www.kvhessen.de/terminservicestelle-tss
+- `chromium ` ok                    10011ms  https://www.verbraucherzentrale.de/wissen/gesundheit-pflege/aerztinnen-und-kliniken/termin-beim-facharzt-nach-4-wochen-so-vermittelt-sie-die-nummer-116-117-12494
+- `camoufox ` ok                     9029ms  https://www.verbraucherzentrale.de/wissen/gesundheit-pflege/aerztinnen-und-kliniken/termin-beim-facharzt-nach-4-wochen-so-vermittelt-sie-die-nummer-116-117-12494
+- `chromium ` ok                    10020ms  https://www.tk.de/techniker/krankheit-und-behandlungen/praxisbesuch-und-klinikaufenthalt/arzt-und-therapeuten-finden/arzttermin-2011842
+- `camoufox ` ok                     8176ms  https://www.tk.de/techniker/krankheit-und-behandlungen/praxisbesuch-und-klinikaufenthalt/arzt-und-therapeuten-finden/arzttermin-2011842
+- `chromium ` ok                    11290ms  https://krankenkassen-direkt.de/kassen/leistung/TK-TK-TerminService-1016056.html
+- `camoufox ` ok                     8852ms  https://krankenkassen-direkt.de/kassen/leistung/TK-TK-TerminService-1016056.html
+- `chromium ` ok                     9659ms  https://www.personalausweisportal.de/SharedDocs/faqs/Webs/PA/DE/Haeufige-Fragen/3_pin_brief/C3_3_PIN-Brief_verloren.html
+- `camoufox ` ok                     8800ms  https://www.personalausweisportal.de/SharedDocs/faqs/Webs/PA/DE/Haeufige-Fragen/3_pin_brief/C3_3_PIN-Brief_verloren.html
+- `chromium ` ok                    10519ms  https://www.pin-ruecksetzbrief-bestellen.de/
+- `camoufox ` ok                     7809ms  https://www.pin-ruecksetzbrief-bestellen.de/
+- `chromium ` ok                    10881ms  https://frankfurt.de/service-und-rathaus/verwaltung/aemter-und-institutionen/buergeramt-statistik-und-wahlen/buergeraemter/terminservice
+- `camoufox ` ok                     8012ms  https://frankfurt.de/service-und-rathaus/verwaltung/aemter-und-institutionen/buergeramt-statistik-und-wahlen/buergeraemter/terminservice
+- `chromium ` ok                    11088ms  https://frankfurt.de/de-de/aktuelle-meldung/buergeramt-statistik-und-wahlen/betriebsausflug-2026/
+- `camoufox ` ok                     8017ms  https://frankfurt.de/de-de/aktuelle-meldung/buergeramt-statistik-und-wahlen/betriebsausflug-2026/
+- `chromium ` ok                    10936ms  https://tevis.ekom21.de/fra/select2?md=13
+- `camoufox ` ok                     8505ms  https://tevis.ekom21.de/fra/select2?md=13
+- `chromium ` ok                     9357ms  https://asta-frankfurt.de/2024-03/neues-semesterticket-als-deutschlandticket
+- `camoufox ` ok                     7798ms  https://asta-frankfurt.de/2024-03/neues-semesterticket-als-deutschlandticket
+- `chromium ` ok                     9323ms  https://asta-frankfurt.de/angebote/kultur-mobilitaet/semesterticket
+- `camoufox ` ok                     7825ms  https://asta-frankfurt.de/angebote/kultur-mobilitaet/semesterticket
+- `chromium ` ok                    13419ms  https://www.rz.uni-frankfurt.de/f7/hrz-quicklinks-fur-studierende-91769016
+- `camoufox ` ok                    10373ms  https://www.rz.uni-frankfurt.de/f7/hrz-quicklinks-fur-studierende-91769016
+- `chromium ` ok                     9507ms  https://qis.server.uni-frankfurt.de/qisserver/rds?state=user&type=0
+- `camoufox ` ok                     7826ms  https://qis.server.uni-frankfurt.de/qisserver/rds?state=user&type=0
+- `chromium ` ok                     9695ms  https://olat.server.uni-frankfurt.de
+- `camoufox ` ok                     8801ms  https://olat.server.uni-frankfurt.de
+- `chromium ` ok                     9461ms  https://next.hessenbox.de
+- `camoufox ` ok                     8477ms  https://next.hessenbox.de
+- `chromium ` ok                    13117ms  https://praxis-am-niddatal.de/
+- `camoufox ` ok                     8786ms  https://praxis-am-niddatal.de/
+- `chromium ` ok                    11701ms  https://www.doctolib.de/allgemeinmedizin/frankfurt-am-main-eckenheim
+- `camoufox ` ok                     9892ms  https://www.doctolib.de/allgemeinmedizin/frankfurt-am-main-eckenheim
+- `chromium ` ok                     9636ms  http://www.praxis-am-marbachweg.de/
+- `camoufox ` ok                     8748ms  http://www.praxis-am-marbachweg.de/
+- `chromium ` ok                     9199ms  https://www.praxis-am-marbachweg.de/
+- `camoufox ` ok                     8657ms  https://www.praxis-am-marbachweg.de/
+- `chromium ` ok                     9217ms  https://www.praxis-am-marbachweg.de/aktuelles/neue-patienten.html
+- `camoufox ` ok                     7921ms  https://www.praxis-am-marbachweg.de/aktuelles/neue-patienten.html
+- `chromium ` ok                    11731ms  https://www.doctolib.de/allgemeinmedizin/frankfurt-am-main-preungesheim
+- `camoufox ` ok                    10366ms  https://www.doctolib.de/allgemeinmedizin/frankfurt-am-main-preungesheim
+- `chromium ` ok                    10918ms  https://www.offen.net/frankfurt-main/soleiman-kazemi-JW1XW8/
+- `camoufox ` ok                     8818ms  https://www.offen.net/frankfurt-main/soleiman-kazemi-JW1XW8/
+- `chromium ` ok                     9730ms  https://www.rmv.de/c/de/tickets/regeln/tarifinformationen/fahren-ohne-gueltige-fahrkarte
+- `camoufox ` ok                     8032ms  https://www.rmv.de/c/de/tickets/regeln/tarifinformationen/fahren-ohne-gueltige-fahrkarte
+- `chromium ` ok                    12724ms  https://www.anwalt.de/rechtstipps/schwarzfahren-265a-stgb-anzeige-der-verkehrsbetriebe-gelber-brief-und-strafbefehl-was-bedeutet-das-272997.html
+- `camoufox ` ok                     7845ms  https://www.anwalt.de/rechtstipps/schwarzfahren-265a-stgb-anzeige-der-verkehrsbetriebe-gelber-brief-und-strafbefehl-was-bedeutet-das-272997.html
+- `chromium ` ok                    10138ms  https://www.fr.de/verbraucher/droht-wiederholtem-schwarzfahren-10957230.html
+- `camoufox ` ok                     8748ms  https://www.fr.de/verbraucher/droht-wiederholtem-schwarzfahren-10957230.html
+- `chromium ` ok                    11838ms  https://www.rmv.de/c/de/ueber-uns/presse/aktuelle-pressemitteilungen/26092025-uebersichtlicheres-tarifsortiment-und-neue-preise-ab-1-januar-2026
+- `camoufox ` ok                     8688ms  https://www.rmv.de/c/de/ueber-uns/presse/aktuelle-pressemitteilungen/26092025-uebersichtlicheres-tarifsortiment-und-neue-preise-ab-1-januar-2026
+- `chromium ` ok                    12357ms  https://www.hessenschau.de/wirtschaft/rmv-und-nvv-neue-oepnv-preise-in-hessen-fuer-bus--und-bahnfahrer-ab-2026-v1,rmv-nvv-fahrpreise-2026-100.html
+- `camoufox ` ok                     8191ms  https://www.hessenschau.de/wirtschaft/rmv-und-nvv-neue-oepnv-preise-in-hessen-fuer-bus--und-bahnfahrer-ab-2026-v1,rmv-nvv-fahrpreise-2026-100.html
+- `chromium ` ok                    13359ms  https://www.rmv.de/c/de/service/infos/faq-haeufig-gestellte-fragen/faq-deutschland-ticket
+- `camoufox ` ok                     8700ms  https://www.rmv.de/c/de/service/infos/faq-haeufig-gestellte-fragen/faq-deutschland-ticket
+- `chromium ` ok                    14531ms  https://www.bahn.de/angebot/regio/deutschland-ticket/faq-deutschlandticket
+- `camoufox ` ok                     8985ms  https://www.bahn.de/angebot/regio/deutschland-ticket/faq-deutschlandticket

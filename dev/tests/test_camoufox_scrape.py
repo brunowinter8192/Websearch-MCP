@@ -604,3 +604,207 @@ def test_ensure_no_focus_steal_noop_when_executable_path_missing(monkeypatch):
     monkeypatch.setattr(camoufox_scrape.sys, "platform", "darwin")
     camoufox_scrape._ensure_no_focus_steal(None)  # must not raise
     camoufox_scrape._ensure_no_focus_steal("")     # must not raise
+
+
+# ---------------------------------------------------------------------------
+# Two-layer focus fix (milestone 3, Half B) — the LSUIElement plist patch above only suppresses the
+# OS's PASSIVE default activation-on-launch policy; playwright#41306 states Firefox's Playwright
+# launcher unconditionally injects an EXPLICIT "-foreground" Cocoa activation arg whenever
+# headless=False, which overrides that patch. ignore_default_args=["-foreground"]
+# (_build_camoufox_kwargs) is playwright's own public opt-out for it. The residual steal Camoufox
+# can still win at window-creation time (not launch time — confirmed live t=3.6-6.6s into a real
+# scrape) is caught by the AXMain-keyed steal-back watchdog (_key_window_steal_watchdog), scoped to
+# the real resolved Camoufox app name and cancelled in _acquire_camoufox's `finally`.
+# ---------------------------------------------------------------------------
+
+def test_build_camoufox_kwargs_ignores_foreground_default_arg():
+    """ignore_default_args drops Firefox's own launch-time -foreground activation call — the
+    launch-time half of the fix, playwright#41306's documented opt-out mechanism."""
+    kwargs = camoufox_scrape._build_camoufox_kwargs(block_images=False)
+    assert kwargs["ignore_default_args"] == ["-foreground"]
+
+
+def test_get_frontmost_app_parses_osascript_stdout(monkeypatch):
+    class _FakeCompleted:
+        stdout = "TextEdit\n"
+    monkeypatch.setattr(camoufox_scrape.subprocess, "run", lambda *a, **kw: _FakeCompleted())
+    assert camoufox_scrape._get_frontmost_app() == "TextEdit"
+
+
+def test_activate_app_invokes_osascript_with_app_name(monkeypatch):
+    calls = []
+
+    def _fake_run(cmd, **kw):
+        calls.append(cmd)
+        class _R:
+            stdout = ""
+        return _R()
+
+    monkeypatch.setattr(camoufox_scrape.subprocess, "run", _fake_run)
+    camoufox_scrape._activate_app("TextEdit")
+    assert any("TextEdit" in " ".join(c) for c in calls)
+
+
+def test_is_key_window_owner_true_on_axmain_true(monkeypatch):
+    class _FakeCompleted:
+        stdout = "true\n"
+    monkeypatch.setattr(camoufox_scrape.subprocess, "run", lambda *a, **kw: _FakeCompleted())
+    assert camoufox_scrape._is_key_window_owner("Camoufox") is True
+
+
+def test_is_key_window_owner_false_on_error_or_not_running(monkeypatch):
+    """Empty stdout (osascript error, e.g. the process isn't running) reads as False — a
+    non-running process cannot hold key-window focus."""
+    class _FakeCompleted:
+        stdout = ""
+    monkeypatch.setattr(camoufox_scrape.subprocess, "run", lambda *a, **kw: _FakeCompleted())
+    assert camoufox_scrape._is_key_window_owner("Camoufox") is False
+
+
+@pytest.mark.asyncio
+async def test_key_window_steal_watchdog_reactivates_last_other_app_on_steal(monkeypatch):
+    """Core reactivation logic: whenever app_name's own front window holds AXMain, the watchdog
+    immediately re-activates whichever app was truly frontmost the moment before — tracked
+    dynamically, never hardcoded."""
+    monkeypatch.setattr(camoufox_scrape, "KEY_WINDOW_POLL_INTERVAL_S", 0)
+    steal_event = asyncio.Event()
+
+    def _fake_get_frontmost_app():
+        return "TextEdit"
+
+    is_key_calls = {"n": 0}
+
+    def _fake_is_key_window_owner(app_name):
+        is_key_calls["n"] += 1
+        return is_key_calls["n"] == 2  # sequence: False, True, False, False, ...
+
+    activate_calls = []
+
+    def _fake_activate_app(app_name):
+        activate_calls.append(app_name)
+        steal_event.set()
+
+    monkeypatch.setattr(camoufox_scrape, "_get_frontmost_app", _fake_get_frontmost_app)
+    monkeypatch.setattr(camoufox_scrape, "_is_key_window_owner", _fake_is_key_window_owner)
+    monkeypatch.setattr(camoufox_scrape, "_activate_app", _fake_activate_app)
+
+    task = asyncio.create_task(camoufox_scrape._key_window_steal_watchdog("Camoufox"))
+    await asyncio.wait_for(steal_event.wait(), timeout=2)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    assert activate_calls == ["TextEdit"]
+
+
+@pytest.mark.asyncio
+async def test_acquire_camoufox_watchdog_scoped_to_real_app_name_and_cancelled_on_success(monkeypatch):
+    """The watchdog is created scoped to the REAL resolved Camoufox app bundle's own name (never a
+    hardcoded string) and is cancelled cleanly (CancelledError observed inside it) once acquisition
+    completes normally — no leaked poll loop on the happy path."""
+    monkeypatch.setattr(
+        camoufox_scrape, "launch_options",
+        lambda **kw: {"executable_path": "/fake/Camoufox.app/Contents/MacOS/camoufox", **kw},
+    )
+    monkeypatch.setattr(camoufox_scrape, "AsyncCamoufox",
+                         _make_fake_camoufox(landed_url="https://x.test/a", status=200))
+    monkeypatch.setattr(camoufox_scrape, "AsyncWebCrawler", _FakeAsyncWebCrawler)
+    monkeypatch.setattr(camoufox_scrape, "CAMOUFOX_RENDER_WAIT_S", 0)
+    monkeypatch.setattr(camoufox_scrape, "_ensure_no_focus_steal", lambda *a, **kw: None)
+
+    watchdog_calls = []
+    cancelled = {"v": False}
+
+    async def _fake_watchdog(app_name):
+        watchdog_calls.append(app_name)
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            cancelled["v"] = True
+            raise
+
+    monkeypatch.setattr(camoufox_scrape, "_key_window_steal_watchdog", _fake_watchdog)
+
+    content, meta = await camoufox_scrape.try_scrape_camoufox("https://x.test/a")
+
+    assert watchdog_calls == ["Camoufox"]
+    assert cancelled["v"] is True
+    assert meta["acquisition_error"] is None
+
+
+class _RaisingAsyncCamoufoxWithYield:
+    """Same shape as _RaisingAsyncCamoufox but yields control once before raising — a real
+    AsyncCamoufox.__aenter__ always awaits real I/O internally before it can fail, giving the
+    watchdog task created just before it a chance to actually start running; the plain
+    _RaisingAsyncCamoufox fake raises with no internal await, which starves the watchdog task of
+    its first scheduling turn and would make this test a false negative."""
+    def __init__(self, exc):
+        self._exc = exc
+
+    def __call__(self, **kwargs):
+        return self
+
+    async def __aenter__(self):
+        await asyncio.sleep(0)
+        raise self._exc
+
+    async def __aexit__(self, *a):
+        return False
+
+
+@pytest.mark.asyncio
+async def test_acquire_camoufox_watchdog_cancelled_on_exception(monkeypatch):
+    """The watchdog is cancelled in the `finally` even when the browser context raises — an
+    in-process asyncio task, so no leaked poll loop on a crash (unlike a detached watchdog process)."""
+    monkeypatch.setattr(
+        camoufox_scrape, "launch_options",
+        lambda **kw: {"executable_path": "/fake/Camoufox.app/Contents/MacOS/camoufox", **kw},
+    )
+    monkeypatch.setattr(camoufox_scrape, "AsyncCamoufox",
+                         _RaisingAsyncCamoufoxWithYield(RuntimeError("simulated browser crash")))
+    monkeypatch.setattr(camoufox_scrape, "_ensure_no_focus_steal", lambda *a, **kw: None)
+
+    cancelled = {"v": False}
+
+    async def _fake_watchdog(app_name):
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            cancelled["v"] = True
+            raise
+
+    monkeypatch.setattr(camoufox_scrape, "_key_window_steal_watchdog", _fake_watchdog)
+
+    content, meta = await camoufox_scrape.try_scrape_camoufox("https://x.test/a")
+
+    assert meta["acquisition_error"] == "exception"
+    assert cancelled["v"] is True
+
+
+@pytest.mark.asyncio
+async def test_acquire_camoufox_no_watchdog_when_executable_not_in_app_bundle(monkeypatch):
+    """No .app ancestor resolvable (_find_app_bundle returns None) -> watchdog_task stays None,
+    never created — acquisition still proceeds and succeeds normally."""
+    monkeypatch.setattr(
+        camoufox_scrape, "launch_options",
+        lambda **kw: {"executable_path": "/fake/bin/camoufox", **kw},
+    )
+    monkeypatch.setattr(camoufox_scrape, "AsyncCamoufox",
+                         _make_fake_camoufox(landed_url="https://x.test/a", status=200))
+    monkeypatch.setattr(camoufox_scrape, "AsyncWebCrawler", _FakeAsyncWebCrawler)
+    monkeypatch.setattr(camoufox_scrape, "CAMOUFOX_RENDER_WAIT_S", 0)
+    monkeypatch.setattr(camoufox_scrape, "_ensure_no_focus_steal", lambda *a, **kw: None)
+
+    watchdog_calls = []
+
+    async def _fake_watchdog(app_name):
+        watchdog_calls.append(app_name)
+
+    monkeypatch.setattr(camoufox_scrape, "_key_window_steal_watchdog", _fake_watchdog)
+
+    content, meta = await camoufox_scrape.try_scrape_camoufox("https://x.test/a")
+
+    assert watchdog_calls == []
+    assert meta["acquisition_error"] is None
