@@ -32,7 +32,7 @@ import atexit
 from datetime import datetime, timezone
 
 from src.search.search_web import search_web_workflow
-from src.search.browser import kill_stale_chrome
+from src.search.browser import kill_own_chrome_atexit
 from src.search.cache import cache_key, cache_read, format_engine_pool
 from src.search.query_logger import log_query
 from urllib.parse import urlparse
@@ -40,7 +40,7 @@ from urllib.parse import urlparse
 from src.scraper.chromium_scrape import scrape_url_chromium_workflow
 from src.scraper.camoufox_scrape import scrape_url_camoufox_workflow
 
-atexit.register(kill_stale_chrome)
+atexit.register(kill_own_chrome_atexit)
 
 
 # Log one search_engine_drilldown call — fail-soft via log_query, same posture as search_web's own

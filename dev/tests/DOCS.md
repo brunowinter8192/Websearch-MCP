@@ -42,6 +42,18 @@ challenge).
 **Purpose:** `src/search/engines/marginalia.py` — `_parse_results`; `_fetch_results`/
 `MarginaliaEngine.search` 429/403 → empty, `httpx.AsyncClient` faked.
 
+### test_browser_lock.py (91 LOC)
+**Purpose:** `src/search/browser_lock.py` — real-flock behavior against `tmp_path` (no mocking):
+immediate acquire when free, genuine blocking until a background thread's `release()`, and the
+stale-takeover path (a real held flock + a backdated sidecar triggers `on_stale` then reacquires).
+
+### test_browser.py (217 LOC)
+**Purpose:** `src/search/browser.py` — `_reap_session_profile`/`_record_own_pids`/
+`_terminate_then_kill` pgrep-output parsing and psutil dispatch (subprocess+psutil mocked);
+`get_tab()`'s critical-section ordering (lock -> reap -> launch -> record-own-pids, the exact
+sequence the browser-lifecycle milestone's live parallel-run bug depended on getting right);
+`kill_own_chrome()`'s full teardown sequence and its no-op path when the browser was never touched.
+
 ### test_query_logger.py (319 LOC)
 **Purpose:** `src/search/query_logger.py` (`log_query` fail-soft JSONL write) + per-engine timing
 capture in `src/search/search_web.py` (`_engine_with_timing`, `search_web_workflow` log shape,

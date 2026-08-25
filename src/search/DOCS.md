@@ -12,21 +12,21 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 - `fetch_search_results(...)` (search_web.py) — sync wrapper for dev scripts; returns the raw result list, no pool-building.
 - `cache_key`, `cache_read`, `format_engine_pool` (cache.py) — the `search_engine_drilldown` subcommand path (`cli.py`).
 - `log_query(record)` (query_logger.py) — called directly by `cli.py` (drilldown logging, as of 2026-08-05) in addition to `search_web.py`.
-- `kill_stale_chrome()` (browser.py) — registered `atexit` in `cli.py`.
+- `kill_own_chrome_atexit()` (browser.py) — registered `atexit` in `cli.py`; PID-scoped last-resort backstop, see browser.py's module entry.
 
 ## Flow
 
-`search_web_workflow` selects engines → `asyncio.gather` of `_engine_with_timing` tasks (each acquires a rate-limiter token, then runs the engine) → flat `raw_results` → `build_engine_pools` dedups by URL owner → post-dedup pool cap to Google's pool size (fallback 10) → `_format_breakdown` table → `cache_write` to `~/.cache/websearch/<key>.json`. `search_engine_drilldown` skips all of this: `cache_read` the per-engine pool → `format_engine_pool` numbers + cleans snippets.
+`search_web_workflow` selects engines → if any needs the browser, `_prewarm_browser` blocks (outside any watchdog) until this run's Chrome is up → `asyncio.gather` of `_engine_with_timing` tasks (each acquires a rate-limiter token, then runs the engine) → `finally: kill_own_chrome()` tears the browser down and releases the cross-process lock → flat `raw_results` → `build_engine_pools` dedups by URL owner → post-dedup pool cap to Google's pool size (fallback 10) → `_format_breakdown` table → `cache_write` to `~/.cache/websearch/<key>.json`. `search_engine_drilldown` skips all of this: `cache_read` the per-engine pool → `format_engine_pool` numbers + cleans snippets.
 
 ## Modules
 
-### search_web.py (354 LOC)
+### search_web.py (381 LOC)
 
-**Purpose:** Search orchestrator — fans out across the 14 active engines via `asyncio.gather`, then builds pools, caps each to Google's pool size, formats a breakdown table, and caches the result.
-**Reads:** query + params; per-engine caps in `ENGINE_MAX_RESULTS`; default set via `_DEFAULT_ENGINES`.
+**Purpose:** Search orchestrator — fans out across the 14 active engines via `asyncio.gather`, then builds pools, caps each to Google's pool size, formats a breakdown table, and caches the result. As of the browser-lifecycle milestone (2026-08-25), also owns deterministic own-browser teardown: `_prewarm_browser` launches the shared Chrome ONCE, outside any per-engine watchdog, before fanout (only when `selected` includes a browser engine); `kill_own_chrome` runs in a `finally` around the fanout regardless of outcome.
+**Reads:** query + params; per-engine caps in `ENGINE_MAX_RESULTS`; default set via `_DEFAULT_ENGINES`; `_BROWSER_ENGINES` (which of the 14 need `browser.py`'s Chrome).
 **Writes:** disk cache `~/.cache/websearch/<key>.json` (via cache_write); query log (via log_query).
 **Called by:** `cli.py` (search_web_workflow); dev scripts (fetch_search_results).
-**Calls out:** `httpx`, `pydoll.exceptions`, `websockets.exceptions`, `mcp.types.TextContent`; `engines/` (all 14 engine classes); `cache` (cache_key, cache_write), `rate_limiter` (get_limiter), `merge` (build_engine_pools), `result` (SearchResult), `status`, `query_logger` (log_query).
+**Calls out:** `httpx`, `pydoll.exceptions`, `websockets.exceptions`, `mcp.types.TextContent`; `engines/` (all 14 engine classes); `browser` (get_tab, kill_own_chrome); `cache` (cache_key, cache_write), `rate_limiter` (get_limiter), `merge` (build_engine_pools), `result` (SearchResult), `status`, `query_logger` (log_query).
 
 ### merge.py (32 LOC)
 
@@ -59,13 +59,21 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 **Called by:** `search_web.py` (engine_run, workflow_summary); `cli.py` (drilldown, as of 2026-08-05).
 **Calls out:** `src/log_janitor.py` (maybe_prune_jsonl).
 
-### browser.py (121 LOC)
+### browser.py (216 LOC)
 
-**Purpose:** pydoll Chrome lifecycle — one shared, headed, backgrounded (macOS `open -g -n`) Chrome, one tab per engine for isolation, no JS fingerprint patches or UA override.
+**Purpose:** pydoll Chrome lifecycle — one shared, headed, backgrounded (macOS `open -g -n`) Chrome, one tab per engine for isolation, no JS fingerprint patches or UA override. As of the browser-lifecycle milestone (2026-08-25): `get_tab()`'s first-launch path blocks on a cross-process lock (`browser_lock.py`) scoped to the shared session profile, reaps any orphaned survivor of a crashed prior run, then snapshots the real Chrome PID(s) it launched; `kill_own_chrome()` is the deterministic own-run teardown (graceful CDP close + PID-scoped psutil safety net + lock release), replacing profile-pattern `pkill` as the primary teardown path.
 **Reads:** nothing (singleton browser on first access).
-**Writes:** Chrome session dir under the user-data-dir.
-**Called by:** `cli.py` (kill_stale_chrome, atexit); `engines/` (new_tab, kill_tab — google, duckduckgo, lobsters, semantic_scholar, scholar).
-**Calls out:** `pydoll` (Chrome, ChromiumOptions, BrowserProcessManager, TargetCommands); `open`/`pkill` (macOS process control).
+**Writes:** Chrome session dir under the user-data-dir; the cross-process lock file + JSON sidecar at `LOCK_PATH` (`~/.websearch/browser-session.lock[.json]`).
+**Called by:** `cli.py` (kill_own_chrome_atexit, atexit); `search_web.py` (get_tab via `_prewarm_browser`, kill_own_chrome); `engines/` (new_tab, kill_tab — google, duckduckgo, lobsters, semantic_scholar, mojeek, yandex, bing, brave, startpage); 40+ `dev/search_pipeline/*.py` probes (new_tab, close_browser — direct callers, bypass search_web.py's lock/prewarm entirely, same as before this milestone).
+**Calls out:** `pydoll` (Chrome, ChromiumOptions, BrowserProcessManager, TargetCommands); `psutil` (own-PID terminate/kill); `browser_lock` (acquire); `open`/`pgrep` (macOS process control).
+
+### browser_lock.py (74 LOC)
+
+**Purpose:** Generic, domain-agnostic blocking cross-process file lock (`fcntl.flock`-based) with a stale-takeover escape hatch — no Chrome/SESSION_DIR knowledge, takes an `on_stale` callback so the caller decides what "break it" means. Polls a non-blocking `flock`; a JSON sidecar (`{pid, started_at}`) older than `hard_budget_s` is presumed a stuck (not just slow) holder — `on_stale()` runs, then a fresh inode is opened at the same path (flock is inode-bound, so this bypasses the old holder's still-technically-held lock) and acquire retries.
+**Reads:** the lock file + its `.json` sidecar.
+**Writes:** the lock file (created on first acquire, persists across releases) + sidecar (written on acquire, unlinked on release).
+**Called by:** `browser.py` (get_tab, with `_reap_session_profile` as `on_stale`).
+**Calls out:** none (stdlib `fcntl`, `json`, `time`).
 
 ### rate_limiter.py (44 LOC)
 
@@ -103,3 +111,6 @@ Two module-owned states. `rate_limiter._limiters` — the per-engine token-bucke
 - `search_web_workflow` writes TWO log records per call, not one: `"engine_run"` (from `_query_engines_concurrent`) then `"workflow_summary"` (from `_build_query_log_entry`) — a test asserting exactly one JSONL line after a workflow call is checking the wrong invariant; filter by `record_type` instead (see `test_search_web_workflow_writes_log`).
 - `query_logger.py` has no `LOG_PATH` module attribute — the log path is read fresh from `WEBSEARCH_QUERY_LOG_PATH` (env var) inside `log_query()` on every call. Tests must `monkeypatch.setenv("WEBSEARCH_QUERY_LOG_PATH", ...)`, not `patch.object(query_logger, "LOG_PATH", ...)`.
 - `log_janitor.maybe_prune_jsonl` (called at the end of every `log_query()`) drops any JSONL line whose `"ts"` field is older than the 14-day retention window — a test writing a record with a hardcoded past-dated `ts` literal (or no `ts` at all — a missing key is treated as unparseable and also dropped) will see its own line silently pruned away as real time passes. Always use a freshly-computed current timestamp in test payloads that include `ts`.
+- **`get_tab()`'s cross-process lock wait MUST happen outside any per-engine watchdog — never call it lazily from within an `asyncio.wait_for(...)`-guarded task.** A per-engine timeout (3.6-6.0s) is far shorter than a legitimate second-run lock wait (observed ~7s for one full sweep, budgeted up to `LOCK_HARD_BUDGET_S`=81s before stale-takeover). `asyncio.wait_for` cancelling a task mid-`await get_tab()` releases `get_tab`'s asyncio-level `_init_lock` (context-manager exit still runs under cancellation) but does NOT stop the underlying `asyncio.to_thread(browser_lock.acquire, ...)` call — a real OS thread, uncancellable — which keeps polling in the background, orphaned; the next queued engine then re-enters `get_tab()` and spawns ANOTHER competing thread. Caught live via a two-parallel-CLI-run test that showed repeated "Acquiring cross-process browser-session lock" log lines within a single process and a run that silently gave up without ever launching its own Chrome. Fixed by `search_web_workflow` calling `_prewarm_browser` (bare `await get_tab()`, no timeout) once, before the fanout, whenever `_BROWSER_ENGINES` intersects the selected set — by the time engines run, `_browser` is already set and their own `new_tab()` calls return near-instantly.
+- **`get_tab()`'s launch body (from `browser_lock.acquire` through `_record_own_pids`) is wrapped in try/except that resets `_browser`/`_tab` to `None` and releases `_lock_handle` before re-raising.** Without this, a real Chrome-launch failure (missing binary, etc.) would leave the cross-process lock held forever by a process that never got a working browser — `close_browser()`'s own `_browser.stop()` would itself raise `BrowserNotRunning` on a half-initialized `Chrome` object, so `kill_own_chrome`'s `finally` can't be relied on alone to clean this up.
+- **`_reap_session_profile()` (profile-pattern `pkill`-equivalent) is legitimate ONLY while the cross-process lock is held** — either right after acquiring it (before this run's own launch, reaping a crashed prior run's `open -g`-launched Chrome, which survives its own short-lived wrapper process dying) or as `browser_lock.acquire`'s `on_stale` callback during a takeover. Calling it unlocked would resurrect the original cross-run-kill bug this milestone fixed.

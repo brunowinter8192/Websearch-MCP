@@ -11,6 +11,8 @@ import pydoll.exceptions as _pydoll_exc
 import websockets.exceptions as _ws_exc
 from mcp.types import TextContent
 
+# From browser.py: deterministic own-browser teardown, called in a finally around the engine sweep
+from src.search.browser import get_tab, kill_own_chrome
 from src.search.cache import cache_key, cache_write
 from src.search.engines.google import GoogleEngine
 from src.search.engines.crossref import CrossRefEngine
@@ -41,6 +43,13 @@ _DEFAULT_ENGINES: frozenset[str] = frozenset({
     "google", "crossref", "duckduckgo", "mojeek", "lobsters",
     "openalex", "stack_exchange", "semantic_scholar", "open_library", "startpage", "brave", "bing", "yandex",
     "marginalia",
+})
+
+# Engines that share the pydoll Chrome session (browser.py) — the only ones _prewarm_browser
+# needs to launch for
+_BROWSER_ENGINES: frozenset[str] = frozenset({
+    "google", "duckduckgo", "mojeek", "lobsters", "semantic_scholar",
+    "startpage", "brave", "bing", "yandex",
 })
 
 ENGINE_WATCHDOG_TIMEOUT: float = 3.6
@@ -104,9 +113,14 @@ async def search_web_workflow(
     selected, all_excluded = _select_engines(engines)
     effective_timeout = engine_timeout if engine_timeout is not None else ENGINE_WATCHDOG_TIMEOUT
 
-    raw_results, engine_stats, engine_fanout_ms, engine_ms, engine_details = await _run_engine_fanout(
-        selected, query, language, effective_timeout, query_modifier_map, _with_timings
-    )
+    try:
+        if _BROWSER_ENGINES & selected.keys():
+            await _prewarm_browser()
+        raw_results, engine_stats, engine_fanout_ms, engine_ms, engine_details = await _run_engine_fanout(
+            selected, query, language, effective_timeout, query_modifier_map, _with_timings
+        )
+    finally:
+        await kill_own_chrome()
 
     t0 = time.perf_counter()
     pools = build_engine_pools(raw_results)
@@ -162,6 +176,19 @@ def fetch_search_results(
 
 
 # FUNCTIONS
+
+# Launch (or reuse) the shared browser OUTSIDE any per-engine watchdog — a per-engine timeout
+# (3.6-6.0s) is far shorter than a legitimate cross-process lock wait, so doing this lazily inside
+# an engine's own asyncio.wait_for-guarded call let the watchdog cancel get_tab() mid-wait,
+# abandoning its blocking lock-acquire thread and letting the next engine retry from scratch
+# (caught live via a two-parallel-CLI-run test). A real launch failure here is swallowed and
+# re-surfaces identically per-engine when their own new_tab() call retries it.
+async def _prewarm_browser() -> None:
+    try:
+        await get_tab()
+    except Exception as e:
+        logger.warning("Browser prewarm failed, engines will retry individually: %s", e)
+
 
 # Cap each engine's pool to K = google's pool size (fallback 10) — prevents drilldown floods
 def _cap_pools(pools: dict) -> dict:
