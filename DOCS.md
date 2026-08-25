@@ -12,10 +12,10 @@ CLI-driven web research toolkit for Claude Code. `cli.py` is the sole root-level
 **Reads:** CLI args (argparse), disk cache via `cache_read` (drilldown cache-miss path).
 **Writes:** `src/logs/cli.log` (rotating log), stdout (result text).
 **Called by:** invoked directly as the CLI entry-point (`python cli.py <subcommand>`), not imported elsewhere.
-**Calls out:** `src.search.search_web.search_web_workflow`, `src.search.browser.kill_stale_chrome`, `src.search.cache.{cache_key,cache_read,format_engine_pool}`, `src.scraper.chromium_scrape.scrape_url_chromium_workflow`, `src.scraper.camoufox_scrape.scrape_url_camoufox_workflow`, `src.log_janitor.get_retention_days`.
+**Calls out:** `src.search.search_web.search_web_workflow`, `src.search.browser.kill_own_chrome_atexit`, `src.search.cache.{cache_key,cache_read,format_engine_pool}`, `src.scraper.chromium_scrape.scrape_url_chromium_workflow`, `src.scraper.camoufox_scrape.scrape_url_camoufox_workflow`, `src.log_janitor.get_retention_days`.
 
 ## Gotchas
 
 - 4 subcommands exist (`search_web`, `search_engine_drilldown`, `scrape_url_chromium`, `scrape_url_camoufox`); both scrape subcommands reject `.pdf` URLs — PDF download is delegated to the user. `scrape_url_chromium`/`scrape_url_camoufox` are two independent acquisition lanes (crawl4ai/chromium vs Camoufox/Firefox) — the agent picks one deliberately by which subcommand it invokes; there is no auto-selection or fallback between them anywhere in this codebase.
 - Logging setup MUST run before any `src.*` import — module-load-time log calls from those imports would otherwise route to Python's default stderr `lastResort` handler instead of the file handler.
-- `atexit.register(kill_stale_chrome)` ensures pydoll Chrome processes are killed on interpreter exit, including on uncaught exceptions.
+- `atexit.register(kill_own_chrome_atexit)` — PID-scoped last-resort backstop (never a profile-pattern kill) for interpreter exit paths that skip `search_web_workflow`'s own `finally: kill_own_chrome()` (e.g. an uncaught exception before that point).
