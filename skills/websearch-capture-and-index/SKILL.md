@@ -83,7 +83,7 @@ The scraper prints one console line (success count, error count, duration) and w
 Diagnose first. Don't write cleanup regex before classifying shape.
 
 **Detection is non-destructive. A signature match NEVER deletes a file — it prints a candidate for YOU to read.**
-Every script here either prints candidates or strips chrome from a confirmed shape. Deleting a file is YOUR judgment after reading the printed sample, and it enters the Completion Report as a decision with its reason — never as the automatic consequence of a match. Same posture as `scrape_url`'s contract: the tooling reports facts, the agent judges.
+Every script here either prints candidates or strips chrome from a confirmed shape. Deleting a file is YOUR judgment after reading the printed sample, and it enters the Completion Report as a decision with its reason — never as the automatic consequence of a match. Same posture as `scrape_url_chromium`'s contract: the tooling reports facts, the agent judges.
 
 ### Diagnose pass
 
