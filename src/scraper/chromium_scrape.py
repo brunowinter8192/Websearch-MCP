@@ -45,6 +45,12 @@ HTMLDATE_TIMEOUT_S = 3.0
 # Our own bounded DevToolsActivePort wait (R6: self-owned, deterministic — a real deadline-checked
 # loop, not an unbounded event wait). Value proven in dev/browser_posture/05_cdp_headed_probe.py.
 CDP_PORT_WAIT_TIMEOUT_S = 10.0
+# Focus-steal watchdog poll interval — tight enough that any steal (self-launched Chrome is a
+# regular, non-accessory app; LSUIElement crashes this bundle per dev/browser_posture/DOCS.md, so
+# Camoufox's own accessory-app lever is unavailable here) is a sub-second flicker rather than a
+# sustained foreground grab. Same 0.25s granularity this project's own focus-poll probes already use
+# (dev/browser_posture/_lib.py's get_frontmost_app).
+FOCUS_STEAL_POLL_INTERVAL_S = 0.25
 
 # Outer wall-clock guard for the single cdp-headed acquisition path: 1.0 (bundle-path resolution via
 # patchright's own BrowserType.executable_path property — measured ~0.15-0.25s x3 this session,
@@ -202,6 +208,7 @@ async def _acquire_cdp_headed(
     flags = _build_self_launch_flags(BrowserConfig(enable_stealth=True))
     bundle_path = await _resolve_chromium_bundle_path()
     user_data_dir = tempfile.mkdtemp(prefix="scrape-url-cdp-")
+    watchdog_task = asyncio.create_task(_focus_steal_watchdog(bundle_path.stem))
     try:
         _self_launch_chrome(bundle_path, user_data_dir, flags)
         port = await asyncio.to_thread(_wait_for_devtools_port, user_data_dir, CDP_PORT_WAIT_TIMEOUT_S)
@@ -216,10 +223,16 @@ async def _acquire_cdp_headed(
         )
         adapter = UndetectedAdapter()
         crawler_strategy = AsyncPlaywrightCrawlerStrategy(browser_config=browser_config, browser_adapter=adapter)
+        crawler_strategy.set_hook("on_page_context_created", _reject_popup_pages)
         config_stamp = extract_config_stamp(browser_config, adapter, crawler_strategy, run_config, budget_s)
         empty_meta = {**empty_meta, "config": config_stamp}
         return await _acquire_scrape(url, browser_config, crawler_strategy, run_config, empty_meta)
     finally:
+        watchdog_task.cancel()
+        try:
+            await watchdog_task
+        except asyncio.CancelledError:
+            pass
         await asyncio.to_thread(_kill_by_profile, user_data_dir)
         shutil.rmtree(user_data_dir, ignore_errors=True)
 
@@ -276,6 +289,52 @@ def _build_self_launch_flags(browser_config: BrowserConfig) -> list[str]:
     if browser_config.viewport_width and browser_config.viewport_height:
         flags.append(f"--window-size={browser_config.viewport_width},{browser_config.viewport_height}")
     return flags
+
+
+# Frontmost macOS application (process) name — same primitive as dev/browser_posture/_lib.py's
+# get_frontmost_app, duplicated per this project's own precedent (chromium_scrape.py's own
+# _find_app_bundle comment) of not sharing small lane-specific mechanisms across independent lanes
+def _get_frontmost_app() -> str:
+    result = subprocess.run(
+        [
+            "osascript", "-e",
+            'tell application "System Events" to get name of first application process whose frontmost is true',
+        ],
+        capture_output=True, text=True,
+    )
+    return result.stdout.strip()
+
+
+# Re-activate a named process via System Events — the same process-name namespace _get_frontmost_app reads from
+def _activate_app(app_name: str) -> None:
+    subprocess.run(
+        [
+            "osascript", "-e",
+            f'tell application "System Events" to set frontmost of process "{app_name}" to true',
+        ],
+        capture_output=True, text=True,
+    )
+
+
+# Background task for the whole acquisition span: the self-launched scrape Chrome is a regular,
+# non-accessory app (LSUIElement crashes this bundle, dev/browser_posture/DOCS.md), so any window it
+# creates can auto-activate it (playwright#42343, process-docs/browser_posture/) regardless of
+# `open -g`, which only covers the initial launch moment. Whenever THIS app_name specifically (never
+# the user's own separate "Google Chrome", never any other app) is frontmost, immediately re-activates
+# whichever app was frontmost the moment before — tracked dynamically as the loop runs, never
+# hardcoded — bounding any steal to one FOCUS_STEAL_POLL_INTERVAL_S flicker. Cancelled in
+# _acquire_cdp_headed's `finally` (net 1); an in-process asyncio task dies with its own process, so
+# unlike a separate watchdog subprocess it cannot outlive a crashed CLI and leave a poll loop behind.
+async def _focus_steal_watchdog(app_name: str) -> None:
+    last_other_app = await asyncio.to_thread(_get_frontmost_app)
+    while True:
+        current = await asyncio.to_thread(_get_frontmost_app)
+        if current == app_name:
+            if last_other_app and last_other_app != app_name:
+                await asyncio.to_thread(_activate_app, last_other_app)
+        else:
+            last_other_app = current
+        await asyncio.sleep(FOCUS_STEAL_POLL_INTERVAL_S)
 
 
 # Launch the resolved chromium bundle headed-but-backgrounded via macOS `open -g -n -a` — the
@@ -381,6 +440,27 @@ def _live_scrape_profile_dirs() -> set[str]:
             if arg.startswith("--user-data-dir=") and "scrape-url-cdp-" in arg:
                 dirs.add(arg.removeprefix("--user-data-dir="))
     return dirs
+
+
+# crawl4ai's on_page_context_created hook target: closes any page the context creates BEYOND the
+# one main_page crawl4ai itself asked for (ad/consent-flow popups, window.open) — each such extra
+# page is an independent window-creation event that can trigger the same playwright#42343 activation
+# the focus-steal watchdog above guards against; closing it fast shrinks that window further
+def _reject_popup_pages(main_page, context=None, config=None) -> None:
+    def _on_new_page(new_page) -> None:
+        if new_page is main_page:
+            return
+        asyncio.create_task(_close_popup_page(new_page))
+    context.on("page", _on_new_page)
+
+
+# Best-effort popup close — the page may already be gone/closing; logged, not raised, since a stray
+# popup failing to close must degrade gracefully, never fail the main scrape it has nothing to do with
+async def _close_popup_page(page) -> None:
+    try:
+        await page.close()
+    except Exception as e:
+        logger.debug("Popup page close failed (non-fatal): %s", e)
 
 
 # Read the scrape-governing config back off the actual constructed objects, never re-declared.
