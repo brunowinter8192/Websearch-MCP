@@ -5,9 +5,11 @@ a real URL, after a visible countdown that gives the human time to switch to ano
 start typing. While the human watches/types, both macOS focus instruments this project already uses
 (`02_focus_poll_smoke.py`'s frontmost-app poll and AXMain key-window poll) run concurrently on
 background threads, independent of the human's own judgment. Afterwards prints a compact per-
-instrument verdict (sample count, deviation count, longest continuous deviation, deviation offsets)
-to the terminal the human is looking at, and writes the full sample series to md/ so the numbers
-survive the terminal.
+instrument verdict (sample count, deviation count, longest continuous deviation, deviation offsets,
+and the instrument's own OBSERVED sampling resolution — mean interval, max gap, effective rate,
+derived from real inter-sample timestamps rather than the nominal poll-loop sleep constant) to the
+terminal the human is looking at, and writes the full sample series to md/ so the numbers survive
+the terminal.
 
 Measurement only — no fix, no mitigation change. Reuses 02's instrument primitives via
 importlib.util.spec_from_file_location (same numbered-script-reuse pattern as
@@ -165,28 +167,60 @@ def poll_key_window_loop(
         time.sleep(POLL_INTERVAL_S)
 
 
-# Longest continuous run of deviating samples, in seconds — walks the (timestamp, value) series once,
-# closing a run on the first non-deviating sample (or end of series); +poll_interval accounts for the
-# last deviating sample's own dwell time rather than undercounting by one interval
-def longest_continuous_run(samples: list[tuple[float, object]], is_deviation, poll_interval_s: float) -> float:
+# Gaps between consecutive samples' timestamps, in seconds — the REAL observed cadence. Measured
+# live (2026-08-26 self-run): 8-9 samples over a 12.5s span, ~0.38-0.41s apart, not the nominal
+# POLL_INTERVAL_S=0.25s sleep — each sample also pays a real osascript subprocess round-trip, which
+# the sleep() call doesn't account for. Any duration estimate must be built from these gaps, not the
+# nominal constant, or it silently understates true steal duration and true sample density alike.
+def sample_gaps(samples: list[tuple[float, object]]) -> list[float]:
+    return [samples[i + 1][0] - samples[i][0] for i in range(len(samples) - 1)]
+
+
+# This instrument's own observed resolution: sample count, mean inter-sample interval, largest single
+# gap, and the effective sampling rate that follows from them — printed/reported ALONGSIDE every
+# deviation count so "0 deviations" can be read against how finely that span was actually sampled
+# (a run that starts and ends between two samples 0.4-0.8s apart is invisible to either instrument,
+# and the verdict should say so rather than imply dense, uniform coverage)
+def instrument_resolution_stats(samples: list[tuple[float, object]]) -> dict:
+    n = len(samples)
+    if n < 2:
+        return {"sample_count": n, "mean_interval_s": None, "max_gap_s": None, "effective_rate_hz": None}
+    gaps = sample_gaps(samples)
+    span = samples[-1][0] - samples[0][0]
+    return {
+        "sample_count": n,
+        "mean_interval_s": round(span / (n - 1), 3),
+        "max_gap_s": round(max(gaps), 3),
+        "effective_rate_hz": round((n - 1) / span, 2) if span > 0 else None,
+    }
+
+
+# Longest continuous run of deviating samples, in seconds — walks the (timestamp, value) series once.
+# A run that CLOSES on a later non-deviating sample is bounded by that sample's own real timestamp
+# (an honest upper bound: we know for a fact the deviation was gone by then, whatever the actual poll
+# cadence was). A run still open at the end of the series (no closing sample observed) has no such
+# bound, so it is extended by the series' own mean observed gap (sample_gaps-derived, never a nominal
+# constant) as the best available estimate, clearly distinct from the closed-run case.
+def longest_continuous_run(samples: list[tuple[float, object]], is_deviation) -> float:
     longest = 0.0
     run_start = None
-    prev_t = None
     for t, v in samples:
         if is_deviation(v):
             if run_start is None:
                 run_start = t
-            prev_t = t
         else:
             if run_start is not None:
-                longest = max(longest, prev_t - run_start + poll_interval_s)
+                longest = max(longest, t - run_start)
                 run_start = None
     if run_start is not None:
-        longest = max(longest, prev_t - run_start + poll_interval_s)
+        gaps = sample_gaps(samples)
+        mean_gap = sum(gaps) / len(gaps) if gaps else 0.0
+        longest = max(longest, samples[-1][0] - run_start + mean_gap)
     return round(longest, 2)
 
 
-# Per-instrument tallies + longest continuous deviation + deviation offsets — the compact verdict shape
+# Per-instrument tallies + longest continuous deviation + deviation offsets + observed resolution —
+# the compact verdict shape
 def compute_verdict(
     baseline_app: str,
     frontmost_samples: list[tuple[float, str]],
@@ -194,37 +228,54 @@ def compute_verdict(
 ) -> dict:
     fm_deviations = [(t, app) for t, app in frontmost_samples if app != baseline_app]
     kw_deviations = [(t, is_key) for t, is_key in key_window_samples if is_key]
+    fm_stats = instrument_resolution_stats(frontmost_samples)
+    kw_stats = instrument_resolution_stats(key_window_samples)
     return {
         "fm_total": len(frontmost_samples),
         "fm_dev_count": len(fm_deviations),
-        "fm_longest_s": longest_continuous_run(frontmost_samples, lambda app: app != baseline_app, POLL_INTERVAL_S),
+        "fm_longest_s": longest_continuous_run(frontmost_samples, lambda app: app != baseline_app),
         "fm_dev_offsets": [t for t, _ in fm_deviations],
+        "fm_mean_interval_s": fm_stats["mean_interval_s"],
+        "fm_max_gap_s": fm_stats["max_gap_s"],
+        "fm_effective_rate_hz": fm_stats["effective_rate_hz"],
         "kw_total": len(key_window_samples),
         "kw_dev_count": len(kw_deviations),
-        "kw_longest_s": longest_continuous_run(key_window_samples, lambda is_key: is_key, POLL_INTERVAL_S),
+        "kw_longest_s": longest_continuous_run(key_window_samples, lambda is_key: is_key),
         "kw_dev_offsets": [t for t, _ in kw_deviations],
+        "kw_mean_interval_s": kw_stats["mean_interval_s"],
+        "kw_max_gap_s": kw_stats["max_gap_s"],
+        "kw_effective_rate_hz": kw_stats["effective_rate_hz"],
     }
 
 
-# Compact verdict, printed to the terminal the human is looking at
+# Compact verdict, printed to the terminal the human is looking at — resolution stats sit right next
+# to the deviation count so a "0 deviations" line can't be misread as dense, gap-free coverage
 def print_verdict(verdict: dict) -> None:
     print("\n" + "=" * 64)
     print("VERDICT")
     print("=" * 64)
     print(
-        f"Instrument 1 (frontmost app): {verdict['fm_total']} samples, "
-        f"{verdict['fm_dev_count']} deviations, longest continuous deviation "
-        f"{verdict['fm_longest_s']}s"
+        f"Instrument 1 (frontmost app): {verdict['fm_total']} samples "
+        f"(mean interval {verdict['fm_mean_interval_s']}s, max gap {verdict['fm_max_gap_s']}s, "
+        f"~{verdict['fm_effective_rate_hz']} samples/s), {verdict['fm_dev_count']} deviations, "
+        f"longest continuous deviation {verdict['fm_longest_s']}s"
     )
     if verdict["fm_dev_offsets"]:
         print(f"  offsets (s since launch): {verdict['fm_dev_offsets']}")
     print(
-        f"Instrument 2 (AXMain key-window): {verdict['kw_total']} samples, "
-        f"{verdict['kw_dev_count']} deviations, longest continuous deviation "
-        f"{verdict['kw_longest_s']}s"
+        f"Instrument 2 (AXMain key-window): {verdict['kw_total']} samples "
+        f"(mean interval {verdict['kw_mean_interval_s']}s, max gap {verdict['kw_max_gap_s']}s, "
+        f"~{verdict['kw_effective_rate_hz']} samples/s), {verdict['kw_dev_count']} deviations, "
+        f"longest continuous deviation {verdict['kw_longest_s']}s"
     )
     if verdict["kw_dev_offsets"]:
         print(f"  offsets (s since launch): {verdict['kw_dev_offsets']}")
+    print(
+        f"\nNote: actual sampling cadence is set by each osascript round-trip, not by the nominal "
+        f"POLL_INTERVAL_S={POLL_INTERVAL_S}s sleep alone (see mean interval/max gap above, per "
+        "instrument) — a 0-deviation line only covers the span actually sampled, not necessarily "
+        "every moment of the run."
+    )
 
 
 # Write the full sample series + verdict to md/ so the numbers survive the terminal
@@ -246,7 +297,8 @@ def write_report(
         f"- Countdown given before launch: {COUNTDOWN_S}s",
         f"- Baseline (expected) frontmost app: `{baseline_app}`",
         f"- Instrument 2 target app (AXMain/key-window): `{target_app_name}`",
-        f"- Poll interval: {POLL_INTERVAL_S}s",
+        f"- Nominal poll interval (sleep() argument, NOT the real cadence — see resolution below): "
+        f"{POLL_INTERVAL_S}s",
         f"- Subprocess exit code: {returncode}",
         f"- Wall time (browser launch to subprocess exit): {wall_s:.1f}s",
         "",
@@ -255,6 +307,14 @@ def write_report(
         f"{verdict['fm_dev_count']} deviations, longest continuous deviation {verdict['fm_longest_s']}s",
         f"- Instrument 2 (AXMain key-window): {verdict['kw_total']} samples, "
         f"{verdict['kw_dev_count']} deviations, longest continuous deviation {verdict['kw_longest_s']}s",
+        "",
+        "## Observed sampling resolution (real, not nominal — see sample_gaps/instrument_resolution_stats)",
+        f"- Instrument 1: mean interval {verdict['fm_mean_interval_s']}s, max gap {verdict['fm_max_gap_s']}s, "
+        f"effective rate ~{verdict['fm_effective_rate_hz']} samples/s",
+        f"- Instrument 2: mean interval {verdict['kw_mean_interval_s']}s, max gap {verdict['kw_max_gap_s']}s, "
+        f"effective rate ~{verdict['kw_effective_rate_hz']} samples/s",
+        "- A 0-deviation line above only covers the span actually sampled at this cadence — a run "
+        "shorter than the max gap between two samples is not guaranteed to be caught by either instrument.",
         "",
         f"## Instrument 1 — deviation offsets ({verdict['fm_dev_count']} of {verdict['fm_total']})",
     ]

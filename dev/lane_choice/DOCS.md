@@ -58,13 +58,19 @@ first instrument's sense — instrument 1 alone is blind to it).
 **Calls out:** the `websearch` PATH command indirectly (via `01_backfill_pairs.py`); macOS
 `osascript`/System Events for both polls.
 
-### 03_live_focus_probe.py (293 LOC)
+### 03_live_focus_probe.py (353 LOC)
 
 **Purpose:** Live HUMAN focus-steal verification for a single ad-hoc URL — launches ONE real scrape
 via this worktree's own `cli.py` directly (bypasses the `websearch` PATH wrapper Gotcha below on
 purpose, the whole reason this script exists), after a visible countdown so the human can switch
 away and start typing, then reports what the two automated instruments (reused from `02_`) saw
-during that same span.
+during that same span. The verdict reports each instrument's own OBSERVED sampling resolution
+(mean inter-sample interval, largest gap, effective rate) alongside its deviation count — the real
+`osascript`-round-trip-bound cadence runs slower and less evenly than the nominal
+`POLL_INTERVAL_S=0.25s` sleep alone would suggest (a live run measured mean intervals of
+0.4-1.0s and gaps up to ~5s), so `longest_continuous_run` derives any open-run dwell estimate from
+the samples' own observed gaps, never from the nominal constant, and both the terminal verdict and
+the report say so explicitly.
 **Reads:** nothing of its own; imports `02_focus_poll_smoke.py`'s instrument functions via
 `importlib.util.spec_from_file_location` (filename starts with a digit, not `import`-able
 directly); launches this worktree's own `cli.py` as a subprocess.
