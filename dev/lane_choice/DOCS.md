@@ -121,3 +121,11 @@ three scripts, timestamped, never overwritten.
   — with M pairs already resumed/skipped, a smoke run needs `--limit (M/2 + desired_new_urls)` to
   actually fire new pairs rather than skip-looping through already-done ones (skips are near-instant,
   so a too-low limit just produces an empty-feeling report, not a hang).
+- **`03_live_focus_probe.py` has no built-in way to disable `_key_window_steal_watchdog` for an A/B
+  measurement, and must never get one (no env var, no CLI flag — that would be a permanent surface
+  for a temporary question).** The proven throwaway technique (2026-08-26,
+  `process-docs/lane_choice/`): a single-line `src/scraper/camoufox_scrape.py` edit on a
+  never-merged branch (`watchdog_task = None` in place of the `asyncio.create_task(...)` line in
+  `_acquire_camoufox`), committed alone, run against, then reverted in the SAME session so the
+  branch ends with an empty `git diff integration -- src/`. Do not leave that disable commit
+  un-reverted, and do not merge it.
