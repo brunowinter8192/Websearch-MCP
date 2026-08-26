@@ -205,7 +205,7 @@ async def _acquire_camoufox(url: str, kwargs: dict, empty_meta: dict) -> tuple[s
     meta: dict = {**empty_meta, "config": config_stamp, "config_hash": hash_config(config_stamp)}
 
     app_path = _find_app_bundle(resolved.get("executable_path") or "")
-    watchdog_task = None  # TEMP disabled for live focus measurement — DO NOT MERGE, revert before merge
+    watchdog_task = asyncio.create_task(_key_window_steal_watchdog(app_path.stem)) if app_path else None
     try:
         async with AsyncCamoufox(from_options=resolved) as browser:
             page = await browser.new_page()
