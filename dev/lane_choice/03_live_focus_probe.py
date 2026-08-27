@@ -5,15 +5,21 @@ Gotchas), after a single visible countdown that gives the human time to switch t
 application and start typing. With multiple `--url` flags, one fresh browser launches per URL,
 back-to-back, right after that one countdown — the workload shape of the original sustained-load
 complaint (one fresh Camoufox per scraped URL across a backfill), not just a single isolated
-launch. While the human watches/types, both macOS focus instruments this project already uses
-(`02_focus_poll_smoke.py`'s frontmost-app poll and AXMain key-window poll) run concurrently on
-background threads across the WHOLE sequence, independent of the human's own judgment. Afterwards
-prints a compact per-instrument verdict for the whole sequence (sample count, deviation count,
-longest continuous deviation, deviation offsets, and the instrument's own OBSERVED sampling
-resolution — mean interval, max gap, effective rate, derived from real inter-sample timestamps
-rather than the nominal poll-loop sleep constant), plus a per-URL breakdown sliced to each URL's own
-launch span, to the terminal the human is looking at, and writes the full sample series to md/ so
-the numbers survive the terminal.
+launch. While the human watches/types, the frontmost-app poll this project already uses
+(`02_focus_poll_smoke.py`'s instrument) runs concurrently on a background thread across the WHOLE
+sequence, independent of the human's own judgment. Afterwards prints a compact verdict for the
+whole sequence (sample count, deviation count, longest continuous deviation, deviation offsets, and
+the instrument's own OBSERVED sampling resolution — mean interval, max gap, effective rate, derived
+from real inter-sample timestamps rather than the nominal poll-loop sleep constant), plus a per-URL
+breakdown sliced to each URL's own launch span, to the terminal the human is looking at, and writes
+the full sample series to md/ so the numbers survive the terminal.
+
+REMOVED 2026-08-27: a second, LSUIElement/accessory-process-scoped window-activation instrument.
+Live human-judged runs (both on `example.com` and, decisively, against 5 real URLs sequentially
+under sustained load — the original complaint's own workload shape) found that signal fires
+constantly with ZERO perceived focus loss, with or without a reclaim mechanism reacting to it — a
+phantom signal, not a real steal. See `process-docs/camoufox_lane/` for the exact mechanism name
+and the live-verification writeup.
 
 Measurement only — no fix, no mitigation change. Reuses 02's instrument primitives via
 importlib.util.spec_from_file_location (same numbered-script-reuse pattern as
@@ -21,7 +27,6 @@ dev/search_pipeline/00_single_query.py importing 01_google_smoke.py).
 """
 # INFRASTRUCTURE
 import argparse
-import asyncio
 import importlib.util
 import subprocess
 import sys
@@ -30,15 +35,13 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-from patchright.async_api import async_playwright
-
 SCRIPT_DIR = Path(__file__).parent
 WORKTREE_ROOT = Path(__file__).resolve().parents[2]
 CLI_PATH = WORKTREE_ROOT / "cli.py"
 PYTHON = WORKTREE_ROOT / "venv" / "bin" / "python"
 REPORT_DIR = SCRIPT_DIR / "md"
 
-# Reuse 02_focus_poll_smoke.py's instrument primitives directly rather than re-declaring them —
+# Reuse 02_focus_poll_smoke.py's instrument primitive directly rather than re-declaring it —
 # filename starts with a digit, so a normal `import` statement can't name it; this is this project's
 # own precedent for wiring one numbered dev script off another (dev/search_pipeline/00_single_query.py
 # importing 01_google_smoke.py the same way). Module-level code in 02 is only constants/def's plus an
@@ -47,8 +50,6 @@ _spec = importlib.util.spec_from_file_location("focus_poll_smoke", SCRIPT_DIR / 
 _focus_poll_smoke = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_focus_poll_smoke)
 get_frontmost_app = _focus_poll_smoke.get_frontmost_app
-get_key_window_owner = _focus_poll_smoke.get_key_window_owner
-resolve_camoufox_app_name = _focus_poll_smoke.resolve_camoufox_app_name
 
 POLL_INTERVAL_S = 0.25
 # Long enough for a human to read the on-screen instruction, alt-tab/click to a different
@@ -60,89 +61,52 @@ DEFAULT_URL = "https://example.com"
 
 # ORCHESTRATOR
 
-# Countdown ONCE -> launch each URL's real lane via THIS worktree's cli.py back-to-back -> poll both
-# instruments continuously across the whole sequence -> print overall + per-URL verdicts -> write
+# Countdown ONCE -> launch each URL's real lane via THIS worktree's cli.py back-to-back -> poll the
+# instrument continuously across the whole sequence -> print overall + per-URL verdicts -> write
 # full-series report
 def live_focus_probe_workflow(urls: list[str], use_chromium: bool) -> None:
     lane = "chromium" if use_chromium else "camoufox"
     subcommand = "scrape_url_chromium" if use_chromium else "scrape_url_camoufox"
-    target_app_name = resolve_target_app_name(use_chromium)
 
-    print_countdown(lane, target_app_name)
+    print_countdown(lane)
     baseline_app = get_frontmost_app()
-    print(f"Baseline frontmost app (post-countdown, expected throughout): {baseline_app}")
-    print(f"Instrument 2 target app (AXMain/key-window): {target_app_name}\n")
+    print(f"Baseline frontmost app (post-countdown, expected throughout): {baseline_app}\n")
 
     frontmost_samples: list[tuple[float, str]] = []
-    key_window_samples: list[tuple[float, bool]] = []
     stop_event = threading.Event()
     t0 = time.perf_counter()
     frontmost_thread = threading.Thread(
         target=poll_frontmost_loop, args=(t0, frontmost_samples, stop_event)
     )
-    key_window_thread = threading.Thread(
-        target=poll_key_window_loop, args=(target_app_name, t0, key_window_samples, stop_event)
-    )
     frontmost_thread.start()
-    key_window_thread.start()
 
     url_runs = run_urls_in_sequence(urls, subcommand, t0)
 
     stop_event.set()
     frontmost_thread.join()
-    key_window_thread.join()
 
     print_url_runs(url_runs)
 
-    verdict = compute_verdict(baseline_app, frontmost_samples, key_window_samples)
+    verdict = compute_verdict(baseline_app, frontmost_samples)
     print_verdict(verdict)
 
-    per_url_verdicts = compute_per_url_verdicts(baseline_app, frontmost_samples, key_window_samples, url_runs)
+    per_url_verdicts = compute_per_url_verdicts(baseline_app, frontmost_samples, url_runs)
     print_per_url_verdicts(per_url_verdicts)
 
     report_path = write_report(
-        lane, url_runs, baseline_app, target_app_name,
-        frontmost_samples, key_window_samples, verdict, per_url_verdicts,
+        lane, url_runs, baseline_app, frontmost_samples, verdict, per_url_verdicts,
     )
     print(f"\nFull sample series report: {report_path}")
 
 
 # FUNCTIONS
 
-# Instrument-2 target app name, resolved for whichever lane is actually being launched (never
-# hardcoded). Chromium is a regular, non-accessory app already caught by instrument 1 (frontmost) —
-# only an LSUIElement accessory process (Camoufox) is structurally invisible to it — so targeting the
-# lane-under-test's own app, rather than always "Camoufox", is what makes --chromium runs produce a
-# same-shape (if expectedly redundant-with-instrument-1) report row instead of an always-False no-op.
-def resolve_target_app_name(use_chromium: bool) -> str:
-    if use_chromium:
-        return asyncio.run(_resolve_chromium_app_name())
-    return resolve_camoufox_app_name()
-
-
-# Chromium's OWN currently-installed patchright bundle name, resolved dynamically — same resolution
-# shape as chromium_scrape.py's _resolve_chromium_bundle_path/_find_app_bundle, duplicated here per
-# this project's own precedent of not sharing small lane-specific mechanisms across independent probes
-async def _resolve_chromium_app_name() -> str:
-    pw = await async_playwright().start()
-    try:
-        executable_path = pw.chromium.executable_path
-    finally:
-        await pw.stop()
-    for parent in Path(executable_path).parents:
-        if parent.suffix == ".app":
-            return parent.stem
-    return "Chromium"
-
-
 # Clearly visible pre-launch instruction + second-by-second countdown, printed to the terminal the
 # human is sitting at — the whole reason this probe exists (a human must have time to act on it)
-def print_countdown(lane: str, target_app_name: str) -> None:
+def print_countdown(lane: str) -> None:
     print("=" * 64)
     print(f"LIVE FOCUS-STEAL PROBE — {lane} lane")
     print("=" * 64)
-    print(f"Instrument 2 will watch: {target_app_name}")
-    print()
     print(">>> SWITCH TO ANOTHER APPLICATION NOW AND START TYPING. <<<")
     print(f"The browser launches in {COUNTDOWN_S} seconds.\n")
     for remaining in range(COUNTDOWN_S, 0, -1):
@@ -186,16 +150,6 @@ def poll_frontmost_loop(t0: float, samples: list[tuple[float, str]], stop_event:
     while not stop_event.is_set():
         app = get_frontmost_app()
         samples.append((round(time.perf_counter() - t0, 2), app))
-        time.sleep(POLL_INTERVAL_S)
-
-
-# Background-thread loop: append (elapsed_s_since_launch, is_key_window) samples for app_name until stop_event fires
-def poll_key_window_loop(
-    app_name: str, t0: float, samples: list[tuple[float, bool]], stop_event: threading.Event
-) -> None:
-    while not stop_event.is_set():
-        is_key = get_key_window_owner(app_name)
-        samples.append((round(time.perf_counter() - t0, 2), is_key))
         time.sleep(POLL_INTERVAL_S)
 
 
@@ -251,17 +205,11 @@ def longest_continuous_run(samples: list[tuple[float, object]], is_deviation) ->
     return round(longest, 2)
 
 
-# Per-instrument tallies + longest continuous deviation + deviation offsets + observed resolution —
+# Instrument tally + longest continuous deviation + deviation offsets + observed resolution —
 # the compact verdict shape
-def compute_verdict(
-    baseline_app: str,
-    frontmost_samples: list[tuple[float, str]],
-    key_window_samples: list[tuple[float, bool]],
-) -> dict:
+def compute_verdict(baseline_app: str, frontmost_samples: list[tuple[float, str]]) -> dict:
     fm_deviations = [(t, app) for t, app in frontmost_samples if app != baseline_app]
-    kw_deviations = [(t, is_key) for t, is_key in key_window_samples if is_key]
     fm_stats = instrument_resolution_stats(frontmost_samples)
-    kw_stats = instrument_resolution_stats(key_window_samples)
     return {
         "fm_total": len(frontmost_samples),
         "fm_dev_count": len(fm_deviations),
@@ -270,13 +218,6 @@ def compute_verdict(
         "fm_mean_interval_s": fm_stats["mean_interval_s"],
         "fm_max_gap_s": fm_stats["max_gap_s"],
         "fm_effective_rate_hz": fm_stats["effective_rate_hz"],
-        "kw_total": len(key_window_samples),
-        "kw_dev_count": len(kw_deviations),
-        "kw_longest_s": longest_continuous_run(key_window_samples, lambda is_key: is_key),
-        "kw_dev_offsets": [t for t, _ in kw_deviations],
-        "kw_mean_interval_s": kw_stats["mean_interval_s"],
-        "kw_max_gap_s": kw_stats["max_gap_s"],
-        "kw_effective_rate_hz": kw_stats["effective_rate_hz"],
     }
 
 
@@ -287,23 +228,13 @@ def _samples_in_window(samples: list[tuple[float, object]], start_s: float, end_
 
 
 # One compute_verdict() per URL, each computed over ONLY that URL's own launch span — the instrument
-# threads run continuously across the whole sequence, so this is where a same-shape single-URL
+# thread runs continuously across the whole sequence, so this is where a same-shape single-URL
 # verdict shape gets reused per URL rather than re-declared
 def compute_per_url_verdicts(
-    baseline_app: str,
-    frontmost_samples: list[tuple[float, str]],
-    key_window_samples: list[tuple[float, bool]],
-    url_runs: list[dict],
+    baseline_app: str, frontmost_samples: list[tuple[float, str]], url_runs: list[dict],
 ) -> list[tuple[dict, dict]]:
     return [
-        (
-            run,
-            compute_verdict(
-                baseline_app,
-                _samples_in_window(frontmost_samples, run["start_s"], run["end_s"]),
-                _samples_in_window(key_window_samples, run["start_s"], run["end_s"]),
-            ),
-        )
+        (run, compute_verdict(baseline_app, _samples_in_window(frontmost_samples, run["start_s"], run["end_s"])))
         for run in url_runs
     ]
 
@@ -318,12 +249,8 @@ def print_per_url_verdicts(per_url_verdicts: list[tuple[dict, dict]]) -> None:
     for run, verdict in per_url_verdicts:
         print(f"\n[{run['url']}]  t={run['start_s']}s-{run['end_s']}s  exit={run['returncode']}")
         print(
-            f"  Instrument 1: {verdict['fm_total']} samples, {verdict['fm_dev_count']} deviations, "
+            f"  {verdict['fm_total']} samples, {verdict['fm_dev_count']} deviations, "
             f"longest continuous deviation {verdict['fm_longest_s']}s"
-        )
-        print(
-            f"  Instrument 2: {verdict['kw_total']} samples, {verdict['kw_dev_count']} deviations, "
-            f"longest continuous deviation {verdict['kw_longest_s']}s"
         )
 
 
@@ -334,7 +261,7 @@ def print_verdict(verdict: dict) -> None:
     print("VERDICT")
     print("=" * 64)
     print(
-        f"Instrument 1 (frontmost app): {verdict['fm_total']} samples "
+        f"Frontmost app: {verdict['fm_total']} samples "
         f"(mean interval {verdict['fm_mean_interval_s']}s, max gap {verdict['fm_max_gap_s']}s, "
         f"~{verdict['fm_effective_rate_hz']} samples/s), {verdict['fm_dev_count']} deviations, "
         f"longest continuous deviation {verdict['fm_longest_s']}s"
@@ -342,26 +269,17 @@ def print_verdict(verdict: dict) -> None:
     if verdict["fm_dev_offsets"]:
         print(f"  offsets (s since launch): {verdict['fm_dev_offsets']}")
     print(
-        f"Instrument 2 (AXMain key-window): {verdict['kw_total']} samples "
-        f"(mean interval {verdict['kw_mean_interval_s']}s, max gap {verdict['kw_max_gap_s']}s, "
-        f"~{verdict['kw_effective_rate_hz']} samples/s), {verdict['kw_dev_count']} deviations, "
-        f"longest continuous deviation {verdict['kw_longest_s']}s"
-    )
-    if verdict["kw_dev_offsets"]:
-        print(f"  offsets (s since launch): {verdict['kw_dev_offsets']}")
-    print(
         f"\nNote: actual sampling cadence is set by each osascript round-trip, not by the nominal "
-        f"POLL_INTERVAL_S={POLL_INTERVAL_S}s sleep alone (see mean interval/max gap above, per "
-        "instrument) — a 0-deviation line only covers the span actually sampled, not necessarily "
-        "every moment of the run."
+        f"POLL_INTERVAL_S={POLL_INTERVAL_S}s sleep alone (see mean interval/max gap above) — a "
+        "0-deviation line only covers the span actually sampled, not necessarily every moment of "
+        "the run."
     )
 
 
 # Write the full sample series + overall verdict + per-URL breakdown to md/ so the numbers survive the terminal
 def write_report(
-    lane: str, url_runs: list[dict], baseline_app: str, target_app_name: str,
-    frontmost_samples: list[tuple[float, str]], key_window_samples: list[tuple[float, bool]],
-    verdict: dict, per_url_verdicts: list[tuple[dict, dict]],
+    lane: str, url_runs: list[dict], baseline_app: str,
+    frontmost_samples: list[tuple[float, str]], verdict: dict, per_url_verdicts: list[tuple[dict, dict]],
 ) -> Path:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -374,11 +292,10 @@ def write_report(
         f"- Worktree root: {WORKTREE_ROOT}",
         f"- Countdown given before the first launch (one countdown for the whole sequence): {COUNTDOWN_S}s",
         f"- Baseline (expected) frontmost app: `{baseline_app}`",
-        f"- Instrument 2 target app (AXMain/key-window): `{target_app_name}`",
         f"- Nominal poll interval (sleep() argument, NOT the real cadence — see resolution below): "
         f"{POLL_INTERVAL_S}s",
         "",
-        "## Per-URL launch spans (elapsed seconds since the countdown ended — instruments polled "
+        "## Per-URL launch spans (elapsed seconds since the countdown ended — the instrument polled "
         "continuously across all of them, one fresh browser per URL)",
     ]
     for i, run in enumerate(url_runs, start=1):
@@ -390,40 +307,30 @@ def write_report(
     lines += [
         "",
         "## Overall verdict (whole sequence, all URLs pooled)",
-        f"- Instrument 1 (frontmost app): {verdict['fm_total']} samples, "
-        f"{verdict['fm_dev_count']} deviations, longest continuous deviation {verdict['fm_longest_s']}s",
-        f"- Instrument 2 (AXMain key-window): {verdict['kw_total']} samples, "
-        f"{verdict['kw_dev_count']} deviations, longest continuous deviation {verdict['kw_longest_s']}s",
+        f"- {verdict['fm_total']} samples, {verdict['fm_dev_count']} deviations, "
+        f"longest continuous deviation {verdict['fm_longest_s']}s",
         "",
         "## Observed sampling resolution (real, not nominal — see sample_gaps/instrument_resolution_stats)",
-        f"- Instrument 1: mean interval {verdict['fm_mean_interval_s']}s, max gap {verdict['fm_max_gap_s']}s, "
+        f"- Mean interval {verdict['fm_mean_interval_s']}s, max gap {verdict['fm_max_gap_s']}s, "
         f"effective rate ~{verdict['fm_effective_rate_hz']} samples/s",
-        f"- Instrument 2: mean interval {verdict['kw_mean_interval_s']}s, max gap {verdict['kw_max_gap_s']}s, "
-        f"effective rate ~{verdict['kw_effective_rate_hz']} samples/s",
         "- A 0-deviation line above only covers the span actually sampled at this cadence — a run "
-        "shorter than the max gap between two samples is not guaranteed to be caught by either instrument.",
+        "shorter than the max gap between two samples is not guaranteed to be caught by the instrument.",
         "",
-        f"## Instrument 1 — deviation offsets ({verdict['fm_dev_count']} of {verdict['fm_total']})",
+        f"## Deviation offsets ({verdict['fm_dev_count']} of {verdict['fm_total']})",
     ]
     lines.append("NONE" if not verdict["fm_dev_offsets"] else ", ".join(f"t={t}s" for t in verdict["fm_dev_offsets"]))
-    lines += ["", f"## Instrument 2 — deviation offsets ({verdict['kw_dev_count']} of {verdict['kw_total']})"]
-    lines.append("NONE" if not verdict["kw_dev_offsets"] else ", ".join(f"t={t}s" for t in verdict["kw_dev_offsets"]))
 
     lines += ["", "## Per-URL verdict (instrument samples sliced to each URL's own launch span above)"]
     for run, url_verdict in per_url_verdicts:
         lines += [
             f"### `{run['url']}` — t={run['start_s']}s-{run['end_s']}s, exit code {run['returncode']}",
-            f"- Instrument 1: {url_verdict['fm_total']} samples, {url_verdict['fm_dev_count']} deviations, "
+            f"- {url_verdict['fm_total']} samples, {url_verdict['fm_dev_count']} deviations, "
             f"longest continuous deviation {url_verdict['fm_longest_s']}s",
-            f"- Instrument 2: {url_verdict['kw_total']} samples, {url_verdict['kw_dev_count']} deviations, "
-            f"longest continuous deviation {url_verdict['kw_longest_s']}s",
             "",
         ]
 
-    lines += ["## Instrument 1 — full sample series"]
+    lines += ["## Full sample series"]
     lines += [f"- t={t}s: {app}" for t, app in frontmost_samples]
-    lines += ["", "## Instrument 2 — full sample series"]
-    lines += [f"- t={t}s: {is_key}" for t, is_key in key_window_samples]
 
     report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return report_path
@@ -434,9 +341,9 @@ def main():
         description=(
             "Live HUMAN focus-steal probe: launches one or more real scrapes via THIS worktree's "
             "own cli.py (never the `websearch` PATH wrapper), after a single countdown, one fresh "
-            "browser per URL back-to-back, while polling two macOS focus instruments continuously "
-            "across the whole sequence. Watch your own focus/typing during the run, then read the "
-            "printed verdict."
+            "browser per URL back-to-back, while polling a macOS frontmost-app instrument "
+            "continuously across the whole sequence. Watch your own focus/typing during the run, "
+            "then read the printed verdict."
         )
     )
     parser.add_argument(

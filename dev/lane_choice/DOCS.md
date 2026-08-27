@@ -5,11 +5,15 @@ Calibration data collection for a coming lane-choice metrics feature: fires BOTH
 lanes (chromium, camoufox) fresh against every distinct URL in the production scrape log, so a
 future feature can compare them on equal, current footing (historical single-lane records are
 config/site-drift stale). Also the focus-steal verification harness for both lanes: an automated
-gate wrapped around the backfill subprocess (`02_`), and a live HUMAN probe for a single ad-hoc URL
-(`03_`) — the human watches/types live while both instruments record independently, since a human
-judgment call ("did my focus actually get stolen") is not something an automated tally alone
-settles. Touch this directory when extending the backfill's own resume/report shape or the
-focus-steal instrumentation; not the lane implementations themselves — those are
+gate wrapped around the backfill subprocess (`02_`), and a live HUMAN probe for one or more ad-hoc
+URLs (`03_`) — the human watches/types live while a frontmost-app instrument records independently,
+since a human judgment call ("did my focus actually get stolen") is not something an automated
+tally alone settles. As of 2026-08-27, a second (AXMain/key-window) instrument that used to run
+alongside the frontmost-app one was removed from both scripts — live human-judged runs, including
+against 5 real URLs sequentially under sustained load, found that signal fires constantly with ZERO
+perceived focus loss, a phantom signal carrying no information about real focus (see
+`process-docs/camoufox_lane/`). Touch this directory when extending the backfill's own resume/report
+shape or the focus-steal instrumentation; not the lane implementations themselves — those are
 `src/scraper/chromium_scrape.py`/`camoufox_scrape.py`.
 
 ## Public Interface
@@ -24,14 +28,14 @@ THIS worktree's own `cli.py`, for a human to watch live).
 `01_backfill_pairs.py`: distinct URLs from the production `scrape_log.jsonl` → skip already-done
 (url, engine) pairs in this dir's own resume-state JSONL → fire each remaining pair via the
 production `websearch` CLI → read back its fresh log record → append to resume-state → md/ report.
-`02_focus_poll_smoke.py`: launches `01_backfill_pairs.py` as a subprocess while polling two macOS
-focus-steal instruments (frontmost-app, camoufox key-window/AXMain) concurrently on background
-threads → md/ report with both instruments' tallies and any violation samples.
+`02_focus_poll_smoke.py`: launches `01_backfill_pairs.py` as a subprocess while polling a macOS
+frontmost-app instrument on a background thread → md/ report with its tally and any violation
+samples.
 `03_live_focus_probe.py`: one countdown (human switches app + starts typing) → for each `--url` in
 order, one real `cli.py scrape_url_camoufox`/`scrape_url_chromium` call directly (never the
 `websearch` PATH wrapper), each URL its own fresh browser, back-to-back, launch span recorded per
-URL → the same two instruments poll continuously across the whole sequence → overall + per-URL
-verdict printed to the terminal + full sample series to md/.
+URL → the same frontmost-app instrument polls continuously across the whole sequence → overall +
+per-URL verdict printed to the terminal + full sample series to md/.
 
 ## Modules
 
@@ -47,47 +51,51 @@ worktree copy — see Gotchas); this dir's own `jsonl/backfill_pairs_state.jsonl
 focus-steal instrumentation.
 **Calls out:** the `websearch` PATH command (subprocess) — see Gotchas.
 
-### 02_focus_poll_smoke.py (193 LOC)
+### 02_focus_poll_smoke.py (127 LOC)
 
-**Purpose:** Focus-steal verification gate for the backfill — two concurrent macOS instruments:
-frontmost-app poll (catches a regular/non-accessory app's steal) and camoufox key-window (AXMain)
-poll (catches an LSUIElement/accessory app's steal, which never registers as "frontmost" in the
-first instrument's sense — instrument 1 alone is blind to it).
+**Purpose:** Focus-steal verification gate for the backfill — a macOS frontmost-app poll (catches a
+regular/non-accessory app's steal). REMOVED 2026-08-27: a second, LSUIElement/accessory-process
+key-window instrument that used to run alongside it — proven a phantom signal by live human-judged
+runs against the original complaint's own sustained-load, multi-URL workload shape (see
+`process-docs/camoufox_lane/`), not just the launch-time-only signal it looked like on the smaller
+`example.com` runs that motivated it.
 **Reads:** nothing of its own; launches `01_backfill_pairs.py` and reads its stdout/exit code.
 **Writes:** `md/02_focus_poll_smoke_report_<ts>.md`.
 **Called by:** run directly, ad hoc, whenever a lane's focus-steal posture needs re-verifying.
 **Calls out:** the `websearch` PATH command indirectly (via `01_backfill_pairs.py`); macOS
-`osascript`/System Events for both polls.
+`osascript`/System Events for the poll.
 
-### 03_live_focus_probe.py (457 LOC)
+### 03_live_focus_probe.py (364 LOC)
 
 **Purpose:** Live HUMAN focus-steal verification for one or more ad-hoc URLs — one visible countdown
 so the human can switch away and start typing, then a real scrape per `--url` (repeatable) via this
 worktree's own `cli.py` directly (bypasses the `websearch` PATH wrapper Gotcha below on purpose, the
 whole reason this script exists), each URL its own fresh browser, back-to-back, no countdown between
 them — the workload shape of the original sustained-load complaint (one fresh Camoufox per scraped
-URL across a backfill), not just an isolated single launch. The two automated instruments (reused
-from `02_`) poll continuously across the WHOLE sequence, not per URL, so `run_urls_in_sequence`
+URL across a backfill), not just an isolated single launch. The frontmost-app instrument (reused
+from `02_`) polls continuously across the WHOLE sequence, not per URL, so `run_urls_in_sequence`
 records each URL's own launch span (elapsed seconds since the countdown ended) and
 `compute_per_url_verdicts` slices the one continuous sample series back down per URL afterwards. The
-verdict (both the pooled whole-sequence one and each per-URL one) reports each instrument's own
+verdict (both the pooled whole-sequence one and each per-URL one) reports the instrument's own
 OBSERVED sampling resolution (mean inter-sample interval, largest gap, effective rate) alongside its
 deviation count — the real `osascript`-round-trip-bound cadence runs slower and less evenly than the
 nominal `POLL_INTERVAL_S=0.25s` sleep alone would suggest (a live run measured mean intervals of
 0.4-1.0s and gaps up to ~5s), so `longest_continuous_run` derives any open-run dwell estimate from
 the samples' own observed gaps, never from the nominal constant, and both the terminal verdict and
 the report say so explicitly. A single `--url` behaves the same as before, just as a one-entry
-sequence.
-**Reads:** nothing of its own; imports `02_focus_poll_smoke.py`'s instrument functions via
+sequence. REMOVED 2026-08-27: a second (AXMain/key-window) instrument and its target-app-name
+resolution (`resolve_target_app_name`/`_resolve_chromium_app_name`) — the live 5-URL sustained-load
+check this script itself enabled found that signal fires constantly with zero perceived focus loss
+(see `process-docs/camoufox_lane/`).
+**Reads:** nothing of its own; imports `02_focus_poll_smoke.py`'s `get_frontmost_app` via
 `importlib.util.spec_from_file_location` (filename starts with a digit, not `import`-able
 directly); launches this worktree's own `cli.py` as a subprocess, once per URL.
 **Writes:** `md/03_live_focus_probe_report_<ts>.md` (per-URL launch spans, overall + per-URL
-verdict, full sample series, both instruments).
+verdict, full sample series).
 **Called by:** run directly, ad hoc, whenever a human needs to eyeball a lane's live focus posture
 (as opposed to `02_`'s automated tally over the backfill).
 **Calls out:** this worktree's own `venv/bin/python cli.py` (subprocess, real production entry
-point, one call per URL); `patchright.async_api` (chromium bundle-name resolution for `--chromium`
-runs); macOS `osascript`/System Events (via the imported `02_` functions).
+point, one call per URL); macOS `osascript`/System Events (via the imported `02_` function).
 
 ---
 
@@ -114,12 +122,6 @@ three scripts, timestamped, never overwritten.
   something about whatever is currently in the main repo. `03_live_focus_probe.py` builds this
   worktree-direct invocation in from the start (`WORKTREE_ROOT = Path(__file__).resolve().parents[2]`,
   never `WEBSEARCH_CMD`) — it is the one script here safe to use for verifying an unmerged change.
-- **`03_live_focus_probe.py`'s instrument-2 target is dynamic, not always "Camoufox".** It targets
-  whichever lane is actually launched (`--chromium` resolves the real chromium bundle name via
-  `patchright`, same as `chromium_scrape.py`'s own resolution). Chromium is a regular,
-  non-accessory app already caught by instrument 1 (frontmost), so a `--chromium` run's instrument-2
-  numbers are expected to be structurally redundant with instrument 1's — that is not a bug, only an
-  LSUIElement accessory process (Camoufox) is where instrument 1 is structurally blind.
 - `PROD_SCRAPE_LOG_PATH` (`01_backfill_pairs.py`) is a hardcoded absolute path into the main repo's
   `src/logs/scrape_log.jsonl`, deliberately — worktrees have their own, separate, gitignored
   `src/logs/` tree, and the backfill's whole premise is enumerating URLs the MAIN repo has actually
