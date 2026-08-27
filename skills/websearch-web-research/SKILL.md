@@ -16,17 +16,16 @@ Run via `websearch <command>` (in PATH), foreground — no `&`, no redirect.
 |---|---|---|
 | search_web | query (2–5 keywords) | Search: counts per engine |
 | search_engine_drilldown | query --engine <name> | URLs for one engine from the prior search_web |
-| scrape_url_chromium | url | Page → full markdown (chromium lane) |
-| scrape_url_camoufox | url | Page → full markdown (Camoufox lane) |
+| scrape_url_chromium | url | Page → full markdown |
 
-**The two scrape lanes are a free per-call choice — but their output differs.**
-Chromium returns pruned markdown (PruningContentFilter); Camoufox converts HTML itself without pruning and may return raw HTML on conversion failure. Page didn't come through → try the other lane once, then report both failures plainly.
+**One scrape lane, no per-call choice.**
+It returns pruned markdown (PruningContentFilter). Page didn't come through → report the failure plainly with the acquisition facts the command prints; do not retry silently.
 
 ## Search Strategy
 
 1. `search_web` for the engine breakdown. For a deep dive, fire 2–4 parallel calls with query variations.
 2. `search_engine_drilldown` to get an engine's URLs — which engine(s) is your free choice, guided by the breakdown counts.
-3. `scrape_url_<engine>` the relevant URLs — either lane, free choice. PDFs and books: give the user the exact URLs from the search results — the user downloads them. Do not scrape a `.pdf` URL (it returns an error: the PDF must be downloaded by the user).
+3. `scrape_url_chromium` the relevant URLs. PDFs and books: give the user the exact URLs from the search results — the user downloads them. Do not scrape a `.pdf` URL (it returns an error: the PDF must be downloaded by the user).
 
 **Write the query in the language you want results in.**
 The user-chat language does not apply here — a German conversation still gets English queries when English results are wanted.
