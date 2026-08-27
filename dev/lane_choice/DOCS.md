@@ -16,9 +16,9 @@ focus-steal instrumentation; not the lane implementations themselves — those a
 No `__init__.py` — all three scripts are standalone CLI entry points, run directly:
 `./venv/bin/python dev/lane_choice/01_backfill_pairs.py [--limit N]`,
 `./venv/bin/python dev/lane_choice/02_focus_poll_smoke.py [--limit N]` (wraps the former as a
-subprocess), and `./venv/bin/python dev/lane_choice/03_live_focus_probe.py [--url URL] [--chromium]`
-(launches a single real scrape via THIS worktree's own `cli.py`, countdown first, for a human to
-watch live).
+subprocess), and `./venv/bin/python dev/lane_choice/03_live_focus_probe.py [--url URL ...] [--chromium]`
+(`--url` may repeat; one countdown up front, then one fresh-browser scrape per URL back-to-back via
+THIS worktree's own `cli.py`, for a human to watch live).
 
 ## Flow
 `01_backfill_pairs.py`: distinct URLs from the production `scrape_log.jsonl` → skip already-done
@@ -27,10 +27,11 @@ production `websearch` CLI → read back its fresh log record → append to resu
 `02_focus_poll_smoke.py`: launches `01_backfill_pairs.py` as a subprocess while polling two macOS
 focus-steal instruments (frontmost-app, camoufox key-window/AXMain) concurrently on background
 threads → md/ report with both instruments' tallies and any violation samples.
-`03_live_focus_probe.py`: countdown (human switches app + starts typing) → launches one real
-`cli.py scrape_url_camoufox`/`scrape_url_chromium` call directly (never the `websearch` PATH
-wrapper) while polling the same two instruments concurrently → verdict printed to the terminal +
-full sample series to md/.
+`03_live_focus_probe.py`: one countdown (human switches app + starts typing) → for each `--url` in
+order, one real `cli.py scrape_url_camoufox`/`scrape_url_chromium` call directly (never the
+`websearch` PATH wrapper), each URL its own fresh browser, back-to-back, launch span recorded per
+URL → the same two instruments poll continuously across the whole sequence → overall + per-URL
+verdict printed to the terminal + full sample series to md/.
 
 ## Modules
 
@@ -58,28 +59,35 @@ first instrument's sense — instrument 1 alone is blind to it).
 **Calls out:** the `websearch` PATH command indirectly (via `01_backfill_pairs.py`); macOS
 `osascript`/System Events for both polls.
 
-### 03_live_focus_probe.py (353 LOC)
+### 03_live_focus_probe.py (457 LOC)
 
-**Purpose:** Live HUMAN focus-steal verification for a single ad-hoc URL — launches ONE real scrape
-via this worktree's own `cli.py` directly (bypasses the `websearch` PATH wrapper Gotcha below on
-purpose, the whole reason this script exists), after a visible countdown so the human can switch
-away and start typing, then reports what the two automated instruments (reused from `02_`) saw
-during that same span. The verdict reports each instrument's own OBSERVED sampling resolution
-(mean inter-sample interval, largest gap, effective rate) alongside its deviation count — the real
-`osascript`-round-trip-bound cadence runs slower and less evenly than the nominal
-`POLL_INTERVAL_S=0.25s` sleep alone would suggest (a live run measured mean intervals of
+**Purpose:** Live HUMAN focus-steal verification for one or more ad-hoc URLs — one visible countdown
+so the human can switch away and start typing, then a real scrape per `--url` (repeatable) via this
+worktree's own `cli.py` directly (bypasses the `websearch` PATH wrapper Gotcha below on purpose, the
+whole reason this script exists), each URL its own fresh browser, back-to-back, no countdown between
+them — the workload shape of the original sustained-load complaint (one fresh Camoufox per scraped
+URL across a backfill), not just an isolated single launch. The two automated instruments (reused
+from `02_`) poll continuously across the WHOLE sequence, not per URL, so `run_urls_in_sequence`
+records each URL's own launch span (elapsed seconds since the countdown ended) and
+`compute_per_url_verdicts` slices the one continuous sample series back down per URL afterwards. The
+verdict (both the pooled whole-sequence one and each per-URL one) reports each instrument's own
+OBSERVED sampling resolution (mean inter-sample interval, largest gap, effective rate) alongside its
+deviation count — the real `osascript`-round-trip-bound cadence runs slower and less evenly than the
+nominal `POLL_INTERVAL_S=0.25s` sleep alone would suggest (a live run measured mean intervals of
 0.4-1.0s and gaps up to ~5s), so `longest_continuous_run` derives any open-run dwell estimate from
 the samples' own observed gaps, never from the nominal constant, and both the terminal verdict and
-the report say so explicitly.
+the report say so explicitly. A single `--url` behaves the same as before, just as a one-entry
+sequence.
 **Reads:** nothing of its own; imports `02_focus_poll_smoke.py`'s instrument functions via
 `importlib.util.spec_from_file_location` (filename starts with a digit, not `import`-able
-directly); launches this worktree's own `cli.py` as a subprocess.
-**Writes:** `md/03_live_focus_probe_report_<ts>.md` (full sample series, both instruments).
+directly); launches this worktree's own `cli.py` as a subprocess, once per URL.
+**Writes:** `md/03_live_focus_probe_report_<ts>.md` (per-URL launch spans, overall + per-URL
+verdict, full sample series, both instruments).
 **Called by:** run directly, ad hoc, whenever a human needs to eyeball a lane's live focus posture
 (as opposed to `02_`'s automated tally over the backfill).
 **Calls out:** this worktree's own `venv/bin/python cli.py` (subprocess, real production entry
-point); `patchright.async_api` (chromium bundle-name resolution for `--chromium` runs); macOS
-`osascript`/System Events (via the imported `02_` functions).
+point, one call per URL); `patchright.async_api` (chromium bundle-name resolution for `--chromium`
+runs); macOS `osascript`/System Events (via the imported `02_` functions).
 
 ---
 
@@ -121,11 +129,10 @@ three scripts, timestamped, never overwritten.
   — with M pairs already resumed/skipped, a smoke run needs `--limit (M/2 + desired_new_urls)` to
   actually fire new pairs rather than skip-looping through already-done ones (skips are near-instant,
   so a too-low limit just produces an empty-feeling report, not a hang).
-- **`03_live_focus_probe.py` has no built-in way to disable `_key_window_steal_watchdog` for an A/B
-  measurement, and must never get one (no env var, no CLI flag — that would be a permanent surface
-  for a temporary question).** The proven throwaway technique (2026-08-26,
-  `process-docs/lane_choice/`): a single-line `src/scraper/camoufox_scrape.py` edit on a
-  never-merged branch (`watchdog_task = None` in place of the `asyncio.create_task(...)` line in
-  `_acquire_camoufox`), committed alone, run against, then reverted in the SAME session so the
-  branch ends with an empty `git diff integration -- src/`. Do not leave that disable commit
-  un-reverted, and do not merge it.
+- **`03_live_focus_probe.py` has no CLI flag or env var to disable any part of the camoufox lane's
+  no-focus-steal fix for an A/B measurement, and must never get one — that would be a permanent
+  surface for a temporary question.** The one-line-throwaway-branch-edit technique this Gotcha used
+  to require for the (now-removed) watchdog is recorded historically in `process-docs/lane_choice/`
+  and `process-docs/camoufox_lane/` — the same pattern (edit on a never-merged branch, run, revert in
+  the same session, verify an empty `git diff integration -- src/`) applies to any future throwaway
+  A/B question against this lane, but nothing here should be built to support it permanently.
