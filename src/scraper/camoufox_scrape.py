@@ -1,7 +1,9 @@
 # INFRASTRUCTURE
 import asyncio
+import locale
 import logging
 import plistlib
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -97,11 +99,34 @@ def _ensure_no_focus_steal(executable_path: str | None) -> None:
         logger.warning("Could not set LSUIElement on %s (no-focus-steal not applied): %s", plist_path, e)
 
 
+# Resolve this machine's own system locale as a BCP-47 tag (e.g. "de-DE"), at runtime, so both
+# lanes request the same language Chromium already gets for free from the OS. `defaults read -g
+# AppleLocale` reflects the real macOS System Settings language — independent of the shell's own
+# LANG env var, which can disagree with it (observed on this machine: LANG=en_US.UTF-8 vs.
+# AppleLocale=de_DE, the latter being what an unconfigured Chromium actually renders). Falls back
+# to Python's own locale module off-macOS or if that command fails.
+def _resolve_system_locale() -> str:
+    if sys.platform == "darwin":
+        try:
+            result = subprocess.run(
+                ["defaults", "read", "-g", "AppleLocale"],
+                capture_output=True, text=True, timeout=5, check=True,
+            )
+            apple_locale = result.stdout.strip()
+            if apple_locale:
+                return apple_locale.replace("_", "-")
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+    language_tag, _ = locale.getlocale()
+    return language_tag.replace("_", "-") if language_tag else "en-US"
+
+
 # Build the plain kwargs this module hands to camoufox.launch_options()/AsyncCamoufox — the calibrated core surface
 def _build_camoufox_kwargs(block_images: bool) -> dict:
     return {
         "headless": False,
         "os": "macos",
+        "locale": _resolve_system_locale(),
         "block_images": block_images,
         "timeout": _PLAYWRIGHT_DEFAULT_TIMEOUT_MS,
         # Playwright's Firefox launcher unconditionally injects "-foreground" whenever headless=False
