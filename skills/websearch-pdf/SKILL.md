@@ -13,7 +13,6 @@ MinerU `vlm-auto-engine` (mlx).
 - MINERU = `~/Documents/ai/Mineru/venv/bin/python ~/Documents/ai/Mineru/workflow.py`
 - COLLECTION = `trading-reference` (default; confirm only if user names another)
 - OUTPUT_DIR = `~/Documents/ai/Meta/ClaudeCode/cli/rag-cli/data/documents/<COLLECTION>/`
-- COMMAND FILE = `~/Downloads/<batch>_pdf_commands.md`
 
 ## Rule
 The CONVERT command → USER runs it. Claude runs: naming, cleanup scripts, `rag-cli index`.
@@ -26,7 +25,8 @@ The CONVERT command → USER runs it. Claude runs: naming, cleanup scripts, `rag
 3. Backend is always `vlm-auto-engine` (mlx).
 
 ## Phase 1 — MinerU convert (USER runs, ONE command for the whole batch)
-Write the COMMAND FILE: ONE block listing ALL non-skipped PDFs (whole document):
+POST THE COMMAND IN CHAT — never write it to a file. ONE fenced block listing ALL non-skipped
+PDFs (whole document), and nothing else around it but the caveats that matter:
 ```
 mkdir -p <OUTPUT_DIR>
 PYTHONUNBUFFERED=1 ~/Documents/ai/Mineru/venv/bin/python ~/Documents/ai/Mineru/workflow.py convert \
