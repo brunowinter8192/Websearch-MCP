@@ -12,17 +12,21 @@ tally alone settles. As of 2026-08-27, a second (AXMain/key-window) instrument t
 alongside the frontmost-app one was removed from both scripts — live human-judged runs, including
 against 5 real URLs sequentially under sustained load, found that signal fires constantly with ZERO
 perceived focus loss, a phantom signal carrying no information about real focus (see
-`process-docs/camoufox_lane/`). Touch this directory when extending the backfill's own resume/report
-shape or the focus-steal instrumentation; not the lane implementations themselves — those are
-`src/scraper/chromium_scrape.py`/`camoufox_scrape.py`.
+`process-docs/camoufox_lane/`). Also the content/boilerplate metrics report (`04_`) over an already-
+produced batch of paired backfill outputs — a mechanical Kohlschuetter Algorithm 2 classifier plus
+the jusText heading rescue, reporting per-lane content-word/block counts with no verdict on which
+lane is better. Touch this directory when extending the backfill's own resume/report shape, the
+focus-steal instrumentation, or the content-metrics classifier/report shape; not the lane
+implementations themselves — those are `src/scraper/chromium_scrape.py`/`camoufox_scrape.py`.
 
 ## Public Interface
-No `__init__.py` — all three scripts are standalone CLI entry points, run directly:
+No `__init__.py` — all four scripts are standalone CLI entry points, run directly:
 `./venv/bin/python dev/lane_choice/01_backfill_pairs.py [--limit N]`,
 `./venv/bin/python dev/lane_choice/02_focus_poll_smoke.py [--limit N]` (wraps the former as a
-subprocess), and `./venv/bin/python dev/lane_choice/03_live_focus_probe.py [--url URL ...] [--chromium]`
+subprocess), `./venv/bin/python dev/lane_choice/03_live_focus_probe.py [--url URL ...] [--chromium]`
 (`--url` may repeat; one countdown up front, then one fresh-browser scrape per URL back-to-back via
-THIS worktree's own `cli.py`, for a human to watch live).
+THIS worktree's own `cli.py`, for a human to watch live), and
+`./venv/bin/python dev/lane_choice/04_lane_metrics.py` (no flags; fixed input path, see Gotchas).
 
 ## Flow
 `01_backfill_pairs.py`: distinct URLs from the production `scrape_log.jsonl` → skip already-done
@@ -36,6 +40,9 @@ order, one real `cli.py scrape_url_camoufox`/`scrape_url_chromium` call directly
 `websearch` PATH wrapper), each URL its own fresh browser, back-to-back, launch span recorded per
 URL → the same frontmost-app instrument polls continuously across the whole sequence → overall +
 per-URL verdict printed to the terminal + full sample series to md/.
+`04_lane_metrics.py`: fixed `/tmp/lane_pairs_20.json` pairs list → per URL, per lane, its
+scrape_content `.md` read once → block classification (Algorithm 2 tree + heading rescue) → per-lane
+metrics → per-URL lines + one 20-URL table + aggregate win/disagreement counts, written to md/.
 
 ## Modules
 
@@ -97,13 +104,33 @@ verdict, full sample series).
 **Calls out:** this worktree's own `venv/bin/python cli.py` (subprocess, real production entry
 point, one call per URL); macOS `osascript`/System Events (via the imported `02_` function).
 
+### 04_lane_metrics.py (324 LOC)
+
+**Purpose:** Classifies every block (non-empty, non-full-comment-line) of each paired chromium/
+camoufox scrape_content `.md` file as CONTENT or BOILERPLATE — Kohlschuetter/Fankhauser/Nejdl
+(WSDM 2010) Algorithm 2's decision tree over `numWords`/`linkDensity`, adapted to markdown image/
+link syntax, plus the jusText-style short-heading rescue rule applied once afterwards — then reports
+content-word/block counts, overall link density and the longest content block per lane per URL, plus
+a cross-pair aggregate of which lane has more CONTENT words / a higher CONTENT percentage and where
+those two measures disagree. Purely descriptive: neither the script nor its report ever states which
+lane is "better".
+**Reads:** `/tmp/lane_pairs_20.json` (a fixed, externally-produced `{url, chromium_file,
+camoufox_file, ...}` list — not this dir's own state, not committed, not written by any script here);
+the scrape_content `.md` files it names, each read once, line-by-line (several camoufox files run
+past 1MB, the largest ~27MB).
+**Writes:** `md/04_lane_metrics_report_<ts>.md` only; never touches the input JSON, the source
+`scrape_content` files, or `01_`'s resume state.
+**Called by:** run directly, ad hoc, whenever a paired-backfill batch needs a content-density
+comparison.
+**Calls out:** none — stdlib only (`json`, `re`).
+
 ---
 
 ## State
 `jsonl/backfill_pairs_state.jsonl` is the backfill's own resume state — one line per fired
 (url, engine) pair, owned and appended-to exclusively by `01_backfill_pairs.py`; read (never
 mutated) by nothing else in this package. `md/` holds every report ever produced by any of the
-three scripts, timestamped, never overwritten.
+four scripts, timestamped, never overwritten.
 
 ## Gotchas
 - **The `websearch` command on PATH is pinned to the MAIN repo's `cli.py`, never a worktree.**
@@ -138,3 +165,14 @@ three scripts, timestamped, never overwritten.
   and `process-docs/camoufox_lane/` — the same pattern (edit on a never-merged branch, run, revert in
   the same session, verify an empty `git diff integration -- src/`) applies to any future throwaway
   A/B question against this lane, but nothing here should be built to support it permanently.
+- **`04_lane_metrics.py`'s `INPUT_PATH` (`/tmp/lane_pairs_20.json`) is a fixed, externally-produced
+  file, not generated by anything in this directory.** It is a manually-curated `{url, chromium_file,
+  camoufox_file, ...}` list pointing at existing `scrape_content` files (from an earlier `01_`
+  backfill run); regenerating it, if ever needed, is a separate, undocumented step outside this
+  script's scope — the script only reads it.
+- **A "comment line" for `04_lane_metrics.py`'s block filter means the ENTIRE line is one or more
+  HTML comments** (`COMMENT_LINE_RE = ^<!--.*-->$`), matching the sidecar header exactly. A line
+  with a comment mixed into other content (e.g. `</div><!-- #page -->`, seen in real camoufox
+  `mode: markdown` output) is NOT stripped and becomes a normal block, tag text and all — this is
+  the spec's literal definition, not an oversight, so camoufox files with leftover raw HTML/script
+  fragments can inflate `blocks_total`/`words_total` well beyond what a human would call "content".
