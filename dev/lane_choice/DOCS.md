@@ -12,10 +12,13 @@ tally alone settles. As of 2026-08-27, a second (AXMain/key-window) instrument t
 alongside the frontmost-app one was removed from both scripts — live human-judged runs, including
 against 5 real URLs sequentially under sustained load, found that signal fires constantly with ZERO
 perceived focus loss, a phantom signal carrying no information about real focus (see
-`process-docs/camoufox_lane/`). Also the content/boilerplate metrics report (`04_`) over an already-
-produced batch of paired backfill outputs — a mechanical Kohlschuetter Algorithm 2 classifier plus
-the jusText heading rescue, reporting per-lane content-word/block counts with no verdict on which
-lane is better. Touch this directory when extending the backfill's own resume/report shape, the
+`process-docs/camoufox_lane/`). Also the content/boilerplate metrics report (`04_`) over EVERY
+both-lanes-ok paired scrape currently in the production log (not a fixed batch) — a mechanical
+Kohlschuetter Algorithm 2 classifier plus the jusText heading rescue, plus a block-level PROSE test
+(CONTENT + a corpus-derived length cap + a sentence-ending mark) that catches a single long
+markdown line of embedded JSON/CSS/markup passing the CONTENT tree with an unbounded word count —
+reporting per-lane content-word/block/PROSE counts with no verdict on which lane is better. Touch
+this directory when extending the backfill's own resume/report shape, the
 focus-steal instrumentation, or the content-metrics classifier/report shape; not the lane
 implementations themselves — those are `src/scraper/chromium_scrape.py`/`camoufox_scrape.py`.
 
@@ -26,7 +29,8 @@ No `__init__.py` — all four scripts are standalone CLI entry points, run direc
 subprocess), `./venv/bin/python dev/lane_choice/03_live_focus_probe.py [--url URL ...] [--chromium]`
 (`--url` may repeat; one countdown up front, then one fresh-browser scrape per URL back-to-back via
 THIS worktree's own `cli.py`, for a human to watch live), and
-`./venv/bin/python dev/lane_choice/04_lane_metrics.py` (no flags; fixed input path, see Gotchas).
+`./venv/bin/python dev/lane_choice/04_lane_metrics.py` (no flags; builds its own pair list from the
+production log, see Gotchas).
 
 ## Flow
 `01_backfill_pairs.py`: distinct URLs from the production `scrape_log.jsonl` → skip already-done
@@ -40,9 +44,12 @@ order, one real `cli.py scrape_url_camoufox`/`scrape_url_chromium` call directly
 `websearch` PATH wrapper), each URL its own fresh browser, back-to-back, launch span recorded per
 URL → the same frontmost-app instrument polls continuously across the whole sequence → overall +
 per-URL verdict printed to the terminal + full sample series to md/.
-`04_lane_metrics.py`: fixed `/tmp/lane_pairs_20.json` pairs list → per URL, per lane, its
-scrape_content `.md` read once → block classification (Algorithm 2 tree + heading rescue) → per-lane
-metrics → per-URL lines + one 20-URL table + aggregate win/disagreement counts, written to md/.
+`04_lane_metrics.py`: freshest-ok (url, engine) pairs built from the production `scrape_log.jsonl`
+→ every chromium file's blocks read once, pooled into a corpus-wide word-count distribution → a
+PROSE length cap derived from that distribution (p99) → per URL, per lane, block classification
+(Algorithm 2 tree + heading rescue) + the PROSE test → per-lane metrics → per-URL lines + one
+all-pairs table + aggregate win/disagreement/cap-exclusion counts + the chromium-zero-CONTENT /
+camoufox-PROSE-rescue breakdown, written to md/.
 
 ## Modules
 
@@ -104,25 +111,35 @@ verdict, full sample series).
 **Calls out:** this worktree's own `venv/bin/python cli.py` (subprocess, real production entry
 point, one call per URL); macOS `osascript`/System Events (via the imported `02_` function).
 
-### 04_lane_metrics.py (324 LOC)
+### 04_lane_metrics.py (511 LOC)
 
 **Purpose:** Classifies every block (non-empty, non-full-comment-line) of each paired chromium/
 camoufox scrape_content `.md` file as CONTENT or BOILERPLATE — Kohlschuetter/Fankhauser/Nejdl
 (WSDM 2010) Algorithm 2's decision tree over `numWords`/`linkDensity`, adapted to markdown image/
-link syntax, plus the jusText-style short-heading rescue rule applied once afterwards — then reports
-content-word/block counts, overall link density and the longest content block per lane per URL, plus
-a cross-pair aggregate of which lane has more CONTENT words / a higher CONTENT percentage and where
-those two measures disagree. Purely descriptive: neither the script nor its report ever states which
-lane is "better".
-**Reads:** `/tmp/lane_pairs_20.json` (a fixed, externally-produced `{url, chromium_file,
-camoufox_file, ...}` list — not this dir's own state, not committed, not written by any script here);
-the scrape_content `.md` files it names, each read once, line-by-line (several camoufox files run
-past 1MB, the largest ~27MB).
-**Writes:** `md/04_lane_metrics_report_<ts>.md` only; never touches the input JSON, the source
+link syntax, plus the jusText-style short-heading rescue rule applied once afterwards. On top of
+that, a block-level PROSE test — CONTENT, word count at or under a corpus-derived length cap, and
+containing a sentence-ending mark (`.`/`!`/`?`) — added because a single very long markdown line
+(embedded JSON/CSS/markup) can pass the CONTENT tree with a huge word count no real prose block
+has (real corpus evidence: a 404 page scoring 91% CONTENT off a 5,521-word "block"). The cap itself
+is derived at runtime, never hardcoded: the 99th percentile of the pooled block-word-count
+distribution across every chromium file in the corpus (chromium output is post-`PruningContentFilter`,
+the best available proxy for prose length in this project) — see
+`process-docs/lane_choice/2026-08-27_prose_cap_and_corpus_wide_run.md` for the full distribution and
+the reasoning. Builds its own pair list from the production log (see Gotchas) rather than a fixed
+file, so the corpus grows automatically as production scraping continues. Reports content-word/
+block/PROSE counts, overall link density and the longest content block per lane per URL, plus a
+cross-pair aggregate (CONTENT-word/percentage wins, cap-exclusion totals per lane, and how many
+chromium-zero-CONTENT pairs camoufox rescues with a PROSE block). Purely descriptive: neither the
+script nor its report ever states which lane is "better".
+**Reads:** the production `scrape_log.jsonl` (hardcoded absolute path to the MAIN repo, never a
+worktree copy — same convention as `01_backfill_pairs.py`, see Gotchas); the scrape_content `.md`
+files its freshest-ok records name, each read once, line-by-line (several camoufox files run past
+1MB, the largest so far ~52MB).
+**Writes:** `md/04_lane_metrics_report_<ts>.md` only; never touches the production log, the source
 `scrape_content` files, or `01_`'s resume state.
-**Called by:** run directly, ad hoc, whenever a paired-backfill batch needs a content-density
-comparison.
-**Calls out:** none — stdlib only (`json`, `re`).
+**Called by:** run directly, ad hoc, whenever the full paired corpus needs a fresh content-density
+measurement.
+**Calls out:** none — stdlib only (`json`, `re`, `statistics`).
 
 ---
 
@@ -165,11 +182,26 @@ four scripts, timestamped, never overwritten.
   and `process-docs/camoufox_lane/` — the same pattern (edit on a never-merged branch, run, revert in
   the same session, verify an empty `git diff integration -- src/`) applies to any future throwaway
   A/B question against this lane, but nothing here should be built to support it permanently.
-- **`04_lane_metrics.py`'s `INPUT_PATH` (`/tmp/lane_pairs_20.json`) is a fixed, externally-produced
-  file, not generated by anything in this directory.** It is a manually-curated `{url, chromium_file,
-  camoufox_file, ...}` list pointing at existing `scrape_content` files (from an earlier `01_`
-  backfill run); regenerating it, if ever needed, is a separate, undocumented step outside this
-  script's scope — the script only reads it.
+- **`04_lane_metrics.py`'s `PROD_SCRAPE_LOG_PATH` is the same hardcoded-absolute-path-into-the-MAIN-repo
+  convention as `01_backfill_pairs.py`'s constant of the same name, and for the same reason** —
+  worktrees have their own separate, gitignored `src/logs/` tree, so a worktree-relative path would
+  silently see nothing. As of 2026-08-27 this REPLACED the earlier fixed `/tmp/lane_pairs_20.json`
+  20-URL file (still referenced by `process-docs/lane_choice/2026-08-27_metric_vs_judgment_no_edge.md`
+  as the source of one specific historical report, `04_lane_metrics_report_20260827T171744Z.md`,
+  kept on disk for that reason — do not delete it). `collect_pairs_from_scrape_log()` takes the
+  FRESHEST `outcome: ok` + `content_path` record per `(url, engine)` — the log accumulates across
+  sessions (some URLs have both a 2026-08-13 general-use record and a later 2026-08-25/27
+  paired-backfill record for the same engine) — and pairs every URL with a freshest record on BOTH
+  lanes. The pair count is therefore NOT fixed at 111; it tracks whatever the production log
+  currently contains.
+- **The PROSE cap (`PROSE_PERCENTILE = 99`) is recomputed from the corpus on every run, never a
+  hardcoded word count.** `compute_prose_cap` pools `num_words` across every block of every
+  chromium file in the CURRENT pair set and takes the 99th percentile
+  (`statistics.quantiles(..., n=100, method="inclusive")`) — a run against a future, larger corpus
+  will derive its own cap, which may differ from any value quoted in an existing report or
+  process-docs entry. See `process-docs/lane_choice/2026-08-27_prose_cap_and_corpus_wide_run.md` for
+  the distribution that produced the first cap value (72 words) and why p99 was chosen over other
+  percentiles.
 - **A "comment line" for `04_lane_metrics.py`'s block filter means the ENTIRE line is one or more
   HTML comments** (`COMMENT_LINE_RE = ^<!--.*-->$`), matching the sidecar header exactly. A line
   with a comment mixed into other content (e.g. `</div><!-- #page -->`, seen in real camoufox
