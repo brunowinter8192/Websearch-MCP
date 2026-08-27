@@ -2,7 +2,6 @@
 import asyncio
 import logging
 import plistlib
-import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -29,9 +28,6 @@ _PLAYWRIGHT_DEFAULT_TIMEOUT_MS = 30000
 _GOTO_WAIT_UNTIL = "domcontentloaded"
 CAMOUFOX_RENDER_WAIT_S = 5.0
 TOTAL_CAMOUFOX_BUDGET_S = 245.0
-# Key-window steal-back watchdog poll interval — same 0.25s tightness as chromium_scrape.py's
-# FOCUS_STEAL_POLL_INTERVAL_S, bounding any steal to a sub-second flicker.
-KEY_WINDOW_POLL_INTERVAL_S = 0.25
 
 _CAMOUFOX_ACQUISITION_ERROR_MESSAGES = {
     "browser_missing": "camoufox browser binary missing — run `./venv/bin/python -m camoufox fetch` to install it",
@@ -101,69 +97,6 @@ def _ensure_no_focus_steal(executable_path: str | None) -> None:
         logger.warning("Could not set LSUIElement on %s (no-focus-steal not applied): %s", plist_path, e)
 
 
-# Frontmost macOS application (process) name — duplicated per this project's own precedent (see
-# chromium_scrape.py's own _get_frontmost_app) of not sharing small lane-specific mechanisms
-def _get_frontmost_app() -> str:
-    result = subprocess.run(
-        [
-            "osascript", "-e",
-            'tell application "System Events" to get name of first application process whose frontmost is true',
-        ],
-        capture_output=True, text=True,
-    )
-    return result.stdout.strip()
-
-
-# Re-activate a named process via System Events — the same process-name namespace _get_frontmost_app reads from
-def _activate_app(app_name: str) -> None:
-    subprocess.run(
-        [
-            "osascript", "-e",
-            f'tell application "System Events" to set frontmost of process "{app_name}" to true',
-        ],
-        capture_output=True, text=True,
-    )
-
-
-# True if app_name's OWN front window is the true key/main window (AXMain) — the key-window-level
-# signal a plain frontmost-app check is blind to for an LSUIElement/accessory process: Camoufox can
-# win true keyboard/mouse input focus without ever registering as "frontmost" in the NSWorkspace/
-# System Events sense _get_frontmost_app reads (confirmed live: 9/12 samples True during a real
-# scrape while frontmost-app showed 0 deviations the whole time). False on any error, e.g. the
-# process isn't running — correct: a non-running process cannot hold key-window focus.
-def _is_key_window_owner(app_name: str) -> bool:
-    result = subprocess.run(
-        [
-            "osascript", "-e",
-            f'tell application "System Events" to tell process "{app_name}" '
-            'to return value of attribute "AXMain" of front window',
-        ],
-        capture_output=True, text=True,
-    )
-    return result.stdout.strip() == "true"
-
-
-# Background task for the whole acquisition span: _ensure_no_focus_steal's LSUIElement patch only
-# suppresses the OS's default activation-ON-LAUNCH policy, and dropping Firefox's own `-foreground`
-# flag (_build_camoufox_kwargs's ignore_default_args) removes the one other known EXPLICIT
-# launch-time activation call — but Camoufox can still win true key-window status when it
-# creates/shows its browser window (confirmed live: the steal window was t=3.6-6.6s into a real
-# scrape, well after launch, not at t=0 — window-creation-time activation, not launch-time, the
-# Camoufox analog of chromium_scrape.py's own playwright#42343 gap). Whenever app_name's OWN front
-# window holds AXMain, immediately re-activates whichever app was truly frontmost the moment before —
-# tracked dynamically, never hardcoded — reclaiming true key-window status for it. Cancelled in
-# _acquire_camoufox's `finally`, mirroring chromium_scrape.py's _focus_steal_watchdog exactly.
-async def _key_window_steal_watchdog(app_name: str) -> None:
-    last_other_app = await asyncio.to_thread(_get_frontmost_app)
-    while True:
-        if await asyncio.to_thread(_is_key_window_owner, app_name):
-            if last_other_app and last_other_app != app_name:
-                await asyncio.to_thread(_activate_app, last_other_app)
-        else:
-            last_other_app = await asyncio.to_thread(_get_frontmost_app)
-        await asyncio.sleep(KEY_WINDOW_POLL_INTERVAL_S)
-
-
 # Build the plain kwargs this module hands to camoufox.launch_options()/AsyncCamoufox — the calibrated core surface
 def _build_camoufox_kwargs(block_images: bool) -> dict:
     return {
@@ -204,25 +137,15 @@ async def _acquire_camoufox(url: str, kwargs: dict, empty_meta: dict) -> tuple[s
     config_stamp = _extract_camoufox_config_stamp(kwargs, resolved)
     meta: dict = {**empty_meta, "config": config_stamp, "config_hash": hash_config(config_stamp)}
 
-    app_path = _find_app_bundle(resolved.get("executable_path") or "")
-    watchdog_task = asyncio.create_task(_key_window_steal_watchdog(app_path.stem)) if app_path else None
-    try:
-        async with AsyncCamoufox(from_options=resolved) as browser:
-            page = await browser.new_page()
-            response = await page.goto(
-                url, timeout=_PLAYWRIGHT_DEFAULT_TIMEOUT_MS, wait_until=_GOTO_WAIT_UNTIL
-            )
-            await asyncio.sleep(CAMOUFOX_RENDER_WAIT_S)
-            landed_url = page.url
-            status_code = response.status if response else None
-            html = await page.content()
-    finally:
-        if watchdog_task:
-            watchdog_task.cancel()
-            try:
-                await watchdog_task
-            except asyncio.CancelledError:
-                pass
+    async with AsyncCamoufox(from_options=resolved) as browser:
+        page = await browser.new_page()
+        response = await page.goto(
+            url, timeout=_PLAYWRIGHT_DEFAULT_TIMEOUT_MS, wait_until=_GOTO_WAIT_UNTIL
+        )
+        await asyncio.sleep(CAMOUFOX_RENDER_WAIT_S)
+        landed_url = page.url
+        status_code = response.status if response else None
+        html = await page.content()
 
     try:
         raw_markdown, conversion_error = await _html_to_markdown(html)
