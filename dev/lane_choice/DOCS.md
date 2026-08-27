@@ -94,6 +94,15 @@ sequence. REMOVED 2026-08-27: a second (AXMain/key-window) instrument and its ta
 resolution (`resolve_target_app_name`/`_resolve_chromium_app_name`) — the live 5-URL sustained-load
 check this script itself enabled found that signal fires constantly with zero perceived focus loss
 (see `process-docs/camoufox_lane/`).
+**Reads:** nothing of its own; imports `02_focus_poll_smoke.py`'s `get_frontmost_app` via
+`importlib.util.spec_from_file_location` (filename starts with a digit, not `import`-able
+directly); launches this worktree's own `cli.py` as a subprocess, once per URL.
+**Writes:** `md/03_live_focus_probe_report_<ts>.md` (per-URL launch spans, overall + per-URL
+verdict, full sample series).
+**Called by:** run directly, ad hoc, whenever a human needs to eyeball a lane's live focus posture
+(as opposed to `02_`'s automated tally over the backfill).
+**Calls out:** this worktree's own `venv/bin/python cli.py` (subprocess, real production entry
+point, one call per URL); macOS `osascript`/System Events (via the imported `02_` function).
 
 ### 04_lane_metrics.py (324 LOC)
 
@@ -114,15 +123,6 @@ past 1MB, the largest ~27MB).
 **Called by:** run directly, ad hoc, whenever a paired-backfill batch needs a content-density
 comparison.
 **Calls out:** none — stdlib only (`json`, `re`).
-**Reads:** nothing of its own; imports `02_focus_poll_smoke.py`'s `get_frontmost_app` via
-`importlib.util.spec_from_file_location` (filename starts with a digit, not `import`-able
-directly); launches this worktree's own `cli.py` as a subprocess, once per URL.
-**Writes:** `md/03_live_focus_probe_report_<ts>.md` (per-URL launch spans, overall + per-URL
-verdict, full sample series).
-**Called by:** run directly, ad hoc, whenever a human needs to eyeball a lane's live focus posture
-(as opposed to `02_`'s automated tally over the backfill).
-**Calls out:** this worktree's own `venv/bin/python cli.py` (subprocess, real production entry
-point, one call per URL); macOS `osascript`/System Events (via the imported `02_` function).
 
 ---
 
@@ -130,7 +130,7 @@ point, one call per URL); macOS `osascript`/System Events (via the imported `02_
 `jsonl/backfill_pairs_state.jsonl` is the backfill's own resume state — one line per fired
 (url, engine) pair, owned and appended-to exclusively by `01_backfill_pairs.py`; read (never
 mutated) by nothing else in this package. `md/` holds every report ever produced by any of the
-three scripts, timestamped, never overwritten.
+four scripts, timestamped, never overwritten.
 
 ## Gotchas
 - **The `websearch` command on PATH is pinned to the MAIN repo's `cli.py`, never a worktree.**
