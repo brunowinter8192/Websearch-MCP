@@ -352,14 +352,17 @@ def test_build_camoufox_kwargs_reflects_block_images_param():
 
 
 def test_build_camoufox_kwargs_fixed_decisions():
-    """headless=False (visible window), os="macos" (matches real host), timeout explicit — and the
-    deliberately-left-unset knobs (block_webgl, geoip, humanize, enable_cache, proxy) are truly
-    ABSENT from the dict, not just False, so camoufox's own library defaults apply untouched."""
+    """headless=False (visible window), os="macos" (matches real host), timeout explicit, locale
+    resolved (as of 2026-08-27, so this lane requests the same language chromium gets for free from
+    the OS) — and the deliberately-left-unset knobs (block_webgl, geoip, humanize, enable_cache,
+    proxy) are truly ABSENT from the dict, not just False, so camoufox's own library defaults apply
+    untouched."""
     kwargs = camoufox_scrape._build_camoufox_kwargs(block_images=False)
     assert kwargs["headless"] is False
     assert kwargs["os"] == "macos"
     assert kwargs["timeout"] == camoufox_scrape._PLAYWRIGHT_DEFAULT_TIMEOUT_MS
-    for absent_key in ("block_webgl", "geoip", "humanize", "enable_cache", "proxy", "locale"):
+    assert isinstance(kwargs["locale"], str) and kwargs["locale"]
+    for absent_key in ("block_webgl", "geoip", "humanize", "enable_cache", "proxy"):
         assert absent_key not in kwargs
 
 
