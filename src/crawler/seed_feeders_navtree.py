@@ -75,7 +75,7 @@ def extract_payloads(html: str) -> list:
 # serialized React element's own DOM "children", which are further ["$", tag, key, props] element
 # lists, not plain data dicts) does not match — this is what keeps a rendered element tree from
 # being mistaken for navigation data. Returns the matching key name, or None.
-def _child_key_of(obj) -> str:
+def _child_key_of(obj) -> str | None:
     if not isinstance(obj, dict):
         return None
     for key, value in obj.items():
@@ -105,7 +105,7 @@ def _collect_tree_hrefs(node) -> list:
 
 # Find every tree-root candidate anywhere in payload — any dict matching _child_key_of's shape,
 # regardless of where it lives or what its own key is called in the parent.
-def _find_tree_candidates(payload, out: list = None) -> list:
+def _find_tree_candidates(payload, out: list | None = None) -> list:
     if out is None:
         out = []
     if isinstance(payload, dict):
@@ -182,7 +182,7 @@ def _find_field(payload, key_predicate, value_predicate):
 # (a {version_id: {...metadata...}} map), under a key whose name contains "version". Structural,
 # not the literal name "allVersions" — verified against exactly one real site (docs.github.com);
 # see DOCS.md Gotchas for that honesty note.
-def _find_version_list(payload) -> dict:
+def _find_version_list(payload) -> dict | None:
     return _find_field(
         payload,
         lambda k: _VERSION_LIST_KEY_HINT in k.lower(),
@@ -191,7 +191,7 @@ def _find_version_list(payload) -> dict:
 
 
 # The site's own identifier for which version the CURRENT page belongs to.
-def _find_current_version(payload) -> str:
+def _find_current_version(payload) -> str | None:
     return _find_field(
         payload,
         lambda k: k.lower() == _CURRENT_VERSION_KEY_HINT,
@@ -202,7 +202,7 @@ def _find_current_version(payload) -> str:
 # The current page's path with the language prefix already stripped — may still include an
 # explicit version segment when the current page itself is a non-default version (see
 # _build_version_urls, which strips that too before use).
-def _find_path_without_language(payload) -> str:
+def _find_path_without_language(payload) -> str | None:
     return _find_field(
         payload,
         lambda k: _PATH_WITHOUT_LANGUAGE_KEY_HINT in k.lower(),
@@ -215,8 +215,8 @@ def _find_path_without_language(payload) -> str:
 # Returns {} if any of the three fields is missing, or if the derived content path is not
 # actually a suffix of seed_url's own path — a graceful "no version union" outcome, not an error,
 # since an unversioned site simply will not carry these fields at all.
-def _build_version_urls(seed_url: str, all_versions: dict, current_version: str,
-                        path_without_language: str) -> dict:
+def _build_version_urls(seed_url: str, all_versions: dict | None, current_version: str | None,
+                        path_without_language: str | None) -> dict:
     if not all_versions or not current_version or path_without_language is None:
         return {}
 
@@ -270,7 +270,7 @@ def _canonicalize_version_url(url: str, version_keys) -> str:
 # Fetch a URL's HTML; None on any non-200/network error — a normal outcome (a version root that
 # fails to load) for the same reason a missing robots.txt/sitemap is normal elsewhere in this
 # package.
-async def _fetch_html(client: httpx.AsyncClient, url: str) -> str:
+async def _fetch_html(client: httpx.AsyncClient, url: str) -> str | None:
     try:
         response = await client.get(url, timeout=HTTP_TIMEOUT_S,
                                     headers={"User-Agent": USER_AGENT}, follow_redirects=True)
@@ -298,10 +298,18 @@ async def _resolve_one_version(client: httpx.AsyncClient, version_url: str, all_
 # tier reflects how the DEFAULT tree itself was obtained ("tree"/"flat") — a version fetched
 # during the union that happens to land on the other tier does not change the overall tag (see
 # DOCS.md Gotchas for why a single tag per result, not one per URL, was the deliberate choice).
+#
+# Raises RuntimeError if seed_url itself cannot be fetched — deliberately NOT treated as a normal
+# empty outcome the way a version root's own fetch failure is (see _resolve_one_version). The seed
+# is the target of the whole run, not an optional resource like robots.txt/a sitemap/one version
+# among several; failing to fetch it means the feeder never got to look at anything, which is a
+# failed run, not "this site has no navigation tree". The caller (navtree_feeder_workflow) already
+# converts an unexpected exception into FeederResult(ok=False, ...) via the same path _require_host
+# uses for an invalid seed_url — both are preconditions for the feeder to do any work at all.
 async def resolve_navigation_tree(client: httpx.AsyncClient, seed_url: str) -> tuple:
     html = await _fetch_html(client, seed_url)
     if html is None:
-        return [], "flat"
+        raise RuntimeError(f"could not fetch seed_url: {seed_url!r}")
 
     payloads = extract_payloads(html)
     hrefs, tier, source_payload = find_navigation_tree(payloads)

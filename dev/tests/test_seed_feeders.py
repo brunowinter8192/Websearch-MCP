@@ -615,10 +615,12 @@ async def test_resolve_navigation_tree_unions_versions_and_dedups_via_canonicali
 
 
 @pytest.mark.asyncio
-async def test_resolve_navigation_tree_unfetchable_seed_is_empty_not_an_error():
+async def test_resolve_navigation_tree_unfetchable_seed_raises_not_empty():
+    # The seed is the target of the whole run, unlike a version root or robots.txt/a sitemap —
+    # its own fetch failure must not look like "this site has no navigation tree" (review note).
     client = _FakeAsyncClient({})  # every URL 404s
-    urls, tier = await resolve_navigation_tree(client, "https://docs.example.com/de/guide")
-    assert (urls, tier) == ([], "flat")
+    with pytest.raises(RuntimeError, match="could not fetch seed_url"):
+        await resolve_navigation_tree(client, "https://docs.example.com/de/guide")
 
 
 # ---------------------------------------------------------------------------
@@ -673,11 +675,25 @@ async def test_navtree_feeder_workflow_rsc_dom_only_shape_falls_back_to_flat_tie
 
 @pytest.mark.asyncio
 async def test_navtree_feeder_workflow_neither_shape_is_ok_empty(monkeypatch):
+    # Reachable, but genuinely carries no framework payload — a normal empty outcome.
     routes = {"https://docs.example.com/": _FakeResponse(200, text="<html>plain page</html>")}
     monkeypatch.setattr(seed_feeders.httpx, "AsyncClient", lambda *a, **kw: _FakeAsyncClient(routes))
 
     result = await seed_feeders.navtree_feeder_workflow("https://docs.example.com/")
     assert result == FeederResult(urls=[], ok=True, source="navtree_flat")
+
+
+@pytest.mark.asyncio
+async def test_navtree_feeder_workflow_unreachable_seed_is_failed_not_ok_empty(monkeypatch):
+    # Contrast with the test above: here the seed itself never loads at all (every URL 404s) —
+    # must be ok=False, not indistinguishable from "reachable, no navigation tree" (review note).
+    monkeypatch.setattr(seed_feeders.httpx, "AsyncClient", lambda *a, **kw: _FakeAsyncClient({}))
+
+    result = await seed_feeders.navtree_feeder_workflow("https://docs.example.com/")
+    assert result.ok is False
+    assert result.urls == []
+    assert result.source is None
+    assert result.error is not None
 
 
 @pytest.mark.asyncio

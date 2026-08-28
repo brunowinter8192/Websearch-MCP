@@ -50,7 +50,10 @@ async def sitemap_feeder_workflow(seed_url: str) -> FeederResult:
 # Resolve seed_url's navigation tree (its frontend framework's own embedded page inventory) to a
 # flat, scoped, deduped seed list, unioned across every version the site exposes in the same
 # payload. `source` distinguishes a real recursive tree found by structural shape ("navtree_tree")
-# from a flat href scan with no tree evidence behind it ("navtree_flat") — see FeederResult.
+# from a flat href scan with no tree evidence behind it ("navtree_flat") — see FeederResult. A
+# seed_url that cannot be fetched at all (unlike a version root, or robots.txt/a sitemap) is
+# ok=False, not an empty "navtree_flat" result — resolve_navigation_tree raises for that case,
+# caught by the same except below as an invalid seed_url.
 async def navtree_feeder_workflow(seed_url: str) -> FeederResult:
     try:
         seed_host = _require_host(seed_url)
