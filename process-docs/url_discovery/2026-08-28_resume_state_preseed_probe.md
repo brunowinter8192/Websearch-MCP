@@ -58,6 +58,15 @@ fresh BFS root, not as "continuing" from wherever its real position in the link 
 A caller that wants correct depth-relative `max_depth` behavior for pre-seeded URLs MUST supply
 their intended depths explicitly; omitting them does not error, it just resets them to 0.
 
+(Caveat on the measurement itself: Variant A's "0 children" comes from the captured
+`on_state_change` state, which only exists if the callback fired. It did fire here — the seed
+fetch succeeded, and `on_state_change` runs whenever `result.success` is `True` regardless of what
+`link_discovery` found — so this particular `0` is a real "no children" result. The conclusion
+does not depend on it either way, since the seed's `depth=2` was also observed directly on the
+fetched result. But the probe's `.get(..., {}).get(..., [])` read has no explicit assertion that
+the callback ran, so the same code shape would misreport a callback-never-fired case as "0
+children" too.)
+
 ## Result 4 — injected seeds bypass the FilterChain; the same URL rediscovered as a child does not
 
 Single seed (`philosophy_url`), `filter_chain = FilterChain([URLPatternFilter(patterns=

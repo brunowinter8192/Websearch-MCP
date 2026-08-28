@@ -55,3 +55,11 @@ here is resumed or accumulated across runs.
   silently too: the dict is truthy so resume mode IS entered, but `.get("pending", [])` finds
   nothing, `current_level` is empty, and `start_url` is never used either — the crawl produces
   zero results with no exception raised (Experiment 2b).
+- Experiment 3's `children_discovered_count` reads `holder.get("state", {}).get("pending", [])`
+  — a plain `.get()` chain with a `0`-shaped default at every level. `on_state_change` does fire
+  whenever `result.success` is `True` regardless of what `link_discovery` found (confirmed by
+  reading `_arun_batch`), and both variants' seed fetches did succeed, so the `0` reported for
+  Variant A is a genuine "zero children" measurement here, not an artifact of a callback that
+  never ran. But the code has no assertion that `"state" in holder` before reading the count, so
+  the same pattern reused against a failing seed fetch would silently report `0` for the wrong
+  reason. A stricter version would assert `"state" in holder` before trusting the count.
