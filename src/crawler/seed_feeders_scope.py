@@ -44,21 +44,23 @@ def normalize_url(url: str) -> str:
     return normalized
 
 
-# Host key used ONLY for scope/dedup comparison — collapses a leading "www." (the scope
-# decision's own normalization concern). The literal output URL keeps its original host text;
-# only the comparison collapses www./apex, never a rewrite of what gets returned.
-def _host_key(host: str) -> str:
+# Host key used for scope/dedup comparison anywhere in this project — collapses a leading "www."
+# (the scope decision's own normalization concern). The literal output URL keeps its original
+# host text; only the comparison collapses www./apex, never a rewrite of what gets returned.
+# Public (not "_"-prefixed) because src/crawler/discovery.py's own traversal-time scope filter
+# needs the identical collapse, for consistency with what the feeders already consider in-scope.
+def host_key(host: str) -> str:
     host = host.lower()
     return host[4:] if host.startswith("www.") else host
 
 
-# Dedup key: a normalized URL with its host collapsed through _host_key. Scheme, path (including
+# Dedup key: a normalized URL with its host collapsed through host_key. Scheme, path (including
 # any ";params" segment), and query stay exactly as normalize_url produced them — see
 # normalize_url's own docstring for why those are kept distinct.
 def _dedup_key(normalized_url: str) -> str:
     parsed = urlsplit(normalized_url)
-    host_key = _host_key(parsed.hostname or "")
-    netloc_key = f"{host_key}:{parsed.port}" if parsed.port else host_key
+    collapsed_host = host_key(parsed.hostname or "")
+    netloc_key = f"{collapsed_host}:{parsed.port}" if parsed.port else collapsed_host
     return urlunsplit((parsed.scheme, netloc_key, parsed.path, parsed.query, ""))
 
 
@@ -67,7 +69,7 @@ def _dedup_key(normalized_url: str) -> str:
 # not raised — this filters untrusted external sitemap/robots content, one bad entry must not
 # fail the whole feeder.
 def scope_and_dedup(urls: list, seed_host: str) -> list:
-    seed_key = _host_key(seed_host)
+    seed_key = host_key(seed_host)
     seen_keys = set()
     result = []
     for raw in urls:
@@ -76,7 +78,7 @@ def scope_and_dedup(urls: list, seed_host: str) -> list:
             parsed = urlsplit(normalized)
         except ValueError:
             continue
-        if _host_key(parsed.hostname or "") != seed_key:
+        if host_key(parsed.hostname or "") != seed_key:
             continue
         key = _dedup_key(normalized)
         if key in seen_keys:
@@ -84,3 +86,13 @@ def scope_and_dedup(urls: list, seed_host: str) -> list:
         seen_keys.add(key)
         result.append(normalized)
     return result
+
+
+# Validate seed_url and return its bare host; raises ValueError on unparseable/hostless input.
+# Public: shared by every module that needs a caller-supplied seed_url validated the same way
+# (seed_feeders.py's three workflows, src/crawler/discovery.py's own orchestrator).
+def require_host(seed_url: str) -> str:
+    host = urlsplit(seed_url).hostname
+    if not host:
+        raise ValueError(f"seed_url has no host: {seed_url!r}")
+    return host

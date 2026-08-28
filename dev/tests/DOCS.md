@@ -148,6 +148,22 @@ injection (`client` is a parameter, no monkeypatching needed); workflow-level te
 `seed_feeders.httpx.AsyncClient`, this project's own established fake-client pattern
 (`test_marginalia_engine.py`).
 
+### test_discovery.py (225 LOC)
+**Purpose:** `src/crawler/discovery.py` — pure-logic coverage only (the full crawl4ai-driven
+traversal is verified by real runs recorded in `process-docs/url_discovery/`, not mocked, matching
+this project's M0 precedent). `_assemble_seeds` (literal `seed_url` always included, first-write-
+wins merge priority across the three feeders, a failed feeder's error landing in `failed_feeders`
+rather than being silently treated as an empty result, `seed_url` normalization dedup against an
+equivalent feeder-found URL), `_default_max_pages` (the floor vs. the per-seed term),
+`_build_resume_state` (every seed's depth stamped explicitly at 0, `"visited"` pre-populated),
+`_validate_resume_state` (every malformed shape M0 documented plus a missing depths entry),
+`_determine_stop_reason` (via a tiny `_StrategyStub` exposing only `._pages_crawled`/`.max_pages`,
+including the real observed overshoot case, 586 vs. a requested 500), and `_ExactHostFilter.apply`
+(same-host accept with `www.`/apex collapse, sibling-subdomain reject, child-subdomain reject,
+parent-domain reject, a malformed-URL reject that does not raise).
+**Calls out:** none beyond `src.crawler.discovery`/`src.crawler.seed_feeders_scope` themselves —
+no network, no crawl4ai construction.
+
 ### test_pipe_scraper.py (952 LOC)
 **Purpose:** `src/crawler/pipe_scraper*.py` — config stamp extraction off real
 BrowserConfig/CrawlerRunConfig, live crawl4ai `AsyncPlaywrightCrawlerStrategy`/`StealthAdapter`
