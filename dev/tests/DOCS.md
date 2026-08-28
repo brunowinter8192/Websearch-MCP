@@ -122,6 +122,20 @@ throwaway dir once the cdp port resolves) and net 3 (`_reap_orphaned_scrapes` ki
 `scrape-url-cdp-*` pids older than `TOTAL_SCRAPE_BUDGET_S`, never a young/legitimate parallel
 scrape, and sweeps only dirs with zero live processes) — subprocess/psutil mocked throughout.
 
+### test_seed_feeders.py (427 LOC)
+**Purpose:** `src/crawler/seed_feeders*.py` — the `normalize_url`/`scope_and_dedup` merge-vs-
+keep-distinct boundary (default port, empty path, fragment, `www.`/apex, legacy `;params`
+segment all merged; query string, `http` vs `https`, non-root trailing slash, `;params` all kept
+distinct), `parse_robots_directives` (Allow/Disallow + `Sitemap:` extraction, multi-block
+collection, comment stripping), `parse_sitemap_xml` (`urlset`/`sitemapindex`/unknown), a
+2-level-nested `<sitemapindex>` resolved via `resolve_sitemap_urls` plus its 404-sub and
+cycle-guard behavior, and both workflows end-to-end (robots-declared-sitemap preference over the
+conventional fallback, the docs.github.com-shaped all-404 clean-empty case, an invalid `seed_url`
+producing `ok=False` not a silent empty result). Fetch-layer functions are tested via direct
+dependency injection (`client` is a parameter, no monkeypatching needed); workflow-level tests
+monkeypatch `seed_feeders.httpx.AsyncClient`, this project's own established fake-client pattern
+(`test_marginalia_engine.py`).
+
 ### test_pipe_scraper.py (952 LOC)
 **Purpose:** `src/crawler/pipe_scraper*.py` — config stamp extraction off real
 BrowserConfig/CrawlerRunConfig, live crawl4ai `AsyncPlaywrightCrawlerStrategy`/`StealthAdapter`
