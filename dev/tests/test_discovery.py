@@ -12,9 +12,9 @@ import pytest
 
 from src.crawler.seed_feeders_scope import FeederResult
 from src.crawler.discovery import (
-    DiscoveryResult, _ExactHostFilter, _assemble_seeds, _default_max_pages, _build_resume_state,
-    _validate_resume_state, _determine_stop_reason, discover_urls_workflow,
-    MIN_MAX_PAGES, MAX_PAGES_PER_SEED,
+    DiscoveredURL, DiscoveryResult, _ExactHostFilter, _assemble_seeds, _default_max_pages,
+    _build_resume_state, _validate_resume_state, _determine_stop_reason, _merge_results,
+    discover_urls_workflow, MIN_MAX_PAGES, MAX_PAGES_PER_SEED,
 )
 
 
@@ -168,6 +168,54 @@ def test_determine_stop_reason_max_pages_reached_when_overshot():
     # Real, observed behavior (books.toscrape.com: 586 actual vs. 500 requested) — max_pages is
     # enforced at BFS-level granularity, not per-page, so pages_crawled can exceed max_pages.
     assert _determine_stop_reason(_StrategyStub(pages_crawled=586, max_pages=500)) == "max_pages_reached"
+
+
+# ---------------------------------------------------------------------------
+# _merge_results — fetched vs. failed vs. never-attempted, all visible, none silently dropped
+# ---------------------------------------------------------------------------
+
+def test_merge_results_seed_marked_fetched_when_its_own_attempt_succeeded():
+    seeds = {"https://x.test/a": "seed", "https://x.test/b": "sitemap"}
+    urls = _merge_results(seeds, fetched=["https://x.test/a", "https://x.test/b"], frontier_leftover=[])
+    assert DiscoveredURL(url="https://x.test/a", source="seed", fetched=True) in urls
+    assert DiscoveredURL(url="https://x.test/b", source="sitemap", fetched=True) in urls
+
+
+def test_merge_results_seed_marked_not_fetched_when_its_own_attempt_failed():
+    # A seed whose OWN traversal fetch failed (anti-bot block, 429, ...) must still appear in the
+    # result (a feeder already confirmed it), but visibly marked fetched=False, not silently
+    # treated the same as a confirmed page (the review's core complaint).
+    seeds = {"https://x.test/a": "seed", "https://x.test/b": "navtree_tree"}
+    urls = _merge_results(seeds, fetched=["https://x.test/a"], frontier_leftover=[])
+    by_url = {u.url: u for u in urls}
+    assert by_url["https://x.test/a"].fetched is True
+    assert by_url["https://x.test/b"].fetched is False
+    assert by_url["https://x.test/b"].source == "navtree_tree"  # attribution unchanged by the failure
+
+
+def test_merge_results_genuinely_new_fetched_url_tagged_traversal():
+    seeds = {"https://x.test/a": "seed"}
+    urls = _merge_results(seeds, fetched=["https://x.test/a", "https://x.test/new"], frontier_leftover=[])
+    by_url = {u.url: u for u in urls}
+    assert by_url["https://x.test/new"] == DiscoveredURL(url="https://x.test/new", source="traversal", fetched=True)
+
+
+def test_merge_results_frontier_leftover_included_and_marked_unfetched():
+    # The review's point 2: a URL the frontier held when the page budget ran out must not be
+    # silently discarded — it appears, tagged "traversal", fetched=False.
+    seeds = {"https://x.test/a": "seed"}
+    urls = _merge_results(seeds, fetched=["https://x.test/a"], frontier_leftover=["https://x.test/never-fetched"])
+    by_url = {u.url: u for u in urls}
+    assert by_url["https://x.test/never-fetched"] == DiscoveredURL(
+        url="https://x.test/never-fetched", source="traversal", fetched=False)
+
+
+def test_merge_results_no_duplicate_across_the_three_groups():
+    # A URL cannot be BOTH a seed AND a fresh traversal find AND a frontier leftover at once in
+    # real data, but first-write-wins must hold if it somehow overlaps.
+    seeds = {"https://x.test/a": "seed"}
+    urls = _merge_results(seeds, fetched=["https://x.test/a"], frontier_leftover=["https://x.test/a"])
+    assert len([u for u in urls if u.url == "https://x.test/a"]) == 1
 
 
 # ---------------------------------------------------------------------------

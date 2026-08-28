@@ -148,7 +148,7 @@ injection (`client` is a parameter, no monkeypatching needed); workflow-level te
 `seed_feeders.httpx.AsyncClient`, this project's own established fake-client pattern
 (`test_marginalia_engine.py`).
 
-### test_discovery.py (225 LOC)
+### test_discovery.py (273 LOC)
 **Purpose:** `src/crawler/discovery.py` — pure-logic coverage only (the full crawl4ai-driven
 traversal is verified by real runs recorded in `process-docs/url_discovery/`, not mocked, matching
 this project's M0 precedent). `_assemble_seeds` (literal `seed_url` always included, first-write-
@@ -158,9 +158,12 @@ equivalent feeder-found URL), `_default_max_pages` (the floor vs. the per-seed t
 `_build_resume_state` (every seed's depth stamped explicitly at 0, `"visited"` pre-populated),
 `_validate_resume_state` (every malformed shape M0 documented plus a missing depths entry),
 `_determine_stop_reason` (via a tiny `_StrategyStub` exposing only `._pages_crawled`/`.max_pages`,
-including the real observed overshoot case, 586 vs. a requested 500), and `_ExactHostFilter.apply`
-(same-host accept with `www.`/apex collapse, sibling-subdomain reject, child-subdomain reject,
-parent-domain reject, a malformed-URL reject that does not raise).
+including the real observed overshoot case, 586 vs. a requested 500), `_merge_results` (a seed
+whose own fetch attempt succeeded vs. failed — both visible, attribution preserved either way — a
+genuinely new fetched URL tagged `"traversal"`, a frontier-leftover URL included and marked
+`fetched=False` rather than dropped, and first-write-wins if the three input groups ever overlap),
+and `_ExactHostFilter.apply` (same-host accept with `www.`/apex collapse, sibling-subdomain
+reject, child-subdomain reject, parent-domain reject, a malformed-URL reject that does not raise).
 **Calls out:** none beyond `src.crawler.discovery`/`src.crawler.seed_feeders_scope` themselves —
 no network, no crawl4ai construction.
 

@@ -31,6 +31,21 @@ MIN_MAX_PAGES = 500
 # max_depth is, since max_pages is the sole termination lever (see DEFAULT_MAX_DEPTH above).
 MAX_PAGES_PER_SEED = 2
 
+# Per-domain pacing for the traversal fetch itself, applied via CrawlerRunConfig's own
+# mean_delay/max_range/semaphore_count (crawl4ai's arun_many resolves its default dispatcher's
+# concurrency and RateLimiter delay straight off these three fields when no dispatcher is passed
+# explicitly — confirmed by reading async_webcrawler.py directly, not assumed). crawl4ai's own
+# defaults (mean_delay=0.1s, max_range=0.3s, semaphore_count=5) are tuned for speed, not for a
+# real anti-bot-protected site under this project's own hundreds-of-seeds-in-one-BFS-level traffic
+# pattern. These three values are NOT invented for this module — they match this project's own
+# MEASURED chromium pacing (`pipe_scraper_constants.DOWNLOAD_DELAY`/`CONCURRENCY_PER_DOMAIN`,
+# validated by a real concurrency probe, `process-docs/pipe_scraper_hardening/2026-08-04_stealth_concurrency_probe.md`)
+# rather than a value guessed for this specific site. See DOCS.md Gotchas for the measured
+# before/after on docs.github.com.
+TRAVERSAL_MEAN_DELAY_S = 1.0
+TRAVERSAL_MAX_RANGE_S = 0.5
+TRAVERSAL_CONCURRENCY = 8
+
 _FEEDER_WORKFLOWS = (
     ("robots", robots_feeder_workflow),
     ("sitemap", sitemap_feeder_workflow),
@@ -38,20 +53,28 @@ _FEEDER_WORKFLOWS = (
 )
 
 
-# One discovered URL and what first produced it — "seed" (the literal seed_url), a feeder's own
-# `FeederResult.source` ("robots"/"sitemap"/"navtree_tree"/"navtree_flat"), or "traversal" (a link
-# discovered mid-crawl that no feeder and no seed already carried).
+# One discovered URL, what first produced it, and whether it was actually confirmed by a real
+# fetch. source: "seed" (the literal seed_url), a feeder's own `FeederResult.source`
+# ("robots"/"sitemap"/"navtree_tree"/"navtree_flat"), or "traversal" (a link discovered mid-crawl
+# that no feeder and no seed already carried). fetched=False covers TWO real cases, both visible
+# on the result rather than silently dropped: a URL whose own fetch attempt failed (anti-bot
+# block, 429, ...) and a URL the frontier held but the page budget ran out before it was ever
+# attempted at all (see discover_urls_workflow's own docstring).
 @dataclass
 class DiscoveredURL:
     url: str
     source: str
+    fetched: bool = True
 
 
 # Result of one discovery run. ok=True even when one or two feeders failed (see
 # discover_urls_workflow's own docstring) — failed_feeders makes that visible rather than letting
 # the run proceed as if a failed feeder had simply found nothing. ok=False only when seed_url
 # itself could not be used at all. stop_reason distinguishes an exhausted frontier from an
-# exhausted page budget; it is None when ok=False, since no traversal ever ran.
+# exhausted page budget; it is None when ok=False, since no traversal ever ran. pages_fetched/
+# pages_failed count every real fetch ATTEMPT the traversal made (success vs. failure) — the
+# aggregate visibility a caller needs to tell "304 URLs, all confirmed" from "304 URLs, most of
+# them never actually loaded" apart, which a bare URL count cannot do on its own.
 @dataclass
 class DiscoveryResult:
     urls: list = field(default_factory=list)
@@ -59,6 +82,8 @@ class DiscoveryResult:
     stop_reason: str | None = None
     wall_s: float = 0.0
     failed_feeders: dict = field(default_factory=dict)
+    pages_fetched: int = 0
+    pages_failed: int = 0
     error: str | None = None
 
 
@@ -111,19 +136,16 @@ async def discover_urls_workflow(seed_url: str, max_depth: int | None = None,
     _validate_resume_state(resume_state)
 
     try:
-        discovered, stop_reason = await _traverse(seed_url, seed_host, resume_state,
-                                                   resolved_max_depth, resolved_max_pages)
+        fetched, frontier_leftover, stop_reason, pages_fetched, pages_failed = await _traverse(
+            seed_url, seed_host, resume_state, resolved_max_depth, resolved_max_pages)
     except Exception as exc:
         return DiscoveryResult(ok=False, error=str(exc), failed_feeders=failed_feeders,
                                wall_s=time.time() - t0)
 
-    for url in discovered:
-        if url not in seeds:
-            seeds[url] = "traversal"
-
-    urls = [DiscoveredURL(url=u, source=src) for u, src in seeds.items()]
-    return DiscoveryResult(urls=urls, ok=True, stop_reason=stop_reason,
-                           wall_s=time.time() - t0, failed_feeders=failed_feeders)
+    urls = _merge_results(seeds, fetched, frontier_leftover)
+    return DiscoveryResult(urls=urls, ok=True, stop_reason=stop_reason, wall_s=time.time() - t0,
+                           failed_feeders=failed_feeders, pages_fetched=pages_fetched,
+                           pages_failed=pages_failed)
 
 
 # FUNCTIONS
@@ -193,20 +215,34 @@ def _validate_resume_state(resume_state: dict) -> None:
 
 # Run the traversal itself: exact-host scope filter (include_external=True so crawl4ai's own
 # crude same-page-netloc substring check — see DOCS.md Gotchas — never gets a chance to matter;
-# this filter is the sole scope authority), lightweight fetch config (no markdown generation,
-# this milestone only harvests URLs). Returns (discovered_urls, stop_reason).
+# this filter is the sole scope authority), paced fetch config (see TRAVERSAL_MEAN_DELAY_S/
+# TRAVERSAL_MAX_RANGE_S/TRAVERSAL_CONCURRENCY — real anti-bot measurement drove these, not
+# crawl4ai's own speed-tuned defaults), no markdown generation (this milestone only harvests
+# URLs). An on_state_change callback keeps the LATEST captured strategy state, which after the
+# run holds whatever the frontier ("pending") still contained the moment the run stopped — URLs
+# link_discovery found and accepted but the page budget never got to fetch, which must not be
+# silently discarded (see discover_urls_workflow's own docstring). Returns (fetched_urls,
+# frontier_leftover_urls, stop_reason, pages_fetched, pages_failed).
 async def _traverse(seed_url: str, seed_host: str, resume_state: dict,
                     max_depth: int, max_pages: int) -> tuple:
+    captured = {}
+
+    async def _capture_state(state: dict) -> None:
+        captured["state"] = state
+
     strategy = BFSDeepCrawlStrategy(
         max_depth=max_depth,
         max_pages=max_pages,
         filter_chain=FilterChain([_ExactHostFilter(seed_host)]),
         include_external=True,
         resume_state=resume_state,
+        on_state_change=_capture_state,
     )
     config = CrawlerRunConfig(
         cache_mode=CacheMode.BYPASS, wait_until="domcontentloaded",
         deep_crawl_strategy=strategy, stream=False, verbose=False,
+        mean_delay=TRAVERSAL_MEAN_DELAY_S, max_range=TRAVERSAL_MAX_RANGE_S,
+        semaphore_count=TRAVERSAL_CONCURRENCY,
     )
     browser_config = BrowserConfig(headless=True, verbose=False)
 
@@ -214,8 +250,15 @@ async def _traverse(seed_url: str, seed_host: str, resume_state: dict,
         results = await crawler.arun(url=seed_url, config=config)
 
     stop_reason = _determine_stop_reason(strategy)
-    discovered = [r.url for r in results if r.success]
-    return discovered, stop_reason
+    fetched = [r.url for r in results if r.success]
+    pages_fetched = len(fetched)
+    pages_failed = len(results) - pages_fetched
+
+    frontier_leftover = []
+    if "state" in captured:
+        frontier_leftover = [item["url"] for item in captured["state"].get("pending", [])]
+
+    return fetched, frontier_leftover, stop_reason, pages_fetched, pages_failed
 
 
 # "max_pages_reached" if the strategy's own page count met/exceeded its budget, else
@@ -225,3 +268,26 @@ def _determine_stop_reason(strategy: BFSDeepCrawlStrategy) -> str:
     if strategy._pages_crawled >= strategy.max_pages:
         return "max_pages_reached"
     return "frontier_exhausted"
+
+
+# Build the final DiscoveredURL list: every seed tagged with its own source and whether ITS OWN
+# fetch attempt succeeded; every genuinely new successfully-fetched traversal URL tagged
+# "traversal"/fetched=True; every frontier-leftover URL (found, never attempted — the page budget
+# ran out first) tagged "traversal"/fetched=False. First-write-wins across all three groups (a
+# URL already accounted for by an earlier group is never duplicated or re-tagged by a later one).
+def _merge_results(seeds: dict, fetched: list, frontier_leftover: list) -> list:
+    fetched_set = set(fetched)
+    urls = []
+    seen = set()
+    for url, source in seeds.items():
+        urls.append(DiscoveredURL(url=url, source=source, fetched=url in fetched_set))
+        seen.add(url)
+    for url in fetched:
+        if url not in seen:
+            urls.append(DiscoveredURL(url=url, source="traversal", fetched=True))
+            seen.add(url)
+    for url in frontier_leftover:
+        if url not in seen:
+            urls.append(DiscoveredURL(url=url, source="traversal", fetched=False))
+            seen.add(url)
+    return urls
