@@ -74,7 +74,7 @@ pipe_scraper: URL list in → per-domain paced raw crawl → one `.md` per URL +
 **Called by:** `pipe_scraper.py` (`scrape_urls_workflow`).
 **Calls out:** none (stdlib only).
 
-### seed_feeders.py (77 LOC) — entry point
+### seed_feeders.py (80 LOC) — entry point
 
 **Purpose:** Orchestrates all three feeders — `robots_feeder_workflow` (Allow/Disallow paths), `sitemap_feeder_workflow` (robots-declared `Sitemap:` locations, preferred, falling back to conventional paths only when robots declares none), and `navtree_feeder_workflow` (the site's own navigation tree). All three validate `seed_url`, fetch, scope+dedup the result, tag `FeederResult.source`, and convert an unexpected orchestration failure (e.g. an unparseable `seed_url`) into `FeederResult(ok=False, error=...)` rather than raising — a normal per-fetch outcome (missing robots.txt, a 404 sitemap, no framework payload detected) stays `ok=True` with a possibly-empty `urls` list, never `ok=False`.
 **Reads:** live HTTP (robots.txt, sitemap, and navigation-tree-bearing HTML pages) via `httpx.AsyncClient`, one fresh client per workflow call.
@@ -106,7 +106,7 @@ pipe_scraper: URL list in → per-domain paced raw crawl → one `.md` per URL +
 **Called by:** `seed_feeders.py` (`sitemap_feeder_workflow`).
 **Calls out:** `httpx`.
 
-### seed_feeders_navtree.py (334 LOC)
+### seed_feeders_navtree.py (342 LOC)
 
 **Purpose:** `extract_payloads` (detection dispatch, extensible list of shape-extractors — currently the Next.js Pages Router `__NEXT_DATA__` blob and the App Router RSC `self.__next_f.push` stream); `find_navigation_tree` (tier 1: the largest dict subtree structurally shaped like a nav tree, found anywhere in the payload by shape, never a hardcoded key path; tier 2 fallback: a flat href/url scan, filtered, when tier 1 finds nothing); `resolve_navigation_tree` (orchestrates: fetch seed → detect → walk → find + fetch every OTHER version the same payload declares → canonicalize each version's URLs back to the default version's shape → union). `navtree_feeder_workflow` (seed_feeders.py) wraps this with the shared `FeederResult`/scope/dedup contract, tagging `source` "navtree_tree" or "navtree_flat" from whichever tier produced the DEFAULT tree.
 **Reads:** live HTTP (the seed page + each detected version's own root page) via `httpx.AsyncClient`, passed in by the caller (no client of its own).

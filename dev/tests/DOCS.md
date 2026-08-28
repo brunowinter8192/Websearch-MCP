@@ -122,7 +122,7 @@ throwaway dir once the cdp port resolves) and net 3 (`_reap_orphaned_scrapes` ki
 `scrape-url-cdp-*` pids older than `TOTAL_SCRAPE_BUDGET_S`, never a young/legitimate parallel
 scrape, and sweeps only dirs with zero live processes) — subprocess/psutil mocked throughout.
 
-### test_seed_feeders.py (688 LOC)
+### test_seed_feeders.py (704 LOC)
 **Purpose:** `src/crawler/seed_feeders*.py` — the `normalize_url`/`scope_and_dedup` merge-vs-
 keep-distinct boundary (default port, empty path, fragment, `www.`/apex, legacy `;params`
 segment all merged; query string, `http` vs `https`, non-root trailing slash, `;params` all kept
