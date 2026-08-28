@@ -22,7 +22,7 @@ URL scraping for the `scrape_url_chromium` CLI subcommand and the shared garbage
 
 ## Modules
 
-### chromium_scrape.py (527 LOC)
+### chromium_scrape.py (607 LOC)
 
 **Purpose:** Scrape orchestrator — single crawl4ai browser call via a self-launched, dynamically-resolved chromium bundle connected over CDP (`_acquire_cdp_headed`, stealth + consent-removal), returns `fit_markdown` unconditionally with acquisition facts only (HTTP status, byte counts, landed URL, crawl4ai's own anti-bot diagnosis) — no content judgment. Three independent process-hygiene nets: net 1 is `_acquire_cdp_headed`'s own `finally` (`_kill_by_profile` + `shutil.rmtree`, fires on every normal exit path including budget exhaustion); net 2 is a `death_pipe` watchdog spawned once the cdp port resolves (crash backstop — kills this call's own PIDs and removes its throwaway dir if the CLI process itself dies before net 1 runs); net 3 is `_reap_orphaned_scrapes`, called at the start of every `try_scrape`, which kills only `scrape-url-cdp-*` processes OLDER than `TOTAL_SCRAPE_BUDGET_S` (never a live parallel scrape — each call's profile dir is unique, concurrency is legitimate) and sweeps any `scrape-url-cdp-*` dir with zero live processes at all.
 **Reads:** `url` arg (no other parameters — `max_content_length` removed 2026-08-05).

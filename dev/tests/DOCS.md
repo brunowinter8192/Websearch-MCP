@@ -100,7 +100,7 @@ fetch_with_retry` backoff/re-raise, `pool_loaders.load_backfill_pool` per-source
 `logger.AcquireLogger`/`_group_pool_sources`, `loop.run_loop` refresh-boundary integration
 (pool swap + wset state-continuity, confirmed production-correct not a test bug).
 
-### test_camoufox_scrape.py (625 LOC)
+### test_camoufox_scrape.py (628 LOC)
 **Purpose:** `src/scraper/camoufox_scrape.py` — `try_scrape_camoufox` acquisition-error states
 (budget/browser_missing/exception), the "Invalid IPv6 URL" urlsplit regression, HTML-preserved-
 on-markdown-conversion-failure, calibration surface (`_build_camoufox_kwargs`/
