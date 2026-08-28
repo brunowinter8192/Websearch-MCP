@@ -88,7 +88,7 @@ pipe_scraper: URL list in → per-domain paced raw crawl → one `.md` per URL +
 **Called by:** `seed_feeders_robots.py`, `seed_feeders_sitemap.py`, `seed_feeders.py`.
 **Calls out:** none.
 
-### seed_feeders_scope.py (76 LOC)
+### seed_feeders_scope.py (79 LOC)
 
 **Purpose:** `FeederResult` dataclass; `normalize_url` (the merge-vs-keep-distinct boundary, deliberately NOT `crawl_site.normalize_url` — see Gotchas); `scope_and_dedup` (host-only scope, `www.`/apex collapsed for comparison only, order-preserving dedup, malformed URLs dropped not raised).
 **Called by:** `seed_feeders.py` (both workflows).
