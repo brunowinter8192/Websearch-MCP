@@ -122,18 +122,30 @@ throwaway dir once the cdp port resolves) and net 3 (`_reap_orphaned_scrapes` ki
 `scrape-url-cdp-*` pids older than `TOTAL_SCRAPE_BUDGET_S`, never a young/legitimate parallel
 scrape, and sweeps only dirs with zero live processes) — subprocess/psutil mocked throughout.
 
-### test_seed_feeders.py (427 LOC)
+### test_seed_feeders.py (704 LOC)
 **Purpose:** `src/crawler/seed_feeders*.py` — the `normalize_url`/`scope_and_dedup` merge-vs-
 keep-distinct boundary (default port, empty path, fragment, `www.`/apex, legacy `;params`
 segment all merged; query string, `http` vs `https`, non-root trailing slash, `;params` all kept
 distinct), `parse_robots_directives` (Allow/Disallow + `Sitemap:` extraction, multi-block
 collection, comment stripping), `parse_sitemap_xml` (`urlset`/`sitemapindex`/unknown), a
 2-level-nested `<sitemapindex>` resolved via `resolve_sitemap_urls` plus its 404-sub and
-cycle-guard behavior, and both workflows end-to-end (robots-declared-sitemap preference over the
-conventional fallback, the docs.github.com-shaped all-404 clean-empty case, an invalid `seed_url`
-producing `ok=False` not a silent empty result). Fetch-layer functions are tested via direct
-dependency injection (`client` is a parameter, no monkeypatching needed); workflow-level tests
-monkeypatch `seed_feeders.httpx.AsyncClient`, this project's own established fake-client pattern
+cycle-guard behavior; `extract_payloads` detection of both the `__NEXT_DATA__` blob and the RSC
+`self.__next_f.push` stream shapes (plus the neither-shape empty case) and `find_navigation_tree`'s
+tier 1/tier 2 split — a synthetic React-element-shaped `{"href":..., "children": [[...]]}` fixture
+proves the tree-finder does NOT mistake rendered DOM for tree data (the false-positive shape
+found live on `ui.shadcn.com` before the shape check was tightened), a fragment/`_next/`-internal
+filter test for the tier 2 fallback; `_build_version_urls`/`_canonicalize_version_url` (including
+the seed-is-a-non-default-version case that exposed a real `lang_prefix` derivation bug, and the
+missing-field/content-path-mismatch graceful-empty cases); `resolve_navigation_tree` end-to-end
+with a synthetic 2-version fixture proving the union recovers a page that exists in only one
+version while deduping the pages both versions share; and all three workflows end-to-end
+(robots-declared-sitemap preference over the conventional fallback, the docs.github.com-shaped
+all-404 clean-empty case, an RSC-tree-shape page proving the navtree detector does not fall
+through on the App Router shape, an RSC-DOM-only page proving the tier 2 fallback engages, an
+invalid `seed_url` producing `ok=False` not a silent empty result, and `FeederResult.source`
+asserted on every workflow's happy path). Fetch-layer functions are tested via direct dependency
+injection (`client` is a parameter, no monkeypatching needed); workflow-level tests monkeypatch
+`seed_feeders.httpx.AsyncClient`, this project's own established fake-client pattern
 (`test_marginalia_engine.py`).
 
 ### test_pipe_scraper.py (952 LOC)

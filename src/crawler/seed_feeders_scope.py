@@ -7,12 +7,19 @@ _DEFAULT_PORTS = {"http": 80, "https": 443}
 
 # Result of one feeder run — ok=True with an empty urls list is a genuine "found nothing"
 # outcome (e.g. no robots.txt, no sitemap); ok=False means the feeder itself could not run
-# (e.g. an unparseable seed_url) — a caller must not treat the two the same way.
+# (e.g. an unparseable seed_url) — a caller must not treat the two the same way. `source` is a
+# short, always-populated-on-success tag naming the extraction method that produced `urls`
+# ("robots", "sitemap", or, for the navigation-tree feeder, "navtree_tree" vs "navtree_flat" —
+# a real recursive tree found by structural shape versus a flat href scan with no tree evidence
+# behind it. This is a provenance label only: no filtering or quality threshold is applied here
+# or by any feeder — a caller that wants to treat "navtree_flat" as lower-confidence than
+# "navtree_tree" makes that call itself, using this field, not by anything dropped upstream.
 @dataclass
 class FeederResult:
     urls: list
     ok: bool
     error: str | None = None
+    source: str | None = None
 
 
 # FUNCTIONS
