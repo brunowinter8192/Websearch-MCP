@@ -5,8 +5,8 @@ import httpx
 
 # From src/crawler/seed_feeders_constants.py: shared conventional sitemap fallback paths
 from src.crawler.seed_feeders_constants import CONVENTIONAL_SITEMAP_PATHS
-# From src/crawler/seed_feeders_scope.py: FeederResult + shared scope/normalize/dedup
-from src.crawler.seed_feeders_scope import FeederResult, scope_and_dedup
+# From src/crawler/seed_feeders_scope.py: FeederResult + shared scope/normalize/dedup/host validation
+from src.crawler.seed_feeders_scope import FeederResult, scope_and_dedup, require_host
 # From src/crawler/seed_feeders_robots.py: robots.txt fetch + directive parsing
 from src.crawler.seed_feeders_robots import fetch_robots_txt, parse_robots_directives
 # From src/crawler/seed_feeders_sitemap.py: sitemap fetch + recursive index resolution
@@ -20,7 +20,7 @@ from src.crawler.seed_feeders_navtree import resolve_navigation_tree
 # Fetch seed_url's robots.txt and return its Allow/Disallow path values as scoped, deduped seeds.
 async def robots_feeder_workflow(seed_url: str) -> FeederResult:
     try:
-        seed_host = _require_host(seed_url)
+        seed_host = require_host(seed_url)
         base_url = _base_url(seed_url)
         async with httpx.AsyncClient() as client:
             text = await fetch_robots_txt(client, base_url)
@@ -35,7 +35,7 @@ async def robots_feeder_workflow(seed_url: str) -> FeederResult:
 # robots.txt declares none (including when robots.txt itself is missing).
 async def sitemap_feeder_workflow(seed_url: str) -> FeederResult:
     try:
-        seed_host = _require_host(seed_url)
+        seed_host = require_host(seed_url)
         base_url = _base_url(seed_url)
         async with httpx.AsyncClient() as client:
             text = await fetch_robots_txt(client, base_url)
@@ -56,7 +56,7 @@ async def sitemap_feeder_workflow(seed_url: str) -> FeederResult:
 # caught by the same except below as an invalid seed_url.
 async def navtree_feeder_workflow(seed_url: str) -> FeederResult:
     try:
-        seed_host = _require_host(seed_url)
+        seed_host = require_host(seed_url)
         async with httpx.AsyncClient() as client:
             raw_urls, tier = await resolve_navigation_tree(client, seed_url)
         return FeederResult(urls=scope_and_dedup(raw_urls, seed_host), ok=True, source=f"navtree_{tier}")
@@ -65,14 +65,6 @@ async def navtree_feeder_workflow(seed_url: str) -> FeederResult:
 
 
 # FUNCTIONS
-
-# Validate seed_url and return its bare host; raises ValueError on unparseable/hostless input
-def _require_host(seed_url: str) -> str:
-    host = urlparse(seed_url).hostname
-    if not host:
-        raise ValueError(f"seed_url has no host: {seed_url!r}")
-    return host
-
 
 # scheme://host/ root, used as the base for robots.txt and conventional-sitemap-path resolution
 def _base_url(seed_url: str) -> str:
