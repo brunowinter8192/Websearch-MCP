@@ -1,0 +1,6 @@
+# INFRASTRUCTURE
+
+HTTP_TIMEOUT_S = 15.0
+USER_AGENT = "websearch-seed-feeder/1.0"
+CONVENTIONAL_SITEMAP_PATHS = ("/sitemap.xml", "/sitemap_index.xml")
+SITEMAP_FETCH_CONCURRENCY = 8

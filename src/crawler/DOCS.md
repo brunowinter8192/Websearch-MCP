@@ -2,7 +2,7 @@
 
 ## Role
 
-Full-site BFS discovery + capture-pipeline scrape step for offline documentation indexing (the capture-and-index workflow). Two standalone entry modules — neither is a `cli.py` subcommand. Touch this package to change discovery (BFS/link-following) or the raw batch-scrape step; single-URL in-chat scraping lives in `src/scraper/`.
+Full-site BFS discovery + capture-pipeline scrape step for offline documentation indexing (the capture-and-index workflow). Two standalone entry modules — neither is a `cli.py` subcommand. Touch this package to change discovery (BFS/link-following) or the raw batch-scrape step; single-URL in-chat scraping lives in `src/scraper/`. Also the `seed_feeders*.py` group: the URL-discovery redesign's pre-traversal seed sources (robots.txt, sitemaps) for the link-graph-traversal frame verified in `process-docs/url_discovery/` — these produce a seed URL list only, they do NOT wire into `BFSDeepCrawlStrategy`'s frontier yet (a later milestone) and do not touch `crawl_site.py`, which is scheduled for retirement once that wiring lands.
 
 ## Public Interface
 
@@ -12,10 +12,11 @@ Full-site BFS discovery + capture-pipeline scrape step for offline documentation
 - `crawl_site_workflow(...)` (crawl_site.py) — discover (BFS) then crawl a seed domain.
 - `discover_urls_playwright(...)`, `crawl_urls(...)`, `normalize_url(...)` (crawl_site.py).
 - `log_pipe_scrape(record)` (pipe_scrape_logger.py) — called by pipe_scraper.py.
+- `robots_feeder_workflow(seed_url)`, `sitemap_feeder_workflow(seed_url)` (seed_feeders.py) — each returns a `FeederResult(urls, ok, error)` (seed_feeders_scope.py).
 
 ## Flow
 
-pipe_scraper: URL list in → per-domain paced raw crawl → one `.md` per URL + a `/tmp` outcome report + a persistent per-URL JSONL log record (run/config-stamped). crawl_site: seed URL → Playwright BFS discovery (`discover_urls_playwright`) → parallel content crawl (`crawl_urls`) → markdown files, each with a `<!-- source: URL -->` header.
+pipe_scraper: URL list in → per-domain paced raw crawl → one `.md` per URL + a `/tmp` outcome report + a persistent per-URL JSONL log record (run/config-stamped). crawl_site: seed URL → Playwright BFS discovery (`discover_urls_playwright`) → parallel content crawl (`crawl_urls`) → markdown files, each with a `<!-- source: URL -->` header. seed_feeders: seed URL in → `robots_feeder_workflow` (robots.txt Allow/Disallow paths) and/or `sitemap_feeder_workflow` (robots-declared or conventional-path sitemaps, resolved recursively through any `<sitemapindex>` nesting) → each independently host-scoped, normalized, deduped, and returned as a `FeederResult`.
 
 ## Modules
 
@@ -73,6 +74,38 @@ pipe_scraper: URL list in → per-domain paced raw crawl → one `.md` per URL +
 **Called by:** `pipe_scraper.py` (`scrape_urls_workflow`).
 **Calls out:** none (stdlib only).
 
+### seed_feeders.py (61 LOC) — entry point
+
+**Purpose:** Orchestrates the two feeders — `robots_feeder_workflow` (Allow/Disallow paths) and `sitemap_feeder_workflow` (robots-declared `Sitemap:` locations, preferred, falling back to conventional paths only when robots declares none). Both validate `seed_url`, fetch, scope+dedup the result, and convert an unexpected orchestration failure (e.g. an unparseable `seed_url`) into `FeederResult(ok=False, error=...)` rather than raising — a normal per-fetch outcome (missing robots.txt, a 404 sitemap) stays `ok=True` with a possibly-empty `urls` list, never `ok=False`.
+**Reads:** live HTTP (robots.txt + sitemap documents) via `httpx.AsyncClient`, one fresh client per workflow call.
+**Writes:** nothing — returns a `FeederResult`, no disk/log side effects.
+**Called by:** nothing yet (not wired into any frontier/CLI this milestone — see Role).
+**Calls out:** `httpx`; `seed_feeders_constants.py`, `seed_feeders_scope.py`, `seed_feeders_robots.py`, `seed_feeders_sitemap.py` (all below).
+
+### seed_feeders_constants.py (6 LOC)
+
+**Purpose:** Shared HTTP timeout, User-Agent, conventional sitemap fallback paths, sub-sitemap fetch concurrency cap.
+**Called by:** `seed_feeders_robots.py`, `seed_feeders_sitemap.py`, `seed_feeders.py`.
+**Calls out:** none.
+
+### seed_feeders_scope.py (79 LOC)
+
+**Purpose:** `FeederResult` dataclass; `normalize_url` (the merge-vs-keep-distinct boundary, deliberately NOT `crawl_site.normalize_url` — see Gotchas); `scope_and_dedup` (host-only scope, `www.`/apex collapsed for comparison only, order-preserving dedup, malformed URLs dropped not raised).
+**Called by:** `seed_feeders.py` (both workflows).
+**Calls out:** none (stdlib only).
+
+### seed_feeders_robots.py (48 LOC)
+
+**Purpose:** `fetch_robots_txt` (GET, `None` on any failure — normal outcome); `parse_robots_directives` (Allow/Disallow path values AND `Sitemap:` URLs, every `User-agent:` block collected together, not scoped to one).
+**Called by:** `seed_feeders.py` (both workflows).
+**Calls out:** `httpx`.
+
+### seed_feeders_sitemap.py (88 LOC)
+
+**Purpose:** `fetch_sitemap` (GET, gunzips `.gz`, `None` on any failure — normal outcome); `parse_sitemap_xml` (namespace-agnostic `ElementTree`, distinguishes `<sitemapindex>` from `<urlset>`); `resolve_sitemap_urls` (recursive, bounded concurrency via a shared `asyncio.Semaphore`, cycle-guarded via a shared visited set, arbitrary nesting depth).
+**Called by:** `seed_feeders.py` (`sitemap_feeder_workflow`).
+**Calls out:** `httpx`.
+
 ### pipe_scrape_logger.py (27 LOC)
 
 **Purpose:** Per-URL JSONL log writer for pipe_scraper — one record per URL (`run_id`-grouped, `ts`=request start), shared by both acquisition engines (`"engine"` field discriminates), separate schema/file from `src/logs/scrape_log.jsonl`.
@@ -97,3 +130,8 @@ pipe_scraper: URL list in → per-domain paced raw crawl → one `.md` per URL +
 - **`CAMOUFOX_CONCURRENCY_PER_DOMAIN=1` is NOT the same kind of number as `CONCURRENCY_PER_DOMAIN=8` — do not "fix" the apparent inconsistency by raising it to match.** The chromium default was measured/validated (`process-docs/pipe_scraper_hardening/2026-08-04_stealth_concurrency_probe.md`, 0 crashes at 8) for N requests sharing ONE already-launched browser. The camoufox engine launches a FRESH, real, headed Firefox process per in-flight request — concurrency=8 there would mean up to 8 simultaneous heavy processes per domain, unmeasured, against field evidence that Camoufox's memory footprint is already heavier per-instance than patchright/undetected-chromium. 1 is the conservative default absent evidence, not a final number — raise it only with the same kind of measurement that earned chromium's 8, never by assumption.
 - **The pipe-engine log's `"config"` shape is NOT comparable across `"engine"` values, ever — a config_hash collision across engines means nothing.** Chromium's `config` is the FULL pacing/stealth surface, computed once for the whole run off the real shared browser objects; camoufox's own `config` (headless/os/block_images/timeout/executable_path/total_budget_s) is computed PER URL, off that call's own `try_scrape_camoufox` meta, and has no pacing/stealth keys at all (there is no shared browser to read them off). Grouping/comparing records by `config_hash` only makes sense WITHIN one `"engine"` value.
 - **Open question, NOT investigated further — a real question about the EXISTING fallback design, not about the landed_url work itself.** Attempting to build a real (non-fake) trigger for path (b) during milestone-4 verification, a controlled local server was built to force Playwright's `net::ERR_ABORTED` (a download-triggering response, `accept_downloads=False` — this module's default). It fired exactly as the crawl4ai source predicts (`crawl4ai_error_message` in the real logged record confirms the exact `RuntimeError`), but crawl4ai's own `_crawl_web` wrapper — a layer neither the 2026-08-05 fallback-path work nor this milestone had previously inspected — caught it internally and returned a normal `success=False` `CrawlResult` rather than letting it propagate to `_scrape_one`'s own `except Exception:` block. Path (b) was therefore NOT reached by this trigger, even though the browser genuinely failed. This raises a real, open question about how often path (b) is reachable at all in this crawl4ai version — the earlier verification (`process-docs/pipe_scraper_hardening/2026-08-05_curl_cffi_fallback_acquisition_path.md`) used a DIFFERENT failure shape (a connection that never responds, forcing a timeout) to reach it, not this one. Not chased further here — left as a question for whoever next touches this fallback design to pick up.
+- **`seed_feeders_scope.normalize_url` is a DIFFERENT function from `crawl_site.normalize_url`, deliberately, not a naming collision to fix.** `crawl_site.normalize_url` strips the entire query string and cuts `@version` path segments — correct for its own use (a BFS visited-set, where over-merging is safe: worst case is refetching a page). Wrong for a seed feeder: the worst case inverts — a merged seed is never fetched at all — and a differing query string (`?page=2`) or a real `/@user`/`/package/@scope/name` path segment can be a genuinely different document. Do not consolidate the two functions. The merge boundary this module actually uses: scheme/host casing, the scheme's own default port, an empty path vs `/`, and the fragment are collapsed (pure protocol-level identity — literally the same request or the same client-only annotation, not a heuristic); `www.` vs apex is collapsed for SCOPE/DEDUP COMPARISON only, via a separate `_host_key` helper — the output URL text keeps whatever host spelling the source actually declared, never rewritten, since rewriting risks producing a form the site doesn't actually serve. Query strings, `http` vs `https`, and any non-root trailing slash are all kept DISTINCT — none of the three is a protocol-level identity (unlike the merged set), only a common convention that does not hold universally, and this feeder's whole purpose is maximum coverage. See `process-docs/scrape_pipeline/landed_url_comparison_primitive_2026-08-06.md` for the same reasoning applied to a different (post-fetch, comparison-only) primitive, and why its own `www.`/`http`-vs-`https`/trailing-slash merges do not transfer here unmodified.
+- **`sitemap_feeder_workflow` and `robots_feeder_workflow` each fetch `robots.txt` independently — calling both against the same seed fetches it twice.** Deliberate simplicity for this milestone (the two feeders are meant to be independently callable, and neither is wired into a shared caller yet); revisit if/when a frontier-wiring caller wants both from one seed.
+- **Not using crawl4ai's `AsyncUrlSeeder`** (`venv/lib/python3.14/site-packages/crawl4ai/async_url_seeder.py`, `source="sitemap"`), on four grounds verified by reading its source: (1) `_from_sitemaps` tries the conventional paths BEFORE falling back to `robots.txt`'s `Sitemap:` lines — the opposite priority this milestone requires; (2) it has no Allow/Disallow extraction at all; (3) it writes an on-disk cache under `~/.crawl4ai/` as a side effect, unwanted for a stateless feeder; (4) its `urls()` returns a bare list with no empty-vs-failed signal, and its producer/worker/queue/BM25 machinery is far harder to unit-test with local fixtures than plain functions plus a mocked `httpx.AsyncClient` (this project's own established pattern). `filter_nonsense_urls` is therefore moot here, but its `True` default would have been rejected anyway even if the seeder had been used — it drops API paths and media files, wrong for a feeder whose stated goal is maximum coverage; content-type filtering is a downstream concern.
+- **`seed_feeders_scope.py` uses `urlsplit`/`urlunsplit`, never `urlparse`/`urlunparse`, and this is deliberate, not a stylistic choice.** `urlparse`'s legacy 6-tuple splits a trailing `;params` path segment (e.g. `/a/b;jsessionid=ABC`) out of `path` into its own `.params` field — rebuilding a URL from `scheme`/`netloc`/`path`/`query` alone (as `normalize_url` and `_dedup_key` both do) then silently drops that segment with no decision ever made about it, exactly the kind of silent merge this module's own boundary table argues against (a `;params` segment is rare in practice but CAN denote a different resource, e.g. legacy Java session-tracking). `urlsplit` never performs this split — `;params` stays embedded in `.path` and survives the rebuild untouched — while still exposing the same `.hostname`/`.port` convenience properties `normalize_url` needs. Caught in post-commit review; regression risk if a future edit reintroduces `urlparse` here for path/query reconstruction.
+- **`fetch_robots_txt`/`fetch_sitemap` return `None` on a non-200 response or a network error — this is a real return value, not a bug, and the type annotations (`str | None`/`bytes | None`) say so explicitly.** A bare `-> str`/`-> bytes` annotation was caught in post-commit review as describing only the success path while the function's own documented contract (a missing/404 resource is a normal outcome) requires the `None` path just as often. `_child_text` (`seed_feeders_sitemap.py`) and `FeederResult.error`/`resolve_sitemap_urls`'s `seen` parameter carry the same `X | None` treatment for the identical reason.
