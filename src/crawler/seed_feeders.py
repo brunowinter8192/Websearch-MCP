@@ -11,6 +11,8 @@ from src.crawler.seed_feeders_scope import FeederResult, scope_and_dedup
 from src.crawler.seed_feeders_robots import fetch_robots_txt, parse_robots_directives
 # From src/crawler/seed_feeders_sitemap.py: sitemap fetch + recursive index resolution
 from src.crawler.seed_feeders_sitemap import resolve_sitemap_urls
+# From src/crawler/seed_feeders_navtree.py: framework nav-tree detection + version union
+from src.crawler.seed_feeders_navtree import resolve_navigation_tree
 
 
 # ORCHESTRATOR
@@ -23,7 +25,7 @@ async def robots_feeder_workflow(seed_url: str) -> FeederResult:
         async with httpx.AsyncClient() as client:
             text = await fetch_robots_txt(client, base_url)
         paths = parse_robots_directives(text, base_url)["paths"] if text else []
-        return FeederResult(urls=scope_and_dedup(paths, seed_host), ok=True)
+        return FeederResult(urls=scope_and_dedup(paths, seed_host), ok=True, source="robots")
     except Exception as exc:
         return FeederResult(urls=[], ok=False, error=str(exc))
 
@@ -40,7 +42,21 @@ async def sitemap_feeder_workflow(seed_url: str) -> FeederResult:
             declared_sitemaps = parse_robots_directives(text, base_url)["sitemaps"] if text else []
             sitemap_urls = declared_sitemaps or [urljoin(base_url, p) for p in CONVENTIONAL_SITEMAP_PATHS]
             loc_urls = await resolve_sitemap_urls(client, sitemap_urls)
-        return FeederResult(urls=scope_and_dedup(loc_urls, seed_host), ok=True)
+        return FeederResult(urls=scope_and_dedup(loc_urls, seed_host), ok=True, source="sitemap")
+    except Exception as exc:
+        return FeederResult(urls=[], ok=False, error=str(exc))
+
+
+# Resolve seed_url's navigation tree (its frontend framework's own embedded page inventory) to a
+# flat, scoped, deduped seed list, unioned across every version the site exposes in the same
+# payload. `source` distinguishes a real recursive tree found by structural shape ("navtree_tree")
+# from a flat href scan with no tree evidence behind it ("navtree_flat") — see FeederResult.
+async def navtree_feeder_workflow(seed_url: str) -> FeederResult:
+    try:
+        seed_host = _require_host(seed_url)
+        async with httpx.AsyncClient() as client:
+            raw_urls, tier = await resolve_navigation_tree(client, seed_url)
+        return FeederResult(urls=scope_and_dedup(raw_urls, seed_host), ok=True, source=f"navtree_{tier}")
     except Exception as exc:
         return FeederResult(urls=[], ok=False, error=str(exc))
 
