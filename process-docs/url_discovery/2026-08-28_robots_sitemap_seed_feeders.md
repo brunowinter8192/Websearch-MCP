@@ -84,19 +84,49 @@ non-conventional pagination path, not one of this feeder's two general conventio
 set is used.)
 
 `theblock.co` (sitemap-index reference; `process-docs/news_pipeline/29_sitemap_devrun.md` recorded
-64 `post_type_post` sub-sitemaps / 44,041 unique `<loc>` URLs via a proxy pool at concurrency 128
-on 2026-06-14): reachable DIRECTLY in this environment today, no proxy needed — `robots.txt` (200,
-real `Sitemap:` lines: `sitemap_tbco_index.xml` AND `sitemap_tbco_news.xml`, both consumed since
-`sitemap_feeder_workflow` resolves every robots-declared sitemap, not just the first).
-`sitemap_tbco_index.xml` is a real `<sitemapindex>`, 63 sub-sitemaps today (one level of nesting,
-each sub a plain `<urlset>`). Full resolution of both robots-declared trees: 44,547 raw `<loc>`
-URLs, 44,519 after `scope_and_dedup` (28 dropped — cross-tree duplicates between the `index` and
-`news` sitemaps and/or a handful of off-host or malformed entries), completed in 4.89s at
-`SITEMAP_FETCH_CONCURRENCY=8`. Same order of magnitude as the 2026-06-14 figure, not identical —
-expected, since ~2.5 months of new articles separate the two measurements, and 44,519 > 44,041 is
-consistent with organic growth, not a red flag. `robots_feeder_workflow` on the same host returned
-8 real Allow/Disallow-derived paths (`/search`, `/api/`, `/preview/`, `/wp-json/`, `/ping`,
-`/tbco/prebid.js`, `/_tbp/`, `/tbco/`).
+44,041 unique `<loc>` URLs on 2026-06-14, via a proxy pool at concurrency 128): reachable DIRECTLY
+in this environment today, no proxy needed — `robots.txt` (200, real `Sitemap:` lines:
+`sitemap_tbco_index.xml` AND `sitemap_tbco_news.xml`, both consumed since `sitemap_feeder_workflow`
+resolves every robots-declared sitemap, not just the first). `sitemap_tbco_index.xml` is a real
+`<sitemapindex>`, 63 sub-sitemaps today (one level of nesting, each sub a plain `<urlset>`). Full
+resolution of both robots-declared trees: 44,577 raw `<loc>` URLs, 44,520 after `scope_and_dedup`,
+completed in 4.89s at `SITEMAP_FETCH_CONCURRENCY=8`. `robots_feeder_workflow` on the same host
+returned 8 real Allow/Disallow-derived paths (`/search`, `/api/`, `/preview/`, `/wp-json/`,
+`/ping`, `/tbco/prebid.js`, `/_tbp/`, `/tbco/`).
+
+**Correction (post-commit review): the first draft of this entry explained 44,520 vs 44,041 as
+organic growth alone. That named one candidate mechanism where at least two apply, and reading
+the actual comparison target closer changes the picture.** `29_sitemap_devrun.md` reports 59 of a
+target 64 sub-sitemaps actually fetched, 5 left as a gap where the proxy pool was exhausted before
+completion — so 44,041 is the yield of 59 trees, not 64. The devrun's own fetcher
+(`dev/news_pipeline/theblock/acquire_pipe/p3_target.py`'s `build_sitemap_target`/`_parse_loc_urls`,
+read directly to confirm) extracts every `<loc>` in `sitemap_tbco_index.xml` unfiltered by
+sub-sitemap type — the same tree and the same scope `sitemap_feeder_workflow` resolves, so the
+comparison is apples-to-apples on tree identity, just not on how much of that tree each run
+actually reached. Isolating `sitemap_tbco_index.xml` alone in a fresh run (excluding
+`sitemap_tbco_news.xml` this time, to match the devrun's single-tree target exactly): 44,548 raw
+`<loc>`, 44,520 after `scope_and_dedup`, all 63 subs resolved, zero gaps. So the corrected
+comparison is 44,520 (63 of 63 subs, today) against 44,041 (59 of 64 subs, 2026-06-14) — coverage
+of 4-5 more trees AND ~2.5 months of new production content both plausibly contribute to the
+12%-ish gap between totals once the different sub-sitemap counts are accounted for, and nothing in
+either measurement separates how much belongs to which. (The apparent 64→63 total-sub-count drift
+itself is also unexplained — could be site restructuring, could be measurement noise — the
+historical run's raw XML was gitignored and is not available to compare structurally.)
+
+This session's OWN two same-tree runs, several minutes apart, already differed by 1 raw `<loc>`
+(44,548 vs an earlier 44,547) — expected: theblock.co publishes continuously, confirmed directly
+(the newest `<loc>` entries carry today's own timestamp both times), so even back-to-back
+same-scope runs are not bit-identical, a live-site instability separate from the 2026-06-14
+question above.
+
+The second robots-declared sitemap, `sitemap_tbco_news.xml` (a 29-entry Google News feed,
+verified directly), was checked as a possible third contributing mechanism — `sitemap_feeder_workflow`
+resolves it because it resolves every robots-declared sitemap, and the devrun's fetcher never
+targeted it at all (hardcoded to `sitemap_tbco_index.xml` only). Measured directly: all 29 of its
+entries are an exact-string subset of `sitemap_tbco_index.xml`'s own `<loc>` set — 0 net new URLs
+from including it (44,520 either way, with or without the second tree, this run). Real design
+difference, confirmed negligible for THIS measurement, not guaranteed negligible in general (a
+Google News feed's contents are not contractually a subset of the full sitemap).
 
 No substitution was needed — `theblock.co` was reachable on the first attempt, unlike the proxied
 run this milestone's reference case was drawn from.

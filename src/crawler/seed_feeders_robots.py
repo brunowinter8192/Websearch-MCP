@@ -14,7 +14,7 @@ _DIRECTIVE_RE = re.compile(r'^\s*(allow|disallow|sitemap)\s*:\s*(.+?)\s*$', re.I
 
 # GET <base>/robots.txt; None on any non-200 response or network error — both are normal
 # outcomes for this directive, not failures (a missing robots.txt is expected on many hosts).
-async def fetch_robots_txt(client: httpx.AsyncClient, base_url: str) -> str:
+async def fetch_robots_txt(client: httpx.AsyncClient, base_url: str) -> str | None:
     robots_url = urljoin(base_url, "/robots.txt")
     try:
         response = await client.get(robots_url, timeout=HTTP_TIMEOUT_S,

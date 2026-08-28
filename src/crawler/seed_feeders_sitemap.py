@@ -13,7 +13,7 @@ from src.crawler.seed_feeders_constants import HTTP_TIMEOUT_S, USER_AGENT, SITEM
 
 # GET a sitemap URL, gunzip if named *.gz; None on any non-200/network/decompress error — a
 # 404'd or malformed sitemap is a normal outcome for this feeder, not an error.
-async def fetch_sitemap(client: httpx.AsyncClient, url: str) -> bytes:
+async def fetch_sitemap(client: httpx.AsyncClient, url: str) -> bytes | None:
     try:
         response = await client.get(url, timeout=HTTP_TIMEOUT_S,
                                     headers={"User-Agent": USER_AGENT}, follow_redirects=True)
@@ -36,7 +36,7 @@ def _local_name(tag: str) -> str:
 
 
 # Stripped text of the first direct child matching local_name, or None
-def _child_text(parent, local_name: str) -> str:
+def _child_text(parent, local_name: str) -> str | None:
     for child in parent:
         if _local_name(child.tag) == local_name:
             return (child.text or "").strip()
@@ -65,7 +65,7 @@ def parse_sitemap_xml(content: bytes) -> tuple:
 # cycle-guarded via a shared visited set). Returns the flat, NOT-yet-deduped list of every
 # <loc> URL found in every reachable <urlset>; a sitemap that fails to fetch/parse contributes
 # nothing and does not stop the rest of the tree from resolving.
-async def resolve_sitemap_urls(client: httpx.AsyncClient, sitemap_urls: list, seen: set = None) -> list:
+async def resolve_sitemap_urls(client: httpx.AsyncClient, sitemap_urls: list, seen: set | None = None) -> list:
     seen = seen if seen is not None else set()
     semaphore = asyncio.Semaphore(SITEMAP_FETCH_CONCURRENCY)
     loc_urls = []
