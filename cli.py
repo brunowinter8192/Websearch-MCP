@@ -41,6 +41,23 @@ from src.scraper.chromium_scrape import scrape_url_chromium_workflow
 
 atexit.register(kill_own_chrome_atexit)
 
+HELP_TEXT = (
+    "This CLI has no help text. Invoke one of the skills via the Skill tool "
+    "and follow it exactly: websearch-web-research (web research and "
+    "permanent capture), websearch-capture-and-index (capture-and-index "
+    "pipeline), websearch-pdf (PDF to markdown to index). Do not guess flags."
+)
+
+
+# Parser that redirects all help/usage/error output to the skill pointer
+class NoHelpParser(argparse.ArgumentParser):
+    def error(self, message):
+        self.exit(2, HELP_TEXT + "\n")
+
+    def print_help(self, file=None):
+        print(HELP_TEXT, file=file or sys.stderr)
+        self.exit(2)
+
 
 # Log one search_engine_drilldown call — fail-soft via log_query, same posture as search_web's own
 # logging. search_key ties this record back to the workflow_summary of the search it came from
@@ -62,7 +79,7 @@ def _log_drilldown(query, language, engine, search_key, cache_status, engine_in_
 
 
 def main():
-    parser = argparse.ArgumentParser(
+    parser = NoHelpParser(
         prog="cli.py",
         description="websearch CLI — search_web, search_engine_drilldown, scrape_url_chromium."
     )

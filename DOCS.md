@@ -6,7 +6,7 @@ CLI-driven web research toolkit for Claude Code. `cli.py` is the sole root-level
 
 ## Modules
 
-### cli.py (132 LOC)
+### cli.py (149 LOC)
 
 **Purpose:** CLI entry-point. Configures daily-rotating file logging (no stderr handler) before any `src.*` import, then dispatches 3 argparse subcommands: `search_web` (query + mutex `--books`/`--pdf`/`--docs` flags → `search_web_workflow`), `search_engine_drilldown` (query + `--engine` + same mutex flags → cache-read-or-rerun, then `format_engine_pool`), `scrape_url_chromium` (url → `scrape_url_chromium_workflow`, the crawl4ai/chromium lane; rejects `.pdf` paths, tells the user to download manually).
 **Reads:** CLI args (argparse), disk cache via `cache_read` (drilldown cache-miss path).
@@ -20,3 +20,4 @@ CLI-driven web research toolkit for Claude Code. `cli.py` is the sole root-level
 - **`scrape_url_camoufox` was REMOVED here on 2026-08-27 — do not re-add it as a "missing" subcommand.** The Camoufox module, its calibrated config and its tests are all still present and untouched, which makes the absent subcommand look like an oversight; it is a decision (see `process-docs/lane_choice/`). Reactivation means re-adding the import plus the subparser/dispatch branch, and nothing else. The batch pipeline's own `--engine camoufox` (`src/crawler/`) is a different consumer and was never part of this removal.
 - Logging setup MUST run before any `src.*` import — module-load-time log calls from those imports would otherwise route to Python's default stderr `lastResort` handler instead of the file handler.
 - `atexit.register(kill_own_chrome_atexit)` — PID-scoped last-resort backstop (never a profile-pattern kill) for interpreter exit paths that skip `search_web_workflow`'s own `finally: kill_own_chrome()` (e.g. an uncaught exception before that point).
+- Help/usage output is deliberately disabled. `main()` uses a `NoHelpParser(argparse.ArgumentParser)` subclass overriding `error()` and `print_help()`; both print a fixed sentence naming all three websearch skills (`websearch-web-research`, `websearch-capture-and-index`, `websearch-pdf`) and exit 2, never argparse's usage/flag listing. `add_subparsers()` propagates `parser_class=type(self)` automatically, so all 3 subcommands (and any future one) inherit the same behavior with no per-subcommand wiring.
