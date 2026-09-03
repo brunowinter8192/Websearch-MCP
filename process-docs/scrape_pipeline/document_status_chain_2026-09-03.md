@@ -9,8 +9,7 @@ backwards from the `page.goto` response and keeps the EARLIEST hop's status — 
 `goto`-return time and never touched again.
 
 A self-resolving Cloudflare "Just a moment" page answers `goto` with 403, then its own JS navigates
-the main frame again during `delay_before_return_html` (5.0s, `process-docs/scrape_pipeline/
-2026-08-06_five_second_wait_both_ad_hoc_lanes.md`). The real page lands at 200 and IS what
+the main frame again during `delay_before_return_html` (5.0s, the 2026-08-06 five-second-wait entry in this area). The real page lands at 200 and IS what
 `chromium_scrape.py` returns as content — but the recorded status stayed 403, and crawl4ai's own
 `is_blocked()` (`antibot_detector.py`) treats any 403-with-HTML as blocked unconditionally
 (`"HTTP {status} with HTML content"`, no pattern match required for large pages), reporting
@@ -19,7 +18,7 @@ the main frame again during `delay_before_return_html` (5.0s, `process-docs/scra
 Live repro before the fix, `skeptics.stackexchange.com/questions/2566/does-baking-soda-remove-odors`:
 `HTTP status: 403`, `success=False`, `error_message="Blocked by anti-bot protection: HTTP 403 with
 HTML content (356575 bytes)"`, alongside 29714 bytes of real raw markdown (the actual question
-page). This is the same 403-stays-stuck behaviour `2026-08-06_five_second_wait_both_ad_hoc_lanes.md`
+page). This is the same 403-stays-stuck behaviour this area's 2026-08-06 five-second-wait entry
 already recorded on guenstiger.de and left unfixed at the time ("Two behaviours observed as
 unchanged... the recorded HTTP status stays 403 even though the complete product page came back").
 
@@ -65,7 +64,7 @@ suppresses it. Live-confirmed on the repro URL post-fix: `document_status_chain`
 200]`, `status_code` is now 200, and crawl4ai's own diagnosis line STILL reports
 `success=False`/`"Blocked by anti-bot protection: HTTP 403 with HTML content (388825 bytes)"` on the
 exact same result — proof the two facts are independent, and that crawl4ai's diagnosis keeps its own
-documented false-positive shape (`status_gate_removal_evidence_2026-08-05.md`, the guenstiger.de
+documented false-positive shape (this area's 2026-08-05 status-gate-removal entry, the guenstiger.de
 6.0s case) rather than being reconciled or hidden.
 
 ## Verification
@@ -102,7 +101,7 @@ Live runs, both via `cli.py scrape_url_chromium`:
 
 `src/scraper/camoufox_scrape.py` and everything under `src/crawler/` were untouched, per the
 milestone's explicit scope — camoufox's own status-staleness (the Camoufox lane reads status off the
-`goto` `Response` directly, recorded as unfixed in
-`2026-08-06_five_second_wait_both_ad_hoc_lanes.md`) is a separate, later milestone. No content
+`goto` `Response` directly, recorded as unfixed in this area's 2026-08-06 five-second-wait entry)
+is a separate, later milestone. No content
 judgment, marker matching, or "blocked"/"solved" verdict was introduced anywhere — the chain is
 read only as an ordered list of numbers, never pattern-matched or interpreted.
