@@ -14,3 +14,4 @@ class SearchResult:
     snippets: dict[str, str] = field(default_factory=dict)
     engine_positions: dict[str, int] = field(default_factory=dict)
     date: str | None = None
+    pdf_url: str | None = None

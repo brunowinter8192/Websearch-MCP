@@ -54,6 +54,7 @@ def cache_write(
                 "snippet":  r.snippet,
                 "position": r.position,
                 "date":     r.date,
+                "pdf_url":  r.pdf_url,
             }
             for r in pool
         ]
@@ -105,6 +106,9 @@ def format_engine_pool(pool: list[dict], engine_name: str, query: str) -> str:
     for entry in pool:
         lines.append(f"{entry['position']}. {entry['title']}")
         lines.append(f"   URL: {entry['url']}")
+        pdf_url = entry.get("pdf_url")
+        if pdf_url:
+            lines.append(f"   PDF: {pdf_url}")
         date = entry.get("date")
         if date:
             lines.append(f"   Date: {date}")

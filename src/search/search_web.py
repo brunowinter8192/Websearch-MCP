@@ -57,7 +57,7 @@ ENGINE_MAX_RESULTS: dict[str, int] = {
     "google": 100,
     "duckduckgo": 10,
     "mojeek": 10,
-    "openalex": 200,
+    "openalex": 100,
     "startpage": 10,
     "brave": 10,
     "bing": 10,
