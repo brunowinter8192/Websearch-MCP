@@ -119,7 +119,7 @@ plistlib round-trip; `ignore_default_args` kwarg presence). REMOVED 2026-08-27: 
 `_acquire_camoufox` wiring, together with the watchdog module code itself — see
 `process-docs/camoufox_lane/`.
 
-### test_chromium_scrape.py (918 LOC)
+### test_chromium_scrape.py (1124 LOC)
 **Purpose:** `src/scraper/chromium_scrape.py` — `is_browser_launch_error`, `try_scrape` acquisition-
 error classification + HTTP-error-with-real-content preservation, `_format_scrape_output`,
 `extract_config_stamp`, cdp-headed self-launch teardown-on-every-exit-path, self-launch mechanics
@@ -129,6 +129,13 @@ net 2 (`_acquire_cdp_headed` spawns `death_pipe.spawn_watchdog` with this call's
 throwaway dir once the cdp port resolves) and net 3 (`_reap_orphaned_scrapes` kills only
 `scrape-url-cdp-*` pids older than `TOTAL_SCRAPE_BUDGET_S`, never a young/legitimate parallel
 scrape, and sweeps only dirs with zero live processes) — subprocess/psutil mocked throughout.
+`_make_document_status_listener`'s `before_goto` hook, exercised through the real
+`_acquire_cdp_headed`/`_acquire_scrape` machinery (a fake `AsyncWebCrawler.arun` invokes
+`crawler_strategy.execute_hook("before_goto", ...)` itself, the same call crawl4ai's own
+`async_crawler_strategy.py` makes, against a fake page/request/response trio): the last main-frame
+document response status overriding crawl4ai's own (earliest-hop) `status_code`, the single-entry
+ordinary-page case, the empty-chain fallback to crawl4ai's value, and non-document/non-main-frame
+responses being filtered out of the chain.
 
 ### test_seed_feeders.py (704 LOC)
 **Purpose:** `src/crawler/seed_feeders*.py` — the `normalize_url`/`scope_and_dedup` merge-vs-
