@@ -16,11 +16,8 @@ from src.search.browser import close_browser
 from src.search.engines.google import GoogleEngine
 from src.search.engines.duckduckgo import DuckDuckGoEngine
 from src.search.engines.mojeek import MojeekEngine
-from src.search.engines.lobsters import LobstersEngine
 from src.search.engines.scholar import ScholarEngine
-from src.search.engines.crossref import CrossRefEngine
 from src.search.engines.openalex import OpenAlexEngine
-from src.search.engines.stack_exchange import StackExchangeEngine
 from src.search.result import SearchResult
 
 SCRIPT_DIR = Path(__file__).parent
@@ -31,11 +28,8 @@ AVAILABLE_ENGINES = {
     "google": GoogleEngine,
     "duckduckgo": DuckDuckGoEngine,
     "mojeek": MojeekEngine,
-    "lobsters": LobstersEngine,
     "google scholar": ScholarEngine,
-    "crossref": CrossRefEngine,
     "openalex": OpenAlexEngine,
-    "stack_exchange": StackExchangeEngine,
 }
 
 
@@ -213,7 +207,7 @@ if __name__ == "__main__":
         nargs="+",
         default=["google", "duckduckgo"],
         choices=list(AVAILABLE_ENGINES.keys()),
-        help="Engines to test (default: google duckduckgo). Available: google duckduckgo mojeek lobsters 'google scholar' crossref openalex stack_exchange",
+        help="Engines to test (default: google duckduckgo). Available: google duckduckgo mojeek 'google scholar' openalex",
     )
     parser.add_argument(
         "--max-queries",

@@ -94,70 +94,10 @@ Query string in → engine-specific fetch (pydoll tab navigation + JS extraction
 
 ---
 
-### lobsters.py (145 LOC)
-
-**Purpose:** Lobsters (lobste.rs) search via pydoll Chrome tab, `what=stories&order=relevance` endpoint — waits for `li.story` containers, extracts direct hrefs (no CAPTCHA check, site has none), and populates `SearchResult.date` from the `<time datetime>` attribute.
-**Reads:** none (network only).
-**Writes:** none (network only).
-**Called by:** `src/search/search_web.py`.
-**Calls out:** `src.search.browser` (`new_tab`, `kill_tab`).
-
----
-
-### semantic_scholar.py (158 LOC)
-
-**Purpose:** Semantic Scholar search via pydoll Chrome tab — waits for `div.cl-paper-row` containers, detects the backend rate-limit error page, handles a cookie-consent accept button, and deliberately omits the `&sort=` URL param (causes HTTP 400/405 from the SS backend).
-**Reads:** none (network only).
-**Writes:** none (network only).
-**Called by:** `src/search/search_web.py`.
-**Calls out:** `src.search.browser` (`new_tab`, `kill_tab`).
-
----
-
-### crossref.py (146 LOC)
-
-**Purpose:** CrossRef academic works search via `httpx` GET against `api.crossref.org/works` (JSON API, no browser) — iterative HTML-entity unescape on titles, and `date-parts`-derived `SearchResult.date` at native precision via a shared `DATE_KEY_PRIORITY` used consistently for both the date field and the snippet-embedded year.
-**Reads:** none (network only).
-**Writes:** none (network only).
-**Called by:** `src/search/search_web.py`.
-**Calls out:** `httpx`.
-
----
-
 ### openalex.py (115 LOC)
 
-**Purpose:** OpenAlex academic graph search via `httpx` GET against `api.openalex.org/works` (JSON API, no browser) — same entity-unescape treatment as `crossref.py`, `SearchResult.date` from `publication_date` (day-accurate) falling back to `publication_year` (year precision).
+**Purpose:** OpenAlex academic graph search via `httpx` GET against `api.openalex.org/works` (JSON API, no browser) — iterative HTML-entity unescape on titles, `SearchResult.date` from `publication_date` (day-accurate) falling back to `publication_year` (year precision).
 **Reads:** `OPENALEX_MAILTO` env var (polite-pool identification, optional).
-**Writes:** none (network only).
-**Called by:** `src/search/search_web.py`.
-**Calls out:** `httpx`.
-
----
-
-### stack_exchange.py (104 LOC)
-
-**Purpose:** Stack Overflow search via `httpx` GET against `api.stackexchange.com/2.3/search/advanced` (JSON API, no browser) — warns once on missing API key (anonymous quota), `SearchResult.date` from the `creation_date` Unix epoch.
-**Reads:** `STACK_EXCHANGE_API_KEY` env var (optional; anonymous quota if unset).
-**Writes:** none (network only).
-**Called by:** `src/search/search_web.py`.
-**Calls out:** `httpx`.
-
----
-
-### open_library.py (86 LOC)
-
-**Purpose:** Open Library book-catalog search via `httpx` GET against `openlibrary.org/search.json` (JSON API, no browser) — `SearchResult.date` from `first_publish_year` (year precision only).
-**Reads:** none (network only).
-**Writes:** none (network only).
-**Called by:** `src/search/search_web.py`.
-**Calls out:** `httpx`.
-
----
-
-### marginalia.py (61 LOC)
-
-**Purpose:** Marginalia Search (independent "small/old/text-heavy" index) via `httpx` GET against `api2.marginalia-search.com/search` (JSON API, no browser, shared public API key) — same 429/403 rate-limit handling shape as the other 4 API engines.
-**Reads:** none (network only).
 **Writes:** none (network only).
 **Called by:** `src/search/search_web.py`.
 **Calls out:** `httpx`.
@@ -169,12 +109,12 @@ Query string in → engine-specific fetch (pydoll tab navigation + JS extraction
 **Purpose:** Google Scholar search via `httpx` GET (no browser, migrated off pydoll) — detects concurrent-CAPTCHA via 30x redirect to `/sorry/`; not wired into `search_web.py`'s production engine pool.
 **Reads:** none (network only).
 **Writes:** none (network only).
-**Called by:** dev probe scripts only (`dev/search_pipeline/`) — NOT imported by `src/search/search_web.py`. Decoupled/parked from the production 14-engine pool.
+**Called by:** dev probe scripts only (`dev/search_pipeline/`) — NOT imported by `src/search/search_web.py`. Decoupled/parked from the production 8-engine pool.
 **Calls out:** `httpx`, `lxml.html`.
 
 ## Gotchas
 
-- All 14 production engines register a uniform `RateLimiter(max_requests=4, window_seconds=60)` into `_limiters` at module import time — adding a new engine requires this registration or `search_web._engine_with_timing` will KeyError on `get_limiter(name)`.
+- All 8 production engines register a uniform `RateLimiter(max_requests=4, window_seconds=60)` into `_limiters` at module import time — adding a new engine requires this registration or `search_web._engine_with_timing` will KeyError on `get_limiter(name)`.
 - `scholar.py` is fully wired (class, rate limiter, parse logic) but excluded from `search_web.py`'s imports — it is reachable code, not literally dead, but not part of any production call path. Re-enabling it means adding an import + entry to `_DEFAULT_ENGINES` in `filter_modes.py`.
-- pydoll-based engines (`google`, `duckduckgo`, `mojeek`, `lobsters`, `semantic_scholar`) all use `finally: await kill_tab(tab)` — NOT `tab.close()`, which caused 65s hangs on `TIMEOUT_NONCOOP` cases (`Page.close` via tab connection → hung renderer → 60s pydoll fallback).
-- `crossref.py`/`open_library.py`'s `httpx.AsyncClient(timeout=6.0)` is hand-aligned with `search_web.py`'s `ENGINE_WATCHDOG_TIMEOUT` (uniform `6.0` across all engines as of 2026-08-25, no per-engine override anymore) — not derived from it automatically. Changing one without the other silently decouples the client-side timeout from the watchdog it's meant to race under; re-check both when tuning the watchdog.
+- pydoll-based engines (`google`, `duckduckgo`, `mojeek`, `startpage`, `brave`, `bing`, `yandex`) all use `finally: await kill_tab(tab)` — NOT `tab.close()`, which caused 65s hangs on `TIMEOUT_NONCOOP` cases (`Page.close` via tab connection → hung renderer → 60s pydoll fallback).
+- As of the engine-reduction milestone (2026-09), `openalex.py` is the only remaining HTTP (non-pydoll) engine — its `httpx.AsyncClient(timeout=3.6)` already matches the uniform `ENGINE_WATCHDOG_TIMEOUT`; no more hand-aligned per-engine timeout to track.

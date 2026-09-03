@@ -38,10 +38,6 @@ challenge).
 **Purpose:** `src/search/engines/yandex.py` — `_is_self_referential`, `_is_block_url`,
 `_build_results` (self-link filtering), `_classify_diagnosis`.
 
-### test_marginalia_engine.py (106 LOC)
-**Purpose:** `src/search/engines/marginalia.py` — `_parse_results`; `_fetch_results`/
-`MarginaliaEngine.search` 429/403 → empty, `httpx.AsyncClient` faked.
-
 ### test_browser_lock.py (91 LOC)
 **Purpose:** `src/search/browser_lock.py` — real-flock behavior against `tmp_path` (no mocking):
 immediate acquire when free, genuine blocking until a background thread's `release()`, and the
@@ -145,8 +141,7 @@ through on the App Router shape, an RSC-DOM-only page proving the tier 2 fallbac
 invalid `seed_url` producing `ok=False` not a silent empty result, and `FeederResult.source`
 asserted on every workflow's happy path). Fetch-layer functions are tested via direct dependency
 injection (`client` is a parameter, no monkeypatching needed); workflow-level tests monkeypatch
-`seed_feeders.httpx.AsyncClient`, this project's own established fake-client pattern
-(`test_marginalia_engine.py`).
+`seed_feeders.httpx.AsyncClient`, an established fake-client pattern in this project's test suite.
 
 ### test_discovery.py (273 LOC)
 **Purpose:** `src/crawler/discovery.py` — pure-logic coverage only (the full crawl4ai-driven

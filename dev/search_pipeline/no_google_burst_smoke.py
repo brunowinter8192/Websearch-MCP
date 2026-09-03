@@ -37,14 +37,9 @@ sys.path.insert(0, str(SCRIPT_DIR.parent.parent))
 
 from src.search import status as S
 from src.search.browser import close_browser
-from src.search.engines.crossref import CrossRefEngine
 from src.search.engines.duckduckgo import DuckDuckGoEngine
-from src.search.engines.lobsters import LobstersEngine
 from src.search.engines.mojeek import MojeekEngine
-from src.search.engines.open_library import OpenLibraryEngine
 from src.search.engines.openalex import OpenAlexEngine
-from src.search.engines.semantic_scholar import SemanticScholarEngine
-from src.search.engines.stack_exchange import StackExchangeEngine
 
 from src.search.engines.scholar import ScholarEngine
 
@@ -56,9 +51,6 @@ REPORT_DIR.mkdir(parents=True, exist_ok=True)
 # Watchdog timeouts per engine (seconds) — this probe's own values, independent of
 # search_web.py's ENGINE_WATCHDOG_TIMEOUT (uniform 6.0s across all engines as of 2026-08-25)
 WATCHDOG: dict[str, float] = {
-    "open_library": 6.0,
-    "semantic_scholar": 5.0,
-    "crossref": 6.0,
     "google_scholar": 6.0,
 }
 DEFAULT_WATCHDOG = 3.6
@@ -90,12 +82,7 @@ async def run_smoke() -> None:
         "google_scholar": ScholarEngine(),
         "duckduckgo": DuckDuckGoEngine(),
         "mojeek": MojeekEngine(),
-        "lobsters": LobstersEngine(),
-        "crossref": CrossRefEngine(),
         "openalex": OpenAlexEngine(),
-        "stack_exchange": StackExchangeEngine(),
-        "semantic_scholar": SemanticScholarEngine(),
-        "open_library": OpenLibraryEngine(),
     }
 
     print(f"Smoke: 9 engines (no Google), {len(QUERIES)} queries", file=sys.stderr)

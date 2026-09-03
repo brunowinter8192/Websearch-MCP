@@ -15,19 +15,13 @@ from mcp.types import TextContent
 from src.search.browser import get_tab, kill_own_chrome
 from src.search.cache import cache_key, cache_write
 from src.search.engines.google import GoogleEngine
-from src.search.engines.crossref import CrossRefEngine
 from src.search.engines.duckduckgo import DuckDuckGoEngine
 from src.search.engines.mojeek import MojeekEngine
 from src.search.engines.startpage import StartpageEngine
 from src.search.engines.brave import BraveEngine
 from src.search.engines.bing import BingEngine
 from src.search.engines.yandex import YandexEngine
-from src.search.engines.marginalia import MarginaliaEngine
-from src.search.engines.lobsters import LobstersEngine
 from src.search.engines.openalex import OpenAlexEngine
-from src.search.engines.stack_exchange import StackExchangeEngine
-from src.search.engines.semantic_scholar import SemanticScholarEngine
-from src.search.engines.open_library import OpenLibraryEngine
 from src.search.rate_limiter import get_limiter
 from src.search.result import SearchResult
 # From merge.py: per-engine pool builder with cross-engine URL dedup
@@ -40,15 +34,14 @@ from src.search.query_logger import log_query
 logger = logging.getLogger(__name__)
 
 _DEFAULT_ENGINES: frozenset[str] = frozenset({
-    "google", "crossref", "duckduckgo", "mojeek", "lobsters",
-    "openalex", "stack_exchange", "semantic_scholar", "open_library", "startpage", "brave", "bing", "yandex",
-    "marginalia",
+    "google", "duckduckgo", "mojeek",
+    "openalex", "startpage", "brave", "bing", "yandex",
 })
 
 # Engines that share the pydoll Chrome session (browser.py) — the only ones _prewarm_browser
 # needs to launch for
 _BROWSER_ENGINES: frozenset[str] = frozenset({
-    "google", "duckduckgo", "mojeek", "lobsters", "semantic_scholar",
+    "google", "duckduckgo", "mojeek",
     "startpage", "brave", "bing", "yandex",
 })
 
@@ -64,34 +57,22 @@ ENGINE_MAX_RESULTS: dict[str, int] = {
     "google": 100,
     "duckduckgo": 10,
     "mojeek": 10,
-    "lobsters": 20,
     "openalex": 200,
-    "crossref": 200,
-    "stack_exchange": 100,
-    "semantic_scholar": 10,
-    "open_library": 100,
     "startpage": 10,
     "brave": 10,
     "bing": 10,
     "yandex": 10,
-    "marginalia": 10,
 }
 
 ENGINES = {
     "google": GoogleEngine(),
-    "crossref": CrossRefEngine(),
     "duckduckgo": DuckDuckGoEngine(),
     "mojeek": MojeekEngine(),
-    "lobsters": LobstersEngine(),
     "openalex": OpenAlexEngine(),
-    "stack_exchange": StackExchangeEngine(),
-    "semantic_scholar": SemanticScholarEngine(),
-    "open_library": OpenLibraryEngine(),
     "startpage": StartpageEngine(),
     "brave": BraveEngine(),
     "bing": BingEngine(),
     "yandex": YandexEngine(),
-    "marginalia": MarginaliaEngine(),
 }
 
 # ORCHESTRATOR
