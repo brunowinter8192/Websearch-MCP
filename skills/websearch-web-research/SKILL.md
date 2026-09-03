@@ -25,6 +25,7 @@ It returns pruned markdown (PruningContentFilter). Page didn't come through → 
 
 1. `search_web` for the engine breakdown. For a deep dive, fire 2–4 parallel calls with query variations.
 2. `search_engine_drilldown` to get an engine's URLs — which engine(s) is your free choice, guided by the breakdown counts.
+   - For papers and books, prefer drilling `openalex` — its entries carry a `PDF:` line with the direct full-text URL.
 3. `scrape_url_chromium` the relevant URLs. PDFs and books: give the user the exact URLs from the search results — the user downloads them. Do not scrape a `.pdf` URL (it returns an error: the PDF must be downloaded by the user).
 
 **Write the query in the language you want results in.**
