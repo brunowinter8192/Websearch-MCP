@@ -28,17 +28,17 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 **Called by:** `cli.py` (search_web_workflow); dev scripts (fetch_search_results).
 **Calls out:** `httpx`, `pydoll.exceptions`, `websockets.exceptions`, `mcp.types.TextContent`; `engines/` (all 8 engine classes); `browser` (get_tab, kill_own_chrome); `cache` (cache_key, cache_write), `rate_limiter` (get_limiter), `merge` (build_engine_pools), `result` (SearchResult), `status`, `query_logger` (log_query).
 
-### merge.py (32 LOC)
+### merge.py (33 LOC)
 
-**Purpose:** Cross-engine URL dedup + per-engine pool builder — groups results by URL, assigns each to its lowest-position owner engine, and returns a per-engine pool dict sorted by native position.
+**Purpose:** Cross-engine URL dedup + per-engine pool builder — groups results by URL, assigns each to its lowest-position owner engine, and returns a per-engine pool dict sorted by native position. The fresh `SearchResult` built per winner names fields explicitly, so a new field (`date`, `pdf_url`) must be added here explicitly too or it silently drops.
 **Reads:** flat `list[SearchResult]` from fan-out.
 **Writes:** none (returns the pool dict).
 **Called by:** `search_web.py`.
 **Calls out:** `result` (SearchResult).
 
-### cache.py (117 LOC)
+### cache.py (121 LOC)
 
-**Purpose:** Disk cache for per-engine pools, backing `search_engine_drilldown` — atomic-write JSON keyed by a query/language/engines/time_range hash, 1h TTL, plus `format_engine_pool` for numbered-list rendering with snippet cleanup.
+**Purpose:** Disk cache for per-engine pools, backing `search_engine_drilldown` — atomic-write JSON keyed by a query/language/engines/time_range hash, 1h TTL, plus `format_engine_pool` for numbered-list rendering with snippet cleanup. Renders an optional `PDF: <url>` line directly after `URL:` when the cached entry carries a `pdf_url` (currently only `openalex`).
 **Reads:** cache files under `~/.cache/websearch/`.
 **Writes:** `~/.cache/websearch/<key>.json`.
 **Called by:** `cli.py` (cache_key, cache_read, format_engine_pool); `search_web.py` (cache_key, cache_write).
@@ -82,9 +82,9 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 **Called by:** `search_web.py` (get_limiter); `engines/` (RateLimiter, _limiters).
 **Calls out:** none (stdlib `asyncio`, `time`).
 
-### result.py (16 LOC)
+### result.py (17 LOC)
 
-**Purpose:** `SearchResult` dataclass — `url, title, snippet, engine, position, preview, engines, snippets, engine_positions, date`, the last populated only by the 4 API engines with native date metadata.
+**Purpose:** `SearchResult` dataclass — `url, title, snippet, engine, position, preview, engines, snippets, engine_positions, date, pdf_url`. `date` populated only by API engines with native date metadata; `pdf_url` populated only by `openalex` (`best_oa_location.pdf_url`).
 **Called by:** `search_web.py`, `merge.py`, `cache.py`, `engines/`.
 **Calls out:** none (stdlib `dataclasses`).
 
@@ -106,6 +106,7 @@ Two module-owned states. `rate_limiter._limiters` — the per-engine token-bucke
 - Stealth config lives in `browser.py` (headed-backgrounded launch, `--disable-blink-features=AutomationControlled`, `BACKGROUNDING_FLAGS`, browser preferences) + per-engine files (SOCS cookie for Google) — no config file, no JS fingerprint patches or UA override (removed — see `browser.py`'s module history via `process-docs/browser_posture/`).
 - pydoll tab cleanup uses `kill_tab` (browser-level close), NOT `tab.close()` — the latter hung 65s on non-cooperative renderers.
 - CLI dispatch hardcodes `language="en"`, `time_range=None`, `engines=None`; the full `search_web_workflow` signature is retained only for dev-script callers.
+- `pdf_url` (currently `openalex` only, from `best_oa_location.pdf_url`) is passed through as-is from the vendor with no validation — a live sample showed one `pdf_url` pointing at a `.jpg` figure asset rather than the paper's full text (see `process-docs/engine_reduction/`). Treat it as "OpenAlex's best guess at a direct full-text link", not a guaranteed PDF.
 - **A URL can NEVER be attributed to exactly one engine** — engines overlap heavily; the same URL routinely appears in 3+ drilled engines' pools. Any log record or downstream tooling claiming "this URL came from engine X" is wrong by construction. What IS answerable (as of 2026-08-05, via `query_log.jsonl`'s `drilldown` records + `search_key`): "which engines offered this URL in this session" — possibly several, possibly none.
 - `dev/tests/test_query_logger.py`'s engine mocks must expose `.search_with_reason(query, language, max_results) -> (results, empty_reason)` — `_engine_with_timing` calls that, not `.search()`. Fixed 2026-08-20 (the file's one shared mock helper, `_make_mock_engine`, set `.search` and was removed along with the drift it caused — see `_make_mock_engine_with_reason`, now the file's only engine-mock helper).
 - `search_web_workflow` writes TWO log records per call, not one: `"engine_run"` (from `_query_engines_concurrent`) then `"workflow_summary"` (from `_build_query_log_entry`) — a test asserting exactly one JSONL line after a workflow call is checking the wrong invariant; filter by `record_type` instead (see `test_search_web_workflow_writes_log`).

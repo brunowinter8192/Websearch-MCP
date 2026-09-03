@@ -8,10 +8,12 @@ import httpx
 from src.search.engines.base import BaseEngine
 from src.search.rate_limiter import RateLimiter, _limiters
 from src.search.result import SearchResult
+from src.search import status as S
 
 logger = logging.getLogger(__name__)
 
 API_URL = "https://api.openalex.org/works"
+MAX_PER_PAGE = 100
 
 _limiters["openalex"] = RateLimiter(max_requests=4, window_seconds=60)
 
@@ -22,12 +24,21 @@ _limiters["openalex"] = RateLimiter(max_requests=4, window_seconds=60)
 class OpenAlexEngine(BaseEngine):
     name = "openalex"
 
-    async def search(self, query: str, language: str = "en", max_results: int = 10) -> list[SearchResult]:
+    # Full HTTP search logic; returns (results, reason) — 429 (daily/per-second budget) surfaces
+    # as EMPTY_BLOCK instead of a silent empty result; 403 (forbidden resource) stays a plain empty
+    async def search_with_reason(self, query: str, language: str = "en", max_results: int = 10) -> tuple[list[SearchResult], str | None]:
         logger.info("OpenAlex search: %s", query)
-        works = await _fetch_results(query, max_results)
+        status_code, works = await _fetch_results(query, max_results)
+        if status_code == 429:
+            logger.warning("OpenAlex rate limited: 429")
+            return [], S.EMPTY_BLOCK
         if works is None:
-            return []
-        return _parse_results(works)
+            return [], None
+        return _parse_results(works), None
+
+    async def search(self, query: str, language: str = "en", max_results: int = 10) -> list[SearchResult]:
+        results, _ = await self.search_with_reason(query, language, max_results)
+        return results
 
 
 # FUNCTIONS
@@ -41,19 +52,19 @@ def _deep_unescape(s: str) -> str:
         s = new
 
 
-# Fetch raw work items from OpenAlex search API
-async def _fetch_results(query: str, max_results: int) -> list[dict] | None:
-    params: dict = {"search": query, "per_page": max_results}
-    mailto = os.environ.get("OPENALEX_MAILTO", "")
-    if mailto:
-        params["mailto"] = mailto
+# Fetch raw work items from OpenAlex search API; returns (status_code, works|None) — 429/403 give None works
+async def _fetch_results(query: str, max_results: int) -> tuple[int, list[dict] | None]:
+    params: dict = {"search": query, "per_page": min(max_results, MAX_PER_PAGE)}
+    api_key = os.environ.get("OPENALEX_API_KEY", "")
+    if api_key:
+        params["api_key"] = api_key
     async with httpx.AsyncClient(timeout=3.6) as client:
         response = await client.get(API_URL, params=params)
     if response.status_code in (429, 403):
         logger.warning("OpenAlex rate limited: %d", response.status_code)
-        return None
+        return response.status_code, None
     response.raise_for_status()
-    return response.json().get("results", [])
+    return response.status_code, response.json().get("results", [])
 
 
 # Parse OpenAlex work items into SearchResult list
@@ -77,8 +88,17 @@ def _parse_results(works: list[dict]) -> list[SearchResult]:
             engine="openalex",
             position=i + 1,
             date=_extract_date(work),
+            pdf_url=_extract_pdf_url(work),
         ))
     return results
+
+
+# best_oa_location is nullable; its pdf_url is nullable too — vendor data passed through as-is, no validation
+def _extract_pdf_url(work: dict) -> str | None:
+    location = work.get("best_oa_location")
+    if not location:
+        return None
+    return location.get("pdf_url")
 
 
 # publication_date is day-accurate ISO 8601 but nullable; fall back to publication_year (year precision)

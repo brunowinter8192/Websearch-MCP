@@ -27,6 +27,7 @@ def build_engine_pools(results: list[SearchResult]) -> dict[str, list[SearchResu
             position=winner.position,
             engine_positions=engine_positions,
             date=winner.date,
+            pdf_url=winner.pdf_url,
         ))
 
     return {eng: sorted(pool, key=lambda r: r.position) for eng, pool in pools.items()}
