@@ -108,7 +108,7 @@ fetch_with_retry` backoff/re-raise, `pool_loaders.load_backfill_pool` per-source
 `logger.AcquireLogger`/`_group_pool_sources`, `loop.run_loop` refresh-boundary integration
 (pool swap + wset state-continuity, confirmed production-correct not a test bug).
 
-### test_camoufox_scrape.py (628 LOC)
+### test_camoufox_scrape.py (795 LOC)
 **Purpose:** `src/scraper/camoufox_scrape.py` — `try_scrape_camoufox` acquisition-error states
 (budget/browser_missing/exception), the "Invalid IPv6 URL" urlsplit regression, HTML-preserved-
 on-markdown-conversion-failure, calibration surface (`_build_camoufox_kwargs`/
@@ -117,7 +117,13 @@ on-markdown-conversion-failure, calibration surface (`_build_camoufox_kwargs`/
 plistlib round-trip; `ignore_default_args` kwarg presence). REMOVED 2026-08-27: the 8 tests covering
 `_get_frontmost_app`/`_activate_app`/`_is_key_window_owner`/`_key_window_steal_watchdog` and its
 `_acquire_camoufox` wiring, together with the watchdog module code itself — see
-`process-docs/camoufox_lane/`.
+`process-docs/camoufox_lane/`. `_make_document_status_listener` (registered on `_FakePage` via
+`.on("response", ...)` BEFORE `goto()`, mirroring the real registration order): the last main-frame
+document response overriding the goto Response's own (possibly stale) status, the single-entry
+ordinary-page case, the empty-chain fallback, and non-document/non-main-frame responses excluded —
+`_FakePage.goto()` fires its configured `document_statuses` sequence before returning (render wait
+is zeroed in these tests, so there is no real "later" window to fire into; firing the whole chain
+inside `goto()` is an equivalent, deterministic stand-in).
 
 ### test_chromium_scrape.py (1124 LOC)
 **Purpose:** `src/scraper/chromium_scrape.py` — `is_browser_launch_error`, `try_scrape` acquisition-
@@ -181,14 +187,19 @@ reject, child-subdomain reject, parent-domain reject, a malformed-URL reject tha
 **Calls out:** none beyond `src.crawler.discovery`/`src.crawler.seed_feeders_scope` themselves —
 no network, no crawl4ai construction.
 
-### test_pipe_scraper.py (952 LOC)
+### test_pipe_scraper.py (979 LOC)
 **Purpose:** `src/crawler/pipe_scraper*.py` — config stamp extraction off real
 BrowserConfig/CrawlerRunConfig, live crawl4ai `AsyncPlaywrightCrawlerStrategy`/`StealthAdapter`
 wiring guard, `pipe_scrape_logger.log_pipe_scrape` fail-soft JSONL, `_scrape_all` (run_id sharing,
 request-start `ts` timing regression, config hash), `is_blocked` real branch distinction,
 `pipe_scraper_acquisition._fallback_fetch`/`_own_fallback_rescue` (via the real `_scrape_one`
 except path), `landed_url` correctness across all three engines/routes, camoufox-engine dispatch
-switch (default/concurrency/block_images/record shape/error mapping).
+switch (default/concurrency/block_images/record shape/error mapping). As of 2026-09-03, a
+resolved-challenge `try_scrape_camoufox` meta shape (`status_code=200`,
+`document_status_chain=[403,302,200]`) proven end to end through `_scrape_one_camoufox` as
+`outcome="ok"`, with the chain field landing in the JSONL record — no code change needed in the
+camoufox engine itself, only this proof (see `src/scraper/DOCS.md`'s Gotchas for the acquisition-
+primitive fix this proves).
 
 ## Gotchas
 Any file under this directory that resolves its own path to locate the repo root (subprocess
