@@ -18,10 +18,7 @@ from src.search.engines.google import GoogleEngine
 from src.search.engines.scholar import ScholarEngine
 from src.search.engines.duckduckgo import DuckDuckGoEngine
 from src.search.engines.mojeek import MojeekEngine
-from src.search.engines.lobsters import LobstersEngine
 from src.search.engines.openalex import OpenAlexEngine
-from src.search.engines.crossref import CrossRefEngine
-from src.search.engines.stack_exchange import StackExchangeEngine
 from src.search.browser import close_browser
 
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
@@ -45,10 +42,7 @@ ENGINE_ORDER = [
     ("google_scholar", ScholarEngine),
     ("duckduckgo",     DuckDuckGoEngine),
     ("mojeek",         MojeekEngine),
-    ("lobsters",       LobstersEngine),
     ("openalex",       OpenAlexEngine),
-    ("crossref",       CrossRefEngine),
-    ("stack_exchange", StackExchangeEngine),
 ]
 
 ENGINE_MAX = {
@@ -56,13 +50,10 @@ ENGINE_MAX = {
     "google_scholar": 100,
     "duckduckgo":     200,
     "mojeek":         200,
-    "lobsters":       200,
     "openalex":       200,
-    "crossref":       200,
-    "stack_exchange": 100,
 }
 
-BROWSER_ENGINES = frozenset({"google", "google_scholar", "duckduckgo", "mojeek", "lobsters"})
+BROWSER_ENGINES = frozenset({"google", "google_scholar", "duckduckgo", "mojeek"})
 BROWSER_SLEEP_S = 1.0
 API_SLEEP_S = 0.5
 

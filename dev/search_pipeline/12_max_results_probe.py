@@ -17,10 +17,7 @@ from src.search.engines.google import GoogleEngine
 from src.search.engines.scholar import ScholarEngine
 from src.search.engines.duckduckgo import DuckDuckGoEngine
 from src.search.engines.mojeek import MojeekEngine
-from src.search.engines.lobsters import LobstersEngine
 from src.search.engines.openalex import OpenAlexEngine
-from src.search.engines.crossref import CrossRefEngine
-from src.search.engines.stack_exchange import StackExchangeEngine
 from src.search.browser import close_browser
 
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
@@ -39,13 +36,10 @@ ENGINE_MAX = {
     "google_scholar": 100,  # same as Google; Scholar renders max ~20
     "duckduckgo":     200,  # no count param — slice-only; page renders naturally
     "mojeek":         200,  # no count param — slice-only; page renders naturally
-    "lobsters":       200,  # no count param — slice-only; pool is query-dependent
     "openalex":       200,  # per_page= API param; documented ceiling is 200
-    "crossref":       200,  # rows= API param; documented ceiling is 1000
-    "stack_exchange": 100,  # pagesize= API param; hard cap is 100
 }
 
-BROWSER_ENGINES = {"google", "google_scholar", "duckduckgo", "mojeek", "lobsters"}
+BROWSER_ENGINES = {"google", "google_scholar", "duckduckgo", "mojeek"}
 BROWSER_SLEEP_S = 1.0
 API_SLEEP_S = 0.5
 
@@ -54,10 +48,7 @@ ENGINE_NOTES = {
     "google_scholar": "num= URL param; Scholar renders max ~20 per page",
     "duckduckgo":     "No count param; post-fetch slice only — page renders naturally",
     "mojeek":         "No count param; post-fetch slice only — default 10 per page",
-    "lobsters":       "No count param; post-fetch slice only — pool is query-dependent",
     "openalex":       "per_page= API param; documented max 200",
-    "crossref":       "rows= API param; documented max 1000",
-    "stack_exchange": "pagesize= API param; hard cap 100",
 }
 
 
@@ -71,10 +62,7 @@ async def run_probe() -> None:
         ("google_scholar", ScholarEngine()),
         ("duckduckgo",     DuckDuckGoEngine()),
         ("mojeek",         MojeekEngine()),
-        ("lobsters",       LobstersEngine()),
         ("openalex",       OpenAlexEngine()),
-        ("crossref",       CrossRefEngine()),
-        ("stack_exchange", StackExchangeEngine()),
     ]
 
     records = []

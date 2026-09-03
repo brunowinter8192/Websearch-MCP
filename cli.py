@@ -88,7 +88,7 @@ def main():
     # ── search_web ────────────────────────────────────────────────────────────
     p = sub.add_parser(
         "search_web",
-        help="Search across 9 engines. Returns engine breakdown table — use search_engine_drilldown to see URLs per engine."
+        help="Search across 8 engines. Returns engine breakdown table — use search_engine_drilldown to see URLs per engine."
     )
     p.add_argument("query", help="Search query (2-5 keywords)")
 
@@ -99,8 +99,8 @@ def main():
     )
     p.add_argument("query", help="Search query (must match a prior search_web call)")
     p.add_argument("--engine", required=True,
-                   help="Engine name: google, duckduckgo, mojeek, lobsters, semantic_scholar, "
-                        "openalex, crossref, stack_exchange, open_library")
+                   help="Engine name: google, duckduckgo, mojeek, startpage, brave, bing, yandex, "
+                        "openalex")
 
     # ── scrape_url_chromium ───────────────────────────────────────────────────
     p = sub.add_parser("scrape_url_chromium", help="Scrape URL to filtered markdown (PruningContentFilter, full content, no length cap) plus acquisition facts.")

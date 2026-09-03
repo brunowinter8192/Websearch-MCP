@@ -37,13 +37,13 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 **Called by:** CLI only.
 **Calls out:** `src.search.engines.duckduckgo.DuckDuckGoEngine`, `src.search.browser.close_browser`.
 
-### 05_search_smoke.py (226 LOC)
+### 05_search_smoke.py (220 LOC)
 
-**Purpose:** Multi-engine comparison smoke — imports all 8 browser/HTTP engine classes, fans out per-engine in parallel (`asyncio.gather`), merges by URL preserving per-engine snippets (bypasses `_merge_and_rank`).
+**Purpose:** Multi-engine comparison smoke — imports the remaining 5 browser/HTTP engine classes (google, duckduckgo, mojeek, google scholar, openalex), fans out per-engine in parallel (`asyncio.gather`), merges by URL preserving per-engine snippets (bypasses `_merge_and_rank`).
 **Reads:** `queries.txt`.
 **Writes:** `md/search_smoke_<ts>.md`.
 **Called by:** CLI only. Flags: `--engines` (default: google duckduckgo), `--max-queries N`.
-**Calls out:** `src.search.browser.close_browser`, `src.search.engines.{google,duckduckgo,mojeek,lobsters,scholar,crossref,openalex,stack_exchange}`, `src.search.result.SearchResult`.
+**Calls out:** `src.search.browser.close_browser`, `src.search.engines.{google,duckduckgo,mojeek,scholar,openalex}`, `src.search.result.SearchResult`.
 
 ### 06_mojeek_smoke.py (125 LOC)
 
@@ -52,14 +52,6 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 **Writes:** `md/mojeek_smoke_<ts>.md`.
 **Called by:** CLI only.
 **Calls out:** `src.search.engines.mojeek.MojeekEngine`, `src.search.browser.close_browser`.
-
-### 07_lobsters_smoke.py (125 LOC)
-
-**Purpose:** Lobsters production-mode smoke — same pattern as `01_google_smoke.py` via `LobstersEngine`.
-**Reads:** `queries.txt`.
-**Writes:** `md/lobsters_smoke_<ts>.md`.
-**Called by:** CLI only.
-**Calls out:** `src.search.engines.lobsters.LobstersEngine`, `src.search.browser.close_browser`.
 
 ### 08_scholar_smoke.py (134 LOC)
 
@@ -77,14 +69,6 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 **Called by:** CLI only.
 **Calls out:** `src.search.engines.openalex.OpenAlexEngine`.
 
-### 10_stack_exchange_smoke.py (121 LOC)
-
-**Purpose:** Stack Exchange smoke — `StackExchangeEngine().search()` per query (pure HTTP, `api.stackexchange.com/2.3/search/advanced?site=stackoverflow`). Status taxonomy: OK / EMPTY / RATE_LIMITED / ERROR.
-**Reads:** `queries.txt`.
-**Writes:** `md/se_smoke_<ts>.md`.
-**Called by:** CLI only. `STACK_EXCHANGE_API_KEY` env var raises quota from 300/day anonymous to 10k/day.
-**Calls out:** `src.search.engines.stack_exchange.StackExchangeEngine`.
-
 ### 11_pipeline_smoke.py (376 LOC)
 
 **Purpose:** Full-pipeline smoke — calls `search_web_workflow(query, _with_timings=True, engine_timeout=N)` per query (unlike `05`'s per-engine fanout, this goes through `_merge_and_rank`). Produces the singular baseline consumed by downstream investigation scripts (`snippet_quality_analysis.py`, `engine_distribution_analysis.py`, `snippet_selection_simulator.py`). Per-URL block: title/URL/engines + chosen `source`/`display` + `og`/`meta` + per-engine snippets. Per-query timing + slot-fill line. Per-Engine Status Aggregate section at end.
@@ -93,29 +77,29 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 **Called by:** CLI only. Flags: `--max-queries N`, `--language` (default `en`), `--engine-timeout N` (float seconds, per-engine watchdog).
 **Calls out:** `src.search.browser.close_browser`, `src.search.cache`, `src.search.search_web.search_web_workflow`.
 
-### 12_max_results_probe.py (189 LOC)
+### 12_max_results_probe.py (177 LOC)
 
-**Purpose:** Per-engine single-call ceiling probe — direct engine instantiation, one call per query at high `max_results` (Google/Scholar/SE 100, others 200), observes actual returned count + latency + status.
+**Purpose:** Per-engine single-call ceiling probe — direct engine instantiation, one call per query at high `max_results` (Google/Scholar 100, others 200), observes actual returned count + latency + status.
 **Reads:** hardcoded 3-query set.
 **Writes:** `md/max_results_probe_<ts>.md`.
 **Called by:** CLI only.
-**Calls out:** `src.search.engines.{google,scholar,duckduckgo,mojeek,lobsters,openalex,crossref,stack_exchange}`, `src.search.browser.close_browser`.
+**Calls out:** `src.search.engines.{google,scholar,duckduckgo,mojeek,openalex}`, `src.search.browser.close_browser`.
 
-### 13_free_word_probe.py (301 LOC)
+### 13_free_word_probe.py (292 LOC)
 
-**Purpose:** Free-word query injection probe — appends `pdf`/`book` (no operator) to query string, measures domain-distribution shift across all 8 engines. 3 queries × 3 variants (baseline/+pdf/+book).
+**Purpose:** Free-word query injection probe — appends `pdf`/`book` (no operator) to query string, measures domain-distribution shift across the 5 remaining engines. 3 queries × 3 variants (baseline/+pdf/+book).
 **Reads:** hardcoded 3-query set.
 **Writes:** `md/free_word_injection_probe_<ts>.md`.
 **Called by:** CLI only.
-**Calls out:** `src.search.engines.{google,scholar,duckduckgo,mojeek,lobsters,openalex,crossref,stack_exchange}`, `src.search.browser.close_browser`.
+**Calls out:** `src.search.engines.{google,scholar,duckduckgo,mojeek,openalex}`, `src.search.browser.close_browser`.
 
-### 13_timing_ablation.py (356 LOC)
+### 13_timing_ablation.py (350 LOC)
 
-**Purpose:** Timing-config ablation — A (status-quo) vs B (aggressive Scholar polling/consent sleep/HTTP rate-limit) via concurrent fan-out across all 8 engines. 3 queries × 2 configs, 2-min cooldown between configs.
+**Purpose:** Timing-config ablation — A (status-quo) vs B (aggressive Scholar polling/consent sleep/HTTP rate-limit) via concurrent fan-out across the 5 remaining engines. 3 queries × 2 configs, 2-min cooldown between configs.
 **Reads:** hardcoded 3-query set.
 **Writes:** `md/timing_ablation_<ts>.md`.
 **Called by:** CLI only.
-**Calls out:** `src.search.engines.{google,scholar,duckduckgo,mojeek,lobsters,openalex,crossref,stack_exchange}` (monkeypatched via module import), `src.search.browser.close_browser`, `src.search.rate_limiter`.
+**Calls out:** `src.search.engines.{google,scholar,duckduckgo,mojeek,openalex}` (monkeypatched via module import), `src.search.browser.close_browser`, `src.search.rate_limiter`.
 
 ### 14_download_classify_probe.py (605 LOC)
 
@@ -156,30 +140,6 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 **Writes:** `md/docs_probe_<ts>.md`.
 **Called by:** CLI only.
 **Calls out:** `src.search.engines.{google,duckduckgo,mojeek}`, `src.search.browser.close_browser`.
-
-### 21_semscholar_smoke.py (134 LOC)
-
-**Purpose:** Semantic Scholar production-mode smoke — `SemanticScholarEngine().search()` per query (pydoll browser). Status taxonomy: OK (≥3)/SUSPECT (1-2)/EMPTY/ERROR.
-**Reads:** `queries.txt`.
-**Writes:** `md/semscholar_smoke_<ts>.md`.
-**Called by:** CLI only.
-**Calls out:** `src.search.engines.semantic_scholar.SemanticScholarEngine`, `src.search.browser.close_browser`.
-
-### 22_openlibrary_smoke.py (122 LOC)
-
-**Purpose:** Open Library smoke — `OpenLibraryEngine().search()` for 30 baseline queries.
-**Reads:** `queries.txt`.
-**Writes:** `md/open_library_smoke_<ts>.md` (via `write_report`, `md/` dir).
-**Called by:** CLI only.
-**Calls out:** `src.search.engines.open_library.OpenLibraryEngine`.
-
-### 23_books_ab_smoke.py (202 LOC)
-
-**Purpose:** A/B pool-widening smoke — measures Open Library's additive contribution to `--books` mode. OL URLs (`openlibrary.org/works/*`) are structurally unique vs web engines, so OL result count = unique-to-OL count directly. No Chrome needed. `MEANINGFUL_WIDENING_THRESHOLD = 3`.
-**Reads:** hardcoded 10-query `BOOK_QUERIES` set.
-**Writes:** `md/books_ab_smoke_<ts>.md`.
-**Called by:** CLI only.
-**Calls out:** `src.search.engines.open_library.OpenLibraryEngine`.
 
 ### 24_pydoll_teardown_verify.py (302 LOC)
 
@@ -228,14 +188,6 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 **Writes:** `md/yandex_probe_<ts>.md`.
 **Called by:** CLI only.
 **Calls out:** `pydoll` (Chrome, ChromiumOptions, TargetCommands) — inline copy of the `src/search/browser.py` session-setup shape, not a shared import.
-
-### 30_marginalia_probe.py (255 LOC)
-
-**Purpose:** Go/no-go scrapeability probe for Marginalia Search — a genuine NEW-COVERAGE candidate on a DIFFERENT axis (small/old/text-heavy/non-commercial web, own crawler), not redundancy like bing/startpage. Discovers and uses a FREE public JSON API (no browser/stealth needed — plain `httpx`, mirrors the HTTP-API engine pattern of crossref/openalex/stack_exchange/open_library rather than the pydoll browser engines): `https://api2.marginalia-search.com/search?query=<q>&count=10`, header `API-Key: public` (literal shared key, no signup). Runs 10 gently-paced queries (5 niche/text-heavy + 5 standard mainstream/local). Result: CANDIDATE — 8/10 OK, 2 genuine HTTP-429 rate-limits on the shared public key; excellent quality on the niche axis, honestly mixed on mainstream/local (German local-biz was fully irrelevant, English mainstream/docs reasonable). Fastest engine probed all week (median ~74ms).
-**Reads:** none (live run against production api2.marginalia-search.com).
-**Writes:** `md/marginalia_probe_<ts>.md`.
-**Called by:** CLI only.
-**Calls out:** `httpx`.
 
 ### 31_date_availability_probe.py (527 LOC)
 
@@ -325,14 +277,6 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 **Called by:** CLI only.
 **Calls out:** `src.search.browser` (new_tab, close_browser), `src.search.engines.duckduckgo` (`_build_url`, `_wait_for_results`, `_extract_value`), `src.search.engines.mojeek` (`_build_url`, `_wait_for_results`).
 
-### empty_classify_lobsters.py (223 LOC)
-
-**Purpose:** Classification probe for 11 Lobsters EMPTY queries from a historical smoke baseline (`smoke_20260504_023641`) — pydoll browser with 3s wait (vs production 600ms). Captures story count, page title, HTML snippet, screenshots for first 3 queries. Status taxonomy: ENGINE_EMPTY/PIPELINE_BUG/BOT_BLOCK/UNKNOWN.
-**Reads:** hardcoded query list embedded in-file (row indices reference `md/search_smoke_20260504_023641.md`).
-**Writes:** `md/empty_classify_lobsters_<ts>.md`, `png/`.
-**Called by:** CLI only.
-**Calls out:** `src.search.browser` (new_tab, close_browser), `src.search.rate_limiter.get_limiter`.
-
 ### empty_classify_se.py (204 LOC)
 
 **Purpose:** Classification probe for 15 Stack Exchange EMPTY queries from the same historical smoke baseline — direct httpx (no rate limiter, no API key) against `site=stackoverflow` (production-identical) + `site=stackexchange` (cross-site fallback). Status taxonomy: ENGINE_EMPTY/ENGINE_NICHE/RATE_LIMITED/PIPELINE_BUG/UNKNOWN.
@@ -373,13 +317,13 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 **Called by:** CLI only. Flags: `--tail N`, `--log-path PATH`, `--all-types` (include `engine_run` records).
 **Calls out:** none beyond stdlib.
 
-### no_google_burst_smoke.py (213 LOC)
+### no_google_burst_smoke.py (200 LOC)
 
-**Purpose:** No-Google concurrent burst smoke — production `ScholarEngine` (HTTP) vs 8 other production engines under concurrent multi-engine burst pattern, without Google browser present. Architectural discriminator: does HTTP Scholar survive the burst pattern without the Google-driven browser warmup? Import switched from the dev-only `ScholarHTTPProbe` (see `scholar_http_probe.py`) to production `ScholarEngine` as part of an HTTP migration.
+**Purpose:** No-Google concurrent burst smoke — production `ScholarEngine` (HTTP) vs the 3 other remaining production engines under concurrent multi-engine burst pattern, without Google browser present. Architectural discriminator: does HTTP Scholar survive the burst pattern without the Google-driven browser warmup? Import switched from the dev-only `ScholarHTTPProbe` (see `scholar_http_probe.py`) to production `ScholarEngine` as part of an HTTP migration.
 **Reads:** hardcoded 12-query set (academic queries, 3 bursts × 4).
 **Writes:** `jsonl/no_google_burst_<ts>.jsonl` (per-query records); summary table to stderr.
 **Called by:** CLI only.
-**Calls out:** `httpx`, `pydoll.exceptions`, `websockets.exceptions`, `src.search.status`, `src.search.browser.close_browser`, `src.search.engines.{crossref,duckduckgo,lobsters,mojeek,open_library,openalex,semantic_scholar,stack_exchange,scholar}`.
+**Calls out:** `httpx`, `pydoll.exceptions`, `websockets.exceptions`, `src.search.status`, `src.search.browser.close_browser`, `src.search.engines.{duckduckgo,mojeek,openalex,scholar}`.
 
 ### pool_diff_v2_v3.py (240 LOC)
 

@@ -2,8 +2,8 @@
 
 Pure-function tests run with no network at all. Fetch-layer tests inject a fake httpx client
 directly (fetch_robots_txt/fetch_sitemap take `client` as a parameter — no monkeypatching
-needed). Workflow-level tests monkeypatch `seed_feeders.httpx.AsyncClient`, mirroring this
-project's own `test_marginalia_engine.py` fake-client pattern.
+needed). Workflow-level tests monkeypatch `seed_feeders.httpx.AsyncClient`, an established
+fake-client pattern in this project's test suite.
 """
 import json
 

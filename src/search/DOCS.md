@@ -2,7 +2,7 @@
 
 ## Role
 
-pydoll-based parallel web-search pipeline behind the `search_web` and `search_engine_drilldown` CLI subcommands. Fans a single query out across 14 engines concurrently, dedups URLs into per-engine pools, caches the pools to disk, and returns an engine-breakdown table; the drilldown subcommand re-reads the cache to emit one engine's URLs. As of 2026-08-05, the drilldown path is ALSO logged (`record_type: "drilldown"` in `query_log.jsonl`, `cli.py`) — closing the "a scraped URL cannot be traced back to which engine(s) offered it" gap; see query_logger.py's module entry. Touch this package when changing engine fan-out, dedup/pool-building, the disk cache, or rate-limiting. Individual engine parsers live one level down in `engines/`.
+pydoll-based parallel web-search pipeline behind the `search_web` and `search_engine_drilldown` CLI subcommands. Fans a single query out across 8 engines concurrently, dedups URLs into per-engine pools, caches the pools to disk, and returns an engine-breakdown table; the drilldown subcommand re-reads the cache to emit one engine's URLs. As of 2026-08-05, the drilldown path is ALSO logged (`record_type: "drilldown"` in `query_log.jsonl`, `cli.py`) — closing the "a scraped URL cannot be traced back to which engine(s) offered it" gap; see query_logger.py's module entry. Touch this package when changing engine fan-out, dedup/pool-building, the disk cache, or rate-limiting. Individual engine parsers live one level down in `engines/`.
 
 ## Public Interface
 
@@ -20,13 +20,13 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 
 ## Modules
 
-### search_web.py (379 LOC)
+### search_web.py (360 LOC)
 
-**Purpose:** Search orchestrator — fans out across the 14 active engines via `asyncio.gather`, then builds pools, caps each to Google's pool size, formats a breakdown table, and caches the result. As of the browser-lifecycle milestone (2026-08-25), also owns deterministic own-browser teardown: `_prewarm_browser` launches the shared Chrome ONCE, outside any per-engine watchdog, before fanout (only when `selected` includes a browser engine); `kill_own_chrome` runs in a `finally` around the fanout regardless of outcome.
-**Reads:** query + params; per-engine caps in `ENGINE_MAX_RESULTS`; default set via `_DEFAULT_ENGINES`; `_BROWSER_ENGINES` (which of the 14 need `browser.py`'s Chrome).
+**Purpose:** Search orchestrator — fans out across the 8 active engines via `asyncio.gather`, then builds pools, caps each to Google's pool size, formats a breakdown table, and caches the result. As of the browser-lifecycle milestone (2026-08-25), also owns deterministic own-browser teardown: `_prewarm_browser` launches the shared Chrome ONCE, outside any per-engine watchdog, before fanout (only when `selected` includes a browser engine); `kill_own_chrome` runs in a `finally` around the fanout regardless of outcome.
+**Reads:** query + params; per-engine caps in `ENGINE_MAX_RESULTS`; default set via `_DEFAULT_ENGINES`; `_BROWSER_ENGINES` (which of the 8 need `browser.py`'s Chrome).
 **Writes:** disk cache `~/.cache/websearch/<key>.json` (via cache_write); query log (via log_query).
 **Called by:** `cli.py` (search_web_workflow); dev scripts (fetch_search_results).
-**Calls out:** `httpx`, `pydoll.exceptions`, `websockets.exceptions`, `mcp.types.TextContent`; `engines/` (all 14 engine classes); `browser` (get_tab, kill_own_chrome); `cache` (cache_key, cache_write), `rate_limiter` (get_limiter), `merge` (build_engine_pools), `result` (SearchResult), `status`, `query_logger` (log_query).
+**Calls out:** `httpx`, `pydoll.exceptions`, `websockets.exceptions`, `mcp.types.TextContent`; `engines/` (all 8 engine classes); `browser` (get_tab, kill_own_chrome); `cache` (cache_key, cache_write), `rate_limiter` (get_limiter), `merge` (build_engine_pools), `result` (SearchResult), `status`, `query_logger` (log_query).
 
 ### merge.py (32 LOC)
 
@@ -64,7 +64,7 @@ pydoll-based parallel web-search pipeline behind the `search_web` and `search_en
 **Purpose:** pydoll Chrome lifecycle — one shared, headed, backgrounded (macOS `open -g -n`) Chrome, one tab per engine for isolation, no JS fingerprint patches or UA override. `get_tab()`'s first-launch path blocks on a cross-process lock (`browser_lock.py`) scoped to the shared session profile, reaps any orphaned survivor of a crashed prior run (net 3), snapshots the real Chrome PID(s) it launched, then spawns a `death_pipe` watchdog (net 2 — no `cleanup_dir`, the session profile is persistent by design). `kill_own_chrome()` is the deterministic own-run teardown (net 1 — graceful CDP close + PID-scoped psutil safety net + lock release, `close_browser()`'s own raise caught so net 1 can't itself skip the lock release), replacing profile-pattern `pkill` as the primary teardown path.
 **Reads:** nothing (singleton browser on first access).
 **Writes:** Chrome session dir under the user-data-dir; the cross-process lock file + JSON sidecar at `LOCK_PATH` (`~/.websearch/browser-session.lock[.json]`).
-**Called by:** `cli.py` (kill_own_chrome_atexit, atexit); `search_web.py` (get_tab via `_prewarm_browser`, kill_own_chrome); `engines/` (new_tab, kill_tab — google, duckduckgo, lobsters, semantic_scholar, mojeek, yandex, bing, brave, startpage); 40+ `dev/search_pipeline/*.py` probes (new_tab, close_browser — direct callers, bypass search_web.py's lock/prewarm entirely).
+**Called by:** `cli.py` (kill_own_chrome_atexit, atexit); `search_web.py` (get_tab via `_prewarm_browser`, kill_own_chrome); `engines/` (new_tab, kill_tab — google, duckduckgo, mojeek, yandex, bing, brave, startpage); 40+ `dev/search_pipeline/*.py` probes (new_tab, close_browser — direct callers, bypass search_web.py's lock/prewarm entirely).
 **Calls out:** `pydoll` (Chrome, ChromiumOptions, BrowserProcessManager, TargetCommands); `psutil` (own-PID terminate/kill); `browser_lock` (acquire); `death_pipe` (spawn_watchdog); `open`/`pgrep` (macOS process control).
 
 ### browser_lock.py (74 LOC)
@@ -100,7 +100,7 @@ Two module-owned states. `rate_limiter._limiters` — the per-engine token-bucke
 
 ## Gotchas
 
-- Active engines (9): google, duckduckgo, mojeek, lobsters, semantic_scholar (pydoll); crossref, openalex, stack_exchange, open_library (HTTP). Google Scholar (`engines/scholar.py`) is decoupled from the default pool. brave / startpage / bing were dropped.
+- Active engines (8, as of the 2026-09 engine-reduction milestone): google, duckduckgo, mojeek, startpage, brave, bing, yandex (pydoll); openalex (HTTP). Google Scholar (`engines/scholar.py`) is decoupled from the default pool. crossref, semantic_scholar, stack_exchange, open_library, lobsters, and marginalia were removed entirely (not parked) — see `process-docs/engine_expansion/` for their history.
 - Two-call architecture: `search_web` returns counts only (no URLs); URLs come from `search_engine_drilldown` reading the cache. The drilldown query MUST match the prior `search_web` call or the cache key misses.
 - Post-dedup pool cap keys off Google's pool size — if Google was CAPTCHA'd or excluded, K falls back to 10.
 - Stealth config lives in `browser.py` (headed-backgrounded launch, `--disable-blink-features=AutomationControlled`, `BACKGROUNDING_FLAGS`, browser preferences) + per-engine files (SOCS cookie for Google) — no config file, no JS fingerprint patches or UA override (removed — see `browser.py`'s module history via `process-docs/browser_posture/`).
