@@ -10,6 +10,7 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 from urllib.parse import urlparse
 
 from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode, UndetectedAdapter
@@ -118,6 +119,7 @@ async def scrape_url_chromium_workflow(url: str) -> list[TextContent]:
         "crawl4ai_attempts": meta.get("crawl4ai_attempts"),
         "crawl4ai_resolved_by": meta.get("crawl4ai_resolved_by"),
         "crawl4ai_fallback_fetch_used": meta.get("crawl4ai_fallback_fetch_used"),
+        "document_status_chain": meta.get("document_status_chain"),
         "config_hash": config_hash, "config": config,
     })
     logger.info("Scrape complete: %s (%d chars, outcome=%s)", url, len(content), outcome)
@@ -129,17 +131,25 @@ async def scrape_url_chromium_workflow(url: str) -> list[TextContent]:
 # Run one browser acquisition + date extraction + content selection, the guarded span inside try_scrape's budget
 async def _acquire_scrape(
     url: str, browser_config: BrowserConfig, crawler_strategy: AsyncPlaywrightCrawlerStrategy,
-    run_config: CrawlerRunConfig, empty_meta: dict,
+    run_config: CrawlerRunConfig, empty_meta: dict, document_status_chain: list,
 ) -> tuple[str, dict]:
     async with AsyncWebCrawler(config=browser_config, crawler_strategy=crawler_strategy) as crawler:
         result = await crawler.arun(url=url, config=run_config)
     status_code = result.status_code if hasattr(result, "status_code") else None
+    # The LAST main-frame document response (document_status_chain, collected by the before_goto
+    # hook set below) is the response of the page whose content was actually captured — overrides
+    # crawl4ai's own status_code, which keeps only the EARLIEST goto-redirect-chain hop and is
+    # never updated by a same-document JS navigation happening later (e.g. a Cloudflare challenge
+    # resolving during delay_before_return_html). Empty chain (e.g. raw: input, no navigation at
+    # all) falls back to crawl4ai's value unchanged — never invents a status.
+    if document_status_chain:
+        status_code = document_status_chain[-1]
     ct = None
     if hasattr(result, "headers") and result.headers:
         ct = result.headers.get("content-type") or result.headers.get("Content-Type")
     landed_url = getattr(result, "redirected_url", None)
     meta: dict = {**empty_meta, "status_code": status_code, "content_type": ct,
-                  "landed_url": landed_url}
+                  "landed_url": landed_url, "document_status_chain": list(document_status_chain)}
     meta.update(extract_crawl4ai_diagnosis(result))
     if not result.markdown:
         return "", meta
@@ -179,6 +189,7 @@ async def try_scrape(url: str) -> tuple[str, dict]:
         "crawl4ai_success": None, "crawl4ai_error_message": None,
         "crawl4ai_attempts": None, "crawl4ai_resolved_by": None,
         "crawl4ai_fallback_fetch_used": None, "landed_url": None,
+        "document_status_chain": [],
         "config": {"config_incomplete": True, "launch_mode": LAUNCH_MODE, "total_budget_s": budget_s},
     }
     try:
@@ -224,9 +235,16 @@ async def _acquire_cdp_headed(
         adapter = UndetectedAdapter()
         crawler_strategy = AsyncPlaywrightCrawlerStrategy(browser_config=browser_config, browser_adapter=adapter)
         crawler_strategy.set_hook("on_page_context_created", _reject_popup_pages)
+        # before_goto is unused by crawl4ai itself and fires before EVERY navigation attempt
+        # (including page.goto's own response) — the one place that arms the response listener
+        # early enough without touching the on_page_context_created slot _reject_popup_pages owns.
+        document_status_chain: list = []
+        crawler_strategy.set_hook("before_goto", _make_document_status_listener(document_status_chain))
         config_stamp = extract_config_stamp(browser_config, adapter, crawler_strategy, run_config, budget_s)
         empty_meta = {**empty_meta, "config": config_stamp}
-        return await _acquire_scrape(url, browser_config, crawler_strategy, run_config, empty_meta)
+        return await _acquire_scrape(
+            url, browser_config, crawler_strategy, run_config, empty_meta, document_status_chain
+        )
     finally:
         watchdog_task.cancel()
         try:
@@ -454,6 +472,31 @@ def _reject_popup_pages(main_page, context=None, config=None) -> None:
     context.on("page", _on_new_page)
 
 
+# crawl4ai's before_goto hook target: arms a page.on("response") listener before navigation
+# begins (so it also catches page.goto's own response), collecting the ORDERED chain of main-frame
+# document response statuses — a same-document JS navigation after goto returns (e.g. a Cloudflare
+# challenge resolving during delay_before_return_html) fires its own response event here even
+# though crawl4ai's own status_code never sees it. A FACT, not a verdict — nothing here decides
+# "challenge solved"/"blocked". request.frame can raise for a navigation request issued before its
+# frame exists (iframes/popups) — guarded, not filtered on is_navigation_request() alone (which is
+# also true for iframe navigations; comparing the frame to page.main_frame is the real filter).
+def _make_document_status_listener(status_chain: list) -> Callable:
+    def _on_before_goto(page, context=None, url=None, config=None) -> None:
+        def _on_response(response) -> None:
+            request = response.request
+            if request.resource_type != "document":
+                return
+            try:
+                frame = request.frame
+            except Exception:
+                return
+            if frame is not page.main_frame:
+                return
+            status_chain.append(response.status)
+        page.on("response", _on_response)
+    return _on_before_goto
+
+
 # Best-effort popup close — the page may already be gone/closing; logged, not raised, since a stray
 # popup failing to close must degrade gracefully, never fail the main scrape it has nothing to do with
 async def _close_popup_page(page) -> None:
@@ -581,6 +624,9 @@ def _format_scrape_output(url: str, content: str, meta: dict, published_date: st
     lines += [
         "## Acquisition facts",
         f"- HTTP status: {meta.get('status_code')}",
+        f"- Document status chain (ordered main-frame document response statuses observed before "
+        f"capture; a fact, not a verdict — never read as challenge-solved/blocked): "
+        f"{meta.get('document_status_chain')}",
         f"- Landed URL (the URL the browser actually returned content from): {meta.get('landed_url')}",
         f"- Bytes (raw markdown from crawl4ai): {meta.get('raw_markdown_bytes', 0)}",
         f"- Bytes (content below, after PruningContentFilter): "
