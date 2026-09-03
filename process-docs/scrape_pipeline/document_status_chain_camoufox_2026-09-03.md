@@ -1,6 +1,6 @@
 # Camoufox lane: last main-frame document response status + the status chain as a fact (2026-09-03)
 
-Sibling fix to `process-docs/scrape_pipeline/document_status_chain_2026-09-03.md` (the chromium
+Sibling fix to this area's same-day chromium-lane document-status-chain entry (the chromium
 lane, M1) — same contract, same field name, applied to `src/scraper/camoufox_scrape.py`'s
 `try_scrape_camoufox`, driven through plain Playwright directly rather than a crawl4ai hook.
 
