@@ -30,6 +30,18 @@ sample), `_build_results`, `_classify_diagnosis`.
 ### test_brave_engine.py (61 LOC)
 **Purpose:** `src/search/engines/brave.py` — `_build_results`, `_classify_diagnosis` (PoW/CAPTCHA).
 
+### test_openalex_engine.py (219 LOC)
+**Purpose:** `src/search/engines/openalex.py` (2026 API migration) — `_extract_pdf_url`/
+`_parse_results` populate `SearchResult.pdf_url` from `best_oa_location.pdf_url` (null when the
+location or the pdf_url itself is null); `search_with_reason` surfaces a 429 as `S.EMPTY_BLOCK`
+(not a silent empty) while 403 stays a plain empty with no reason; `api_key` query param present
+only when `OPENALEX_API_KEY` is set, `mailto` never sent; `per_page` clamped to the vendor's
+100-max. Also covers the pdf_url chain end to end: `build_engine_pools` (merge.py) carries the
+winner's `pdf_url`, `format_engine_pool` (cache.py) renders a `PDF:` line directly after `URL:`
+when present and omits it when absent or when the cached dict predates the key (`.get()` compat).
+**Calls out:** none (pure function tests, `httpx.AsyncClient` monkeypatched with a fake client
+that records request params, the pattern established in `test_seed_feeders.py`).
+
 ### test_startpage_engine.py (61 LOC)
 **Purpose:** `src/search/engines/startpage.py` — `_build_results`, `_classify_diagnosis` (iframe
 challenge).

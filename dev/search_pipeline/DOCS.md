@@ -63,7 +63,7 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 
 ### 09_openalex_smoke.py (121 LOC)
 
-**Purpose:** OpenAlex smoke — `OpenAlexEngine().search()` per query (pure HTTP, no browser). Status taxonomy: OK / EMPTY / RATE_LIMITED / ERROR. Forwards `OPENALEX_MAILTO` env var.
+**Purpose:** OpenAlex smoke — `OpenAlexEngine().search()` per query (pure HTTP, no browser). Status taxonomy: OK / EMPTY / RATE_LIMITED / ERROR. Optional `OPENALEX_API_KEY` env var is picked up by the engine itself (no forwarding logic in this script).
 **Reads:** `queries.txt`.
 **Writes:** `md/openalex_smoke_<ts>.md`.
 **Called by:** CLI only.

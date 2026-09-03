@@ -94,10 +94,10 @@ Query string in → engine-specific fetch (pydoll tab navigation + JS extraction
 
 ---
 
-### openalex.py (115 LOC)
+### openalex.py (135 LOC)
 
-**Purpose:** OpenAlex academic graph search via `httpx` GET against `api.openalex.org/works` (JSON API, no browser) — iterative HTML-entity unescape on titles, `SearchResult.date` from `publication_date` (day-accurate) falling back to `publication_year` (year precision).
-**Reads:** `OPENALEX_MAILTO` env var (polite-pool identification, optional).
+**Purpose:** OpenAlex academic graph search via `httpx` GET against `api.openalex.org/works` (JSON API, no browser) — iterative HTML-entity unescape on titles, `SearchResult.date` from `publication_date` (day-accurate) falling back to `publication_year` (year precision), `SearchResult.pdf_url` from `best_oa_location.pdf_url` (`_pick_url`'s arxiv > doi > id choice stays the canonical `url`). `per_page` clamped to the vendor's 100-max. Overrides `search_with_reason`: a 429 (daily/per-second budget exceeded) surfaces as `S.EMPTY_BLOCK` instead of a silent empty result; 403 (forbidden resource) stays a plain empty with no reason.
+**Reads:** `OPENALEX_API_KEY` env var (optional free API key, sent as `api_key` query param — raises the daily budget from $0.10 to $1; `mailto` is never sent, ignored by the API since 2026-02).
 **Writes:** none (network only).
 **Called by:** `src/search/search_web.py`.
 **Calls out:** `httpx`.
