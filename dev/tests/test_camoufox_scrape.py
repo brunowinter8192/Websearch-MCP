@@ -25,19 +25,63 @@ def _fake_launch_options(**kwargs):
 
 
 class _FakeResponse:
-    def __init__(self, status):
+    def __init__(self, status, request=None):
         self.status = status
+        self.request = request
+
+
+class _FakeRequest:
+    def __init__(self, resource_type, frame):
+        self.resource_type = resource_type
+        self._frame = frame
+
+    @property
+    def frame(self):
+        return self._frame
+
+
+class _FakeMainFrame:
+    pass
 
 
 class _FakePage:
-    def __init__(self, landed_url, status, html):
+    """Fires document_statuses (default: just the returned response's own status, the pre-existing
+    single-hop shape every earlier test in this file relies on) as main-frame document responses
+    DURING goto() — CAMOUFOX_RENDER_WAIT_S is zeroed in every test that uses this fake, so there is
+    no real "later" window to fire into; firing the whole intended chain before goto() returns is an
+    equivalent, deterministic stand-in for a redirect chain plus a same-document JS navigation that
+    resolves during the (zeroed) render wait. Each entry in document_statuses is either a plain int
+    (fired as a main-frame document response) or a (status, resource_type, frame) tuple for tests
+    proving non-document/non-main-frame responses are excluded from the chain. The RETURNED response
+    can carry a DIFFERENT status than document_statuses' last entry — proving the override actually
+    happens, not just coincidentally matching."""
+    def __init__(self, landed_url, status, html, document_statuses=None):
         self._landed_url = landed_url
         self._status = status
         self._html = html
+        self._document_statuses = document_statuses if document_statuses is not None else [status]
         self.url = "about:blank"
+        self.main_frame = _FakeMainFrame()
+        self._response_handlers = []
+
+    def on(self, event, handler):
+        if event == "response":
+            self._response_handlers.append(handler)
+
+    def fire_response(self, status, resource_type="document", frame=None):
+        request = _FakeRequest(resource_type, frame if frame is not None else self.main_frame)
+        response = _FakeResponse(status, request)
+        for h in self._response_handlers:
+            h(response)
 
     async def goto(self, url, timeout=None, wait_until=None):
         self.url = self._landed_url
+        for entry in self._document_statuses:
+            if isinstance(entry, tuple):
+                status, resource_type, frame = entry
+                self.fire_response(status, resource_type=resource_type, frame=frame)
+            else:
+                self.fire_response(entry)
         return _FakeResponse(self._status)
 
     async def content(self):
@@ -52,9 +96,10 @@ class _FakeBrowser:
         return self._page
 
 
-def _make_fake_camoufox(landed_url="https://x.test/a", status=200, html="<html><body>real page content</body></html>"):
+def _make_fake_camoufox(landed_url="https://x.test/a", status=200,
+                         html="<html><body>real page content</body></html>", document_statuses=None):
     """Factory: returns a fake AsyncCamoufox class bound to one fake page's fixed shape."""
-    page = _FakePage(landed_url, status, html)
+    page = _FakePage(landed_url, status, html, document_statuses=document_statuses)
     browser = _FakeBrowser(page)
 
     class _FakeAsyncCamoufox:
@@ -407,6 +452,103 @@ async def test_config_hash_stable_for_identical_kwargs(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# document_status_chain — _make_document_status_listener (registered on the page BEFORE page.goto)
+# collects the ordered chain of main-frame document response statuses; the LAST entry overrides
+# status_code (the page whose content was actually captured), and an empty chain falls back to the
+# goto Response's own status unchanged. Same contract as chromium_scrape.py's M1 fix, driven
+# directly through plain Playwright rather than a crawl4ai hook.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_acquire_camoufox_last_document_response_overrides_goto_status(monkeypatch):
+    """403 -> 302 -> 200 chain (self-resolving challenge shape): status_code becomes the LAST
+    response's status (200), the chain is recorded in full, and the goto Response's own (stale) 403
+    is overridden — the page whose content was actually captured is the 200 one."""
+    monkeypatch.setattr(camoufox_scrape, "launch_options", _fake_launch_options)
+    monkeypatch.setattr(
+        camoufox_scrape, "AsyncCamoufox",
+        _make_fake_camoufox(landed_url="https://x.test/a", status=403,
+                             document_statuses=[403, 302, 200]),
+    )
+    monkeypatch.setattr(camoufox_scrape, "AsyncWebCrawler", _FakeAsyncWebCrawler)
+    monkeypatch.setattr(camoufox_scrape, "CAMOUFOX_RENDER_WAIT_S", 0)
+
+    _, meta = await camoufox_scrape.try_scrape_camoufox("https://x.test/a")
+
+    assert meta["document_status_chain"] == [403, 302, 200]
+    assert meta["status_code"] == 200
+
+
+@pytest.mark.asyncio
+async def test_acquire_camoufox_single_response_chain(monkeypatch):
+    """An ordinary page with no challenge/redirect: one main-frame document response, chain has
+    exactly one entry, status_code equals today's (unchanged) behavior."""
+    monkeypatch.setattr(camoufox_scrape, "launch_options", _fake_launch_options)
+    monkeypatch.setattr(camoufox_scrape, "AsyncCamoufox",
+                         _make_fake_camoufox(landed_url="https://x.test/a", status=200))
+    monkeypatch.setattr(camoufox_scrape, "AsyncWebCrawler", _FakeAsyncWebCrawler)
+    monkeypatch.setattr(camoufox_scrape, "CAMOUFOX_RENDER_WAIT_S", 0)
+
+    _, meta = await camoufox_scrape.try_scrape_camoufox("https://x.test/a")
+
+    assert meta["document_status_chain"] == [200]
+    assert meta["status_code"] == 200
+
+
+@pytest.mark.asyncio
+async def test_acquire_camoufox_falls_back_to_goto_status_when_listener_saw_nothing(monkeypatch):
+    """The listener sees no main-frame document response at all — chain stays empty, status_code
+    falls back to the goto Response's own status, never invented."""
+    monkeypatch.setattr(camoufox_scrape, "launch_options", _fake_launch_options)
+    monkeypatch.setattr(
+        camoufox_scrape, "AsyncCamoufox",
+        _make_fake_camoufox(landed_url="https://x.test/a", status=403, document_statuses=[]),
+    )
+    monkeypatch.setattr(camoufox_scrape, "AsyncWebCrawler", _FakeAsyncWebCrawler)
+    monkeypatch.setattr(camoufox_scrape, "CAMOUFOX_RENDER_WAIT_S", 0)
+
+    _, meta = await camoufox_scrape.try_scrape_camoufox("https://x.test/a")
+
+    assert meta["document_status_chain"] == []
+    assert meta["status_code"] == 403
+
+
+@pytest.mark.asyncio
+async def test_acquire_camoufox_ignores_non_document_and_non_main_frame_responses(monkeypatch):
+    """A stylesheet response and a document response on a DIFFERENT frame (e.g. an iframe) must not
+    enter the chain — only main-frame document responses count."""
+    monkeypatch.setattr(camoufox_scrape, "launch_options", _fake_launch_options)
+    monkeypatch.setattr(
+        camoufox_scrape, "AsyncCamoufox",
+        _make_fake_camoufox(
+            landed_url="https://x.test/a", status=200,
+            document_statuses=[(999, "stylesheet", None), (500, "document", object()), 200],
+        ),
+    )
+    monkeypatch.setattr(camoufox_scrape, "AsyncWebCrawler", _FakeAsyncWebCrawler)
+    monkeypatch.setattr(camoufox_scrape, "CAMOUFOX_RENDER_WAIT_S", 0)
+
+    _, meta = await camoufox_scrape.try_scrape_camoufox("https://x.test/a")
+
+    assert meta["document_status_chain"] == [200]
+
+
+@pytest.mark.asyncio
+async def test_try_scrape_camoufox_document_status_chain_empty_on_launch_failure(monkeypatch):
+    """A path that never obtains a page/response (browser_missing) carries an empty chain, same
+    treatment as every other acquisition-error field."""
+    def _raise(**kwargs):
+        raise CamoufoxNotInstalled(
+            "official/stable is not installed. Please run `camoufox fetch` to install.")
+    monkeypatch.setattr(camoufox_scrape, "launch_options", _raise)
+
+    _, meta = await camoufox_scrape.try_scrape_camoufox("https://x.test/a")
+
+    assert meta["acquisition_error"] == "browser_missing"
+    assert meta["document_status_chain"] == []
+
+
+# ---------------------------------------------------------------------------
 # scrape_url_camoufox_workflow: milestone 2 — the ad-hoc CLI wiring. Logs into the SAME
 # scrape_log.jsonl / log_scrape / write_sidecar as chromium_scrape.py's chromium lane, discriminated by
 # the "engine" field. try_scrape_camoufox is faked at the module boundary; log_scrape/write_sidecar
@@ -417,6 +559,7 @@ def _meta(**overrides):
     base = {
         "acquisition_error": None, "status_code": 200, "landed_url": "https://x.test/a",
         "raw_markdown_bytes": 100, "markdown_conversion_error": None, "content_is_raw_html": False,
+        "document_status_chain": [200],
         "config": {"headless": False}, "config_hash": "deadbeef00",
     }
     base.update(overrides)
@@ -441,6 +584,22 @@ async def test_scrape_url_camoufox_workflow_logs_engine_discriminator(monkeypatc
     assert captured["url"] == "https://x.test/a"
     assert captured["outcome"] == "ok"
     assert captured["mode"] == "markdown"
+
+
+@pytest.mark.asyncio
+async def test_scrape_url_camoufox_workflow_logs_document_status_chain(monkeypatch):
+    """scrape_url_camoufox_workflow's log_scrape record carries the new fact field."""
+    captured = {}
+
+    async def _fake_try_scrape_camoufox(url, block_images=False):
+        return "real content", _meta(document_status_chain=[403, 302, 200])
+    monkeypatch.setattr(camoufox_scrape, "try_scrape_camoufox", _fake_try_scrape_camoufox)
+    monkeypatch.setattr(camoufox_scrape, "write_sidecar", lambda *a, **kw: None)
+    monkeypatch.setattr(camoufox_scrape, "log_scrape", lambda record: captured.update(record))
+
+    await camoufox_scrape.scrape_url_camoufox_workflow("https://x.test/a")
+
+    assert captured["document_status_chain"] == [403, 302, 200]
 
 
 @pytest.mark.asyncio
@@ -518,6 +677,14 @@ def test_format_camoufox_output_raw_html_shape_states_it_plainly():
     assert "Invalid IPv6 URL" in text
     assert "OBSERVATION" in text
     assert "<html><body>real captured page</body></html>" in text
+
+
+def test_format_camoufox_output_renders_document_status_chain_line():
+    text = camoufox_scrape._format_camoufox_output(
+        "https://x.test/a", "the real page content",
+        _meta(status_code=200, document_status_chain=[403, 302, 200]))
+    assert "Document status chain" in text
+    assert "[403, 302, 200]" in text
 
 
 def test_format_camoufox_output_acquisition_failure_shape():

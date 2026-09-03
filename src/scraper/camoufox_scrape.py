@@ -9,6 +9,7 @@ import time
 from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
+from typing import Callable
 from urllib.parse import urlparse
 
 from camoufox import launch_options
@@ -63,6 +64,7 @@ async def scrape_url_camoufox_workflow(url: str, block_images: bool = False) -> 
         "landed_url": meta.get("landed_url"),
         "markdown_conversion_error": meta.get("markdown_conversion_error"),
         "content_is_raw_html": meta.get("content_is_raw_html", False),
+        "document_status_chain": meta.get("document_status_chain"),
         "config_hash": meta.get("config_hash"), "config": meta.get("config"),
     })
     logger.info("Camoufox scrape complete: %s (%d chars, outcome=%s)", url, len(content), outcome)
@@ -151,6 +153,28 @@ def _extract_camoufox_config_stamp(kwargs: dict, resolved: dict) -> dict:
     }
 
 
+# A plain page.on("response") listener (this lane drives Playwright directly, no crawl4ai hook
+# system to attach through) collecting the ORDERED chain of main-frame document response statuses —
+# same filter and guard as chromium_scrape.py's _make_document_status_listener (M1), duplicated here
+# per this project's own precedent of not sharing small lane-specific mechanisms across independent
+# lanes: request.resource_type == "document" AND request.frame is page.main_frame (not
+# is_navigation_request() alone, which is also true for iframe navigations); request.frame access is
+# guarded — it raises for a navigation request issued before its own frame exists (iframes/popups).
+def _make_document_status_listener(page, status_chain: list) -> Callable:
+    def _on_response(response) -> None:
+        request = response.request
+        if request.resource_type != "document":
+            return
+        try:
+            frame = request.frame
+        except Exception:
+            return
+        if frame is not page.main_frame:
+            return
+        status_chain.append(response.status)
+    return _on_response
+
+
 # Run one Camoufox launch + goto + capture + markdown conversion, the guarded span inside try_scrape_camoufox's budget
 async def _acquire_camoufox(url: str, kwargs: dict, empty_meta: dict) -> tuple[str, dict]:
     resolved = await asyncio.get_event_loop().run_in_executor(
@@ -164,12 +188,24 @@ async def _acquire_camoufox(url: str, kwargs: dict, empty_meta: dict) -> tuple[s
 
     async with AsyncCamoufox(from_options=resolved) as browser:
         page = await browser.new_page()
+        # Registered BEFORE page.goto so the goto response itself is the chain's first entry — a
+        # same-document JS navigation during the render wait below (e.g. a Cloudflare challenge
+        # resolving) fires its own response event here even though the goto Response object never
+        # updates. A FACT, not a verdict — nothing here decides "challenge solved"/"blocked".
+        document_status_chain: list = []
+        page.on("response", _make_document_status_listener(page, document_status_chain))
         response = await page.goto(
             url, timeout=_PLAYWRIGHT_DEFAULT_TIMEOUT_MS, wait_until=_GOTO_WAIT_UNTIL
         )
         await asyncio.sleep(CAMOUFOX_RENDER_WAIT_S)
         landed_url = page.url
-        status_code = response.status if response else None
+        # The LAST main-frame document response is the page whose content was actually captured —
+        # overrides the goto Response's own (possibly stale) status. Empty chain (goto itself never
+        # fired one, e.g. a navigation error) falls back to the goto Response unchanged.
+        if document_status_chain:
+            status_code = document_status_chain[-1]
+        else:
+            status_code = response.status if response else None
         html = await page.content()
 
     try:
@@ -188,6 +224,7 @@ async def _acquire_camoufox(url: str, kwargs: dict, empty_meta: dict) -> tuple[s
         "raw_markdown_bytes": len(raw_markdown.encode("utf-8")),
         "markdown_conversion_error": conversion_error,
         "content_is_raw_html": content_is_raw_html,
+        "document_status_chain": list(document_status_chain),
     })
     return content, meta
 
@@ -198,6 +235,7 @@ async def try_scrape_camoufox(url: str, block_images: bool = False) -> tuple[str
     _empty_meta: dict = {
         "acquisition_error": None, "status_code": None, "landed_url": None,
         "raw_markdown_bytes": 0, "markdown_conversion_error": None, "content_is_raw_html": False,
+        "document_status_chain": [],
         "config": {"config_incomplete": True}, "config_hash": None,
     }
 
@@ -244,6 +282,9 @@ def _format_camoufox_output(url: str, content: str, meta: dict) -> str:
         "## Acquisition facts",
         "- Engine: camoufox",
         f"- HTTP status: {meta.get('status_code')}",
+        f"- Document status chain (ordered main-frame document response statuses observed before "
+        f"capture; a fact, not a verdict — never read as challenge-solved/blocked): "
+        f"{meta.get('document_status_chain')}",
         f"- Landed URL (the URL the browser actually returned content from): {meta.get('landed_url')}",
         f"- Bytes (raw markdown from crawl4ai's raw: conversion): {meta.get('raw_markdown_bytes', 0)}",
         f"- Bytes (content below): {len(content.encode('utf-8')) if content else 0}",

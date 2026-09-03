@@ -760,6 +760,7 @@ def _camoufox_meta(**overrides):
     base = {
         "acquisition_error": None, "status_code": 200, "landed_url": "https://x.test/a",
         "raw_markdown_bytes": 100, "markdown_conversion_error": None, "content_is_raw_html": False,
+        "document_status_chain": [200],
         "config": {"headless": False, "os": "macos"}, "config_hash": "cafef00d00",
     }
     base.update(overrides)
@@ -950,3 +951,29 @@ async def test_scrape_all_camoufox_acquisition_error_maps_to_error_outcome(tmp_p
                                               concurrency_per_domain=1, engine="camoufox")
 
     assert results[0]["outcome"] == "error"
+
+
+@pytest.mark.asyncio
+async def test_scrape_all_camoufox_resolved_challenge_status_yields_ok(tmp_path, monkeypatch):
+    """M2: try_scrape_camoufox now reports the LAST main-frame document response's status, not a
+    stale challenge-page status. A meta shaped like a resolved Cloudflare challenge (status_code=200
+    from the corrected acquisition primitive, document_status_chain=[403, 302, 200] as the fact
+    trail) must flow through _scrape_one_camoufox's own status>=400 check as outcome="ok" — no
+    special-casing of the chain anywhere in this module, it only ever reads meta['status_code']. The
+    JSONL record also carries the chain field."""
+    log_file = tmp_path / "pipe_scrape_log.jsonl"
+    monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
+
+    async def _fake_try_scrape_camoufox(url, block_images=False):
+        return ("# real page content, well past the empty threshold" * 3,
+                _camoufox_meta(status_code=200, document_status_chain=[403, 302, 200]))
+    monkeypatch.setattr(pipe_scraper_acquisition, "try_scrape_camoufox", _fake_try_scrape_camoufox)
+
+    output_dir = tmp_path / "out"
+    output_dir.mkdir()
+    results = await pipe_scraper._scrape_all(["https://x.test/a"], output_dir, download_delay=0.01,
+                                              concurrency_per_domain=1, engine="camoufox")
+
+    assert results[0]["outcome"] == "ok"
+    records = [json.loads(l) for l in log_file.read_text(encoding="utf-8").splitlines()]
+    assert records[0]["document_status_chain"] == [403, 302, 200]
