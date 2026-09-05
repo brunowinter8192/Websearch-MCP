@@ -104,7 +104,7 @@ class GoogleEngine(BaseEngine):
                 return [], None, attach_document_status(diag, status_chain)
             results = await _parse_results(tab, max_results)
             if results:
-                return results, None, None
+                return results, None, attach_document_status({}, status_chain)
             diag = await _diagnose(tab)
             diag["containers_found"] = True
             return results, None, attach_document_status(diag, status_chain)
