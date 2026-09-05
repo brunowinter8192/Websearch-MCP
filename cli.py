@@ -38,6 +38,7 @@ from src.search.query_logger import log_query
 from urllib.parse import urlparse
 
 from src.scraper.chromium_scrape import scrape_url_chromium_workflow
+from src.crawler.discovery import discover_urls_workflow
 
 atexit.register(kill_own_chrome_atexit)
 
@@ -78,10 +79,51 @@ def _log_drilldown(query, language, engine, search_key, cache_status, engine_in_
     })
 
 
+# Write the discovered URL list (every URL except known aliases of another canonical URL) to
+# url_file for pipe_scraper's own --url-file input, then print a console summary. ok/stop_reason/
+# failed_feeders/pages_fetched/pages_failed print FIRST, unconditionally, even at zero/empty — a
+# degraded-but-ok result (a failed feeder, a rate-limited traversal) is not an error and must not
+# be treated as one, but it must not be mistakable for a complete run just because these facts sit
+# below the fold; the tooling reports them, the agent judges. A FAILED run (ok=False, e.g. an
+# unusable seed_url) writes NO file at all — a caller must never be handed a file that looks like a
+# valid, if empty, result — and exits non-zero, so a caller/script checking the exit status sees
+# failure rather than silently handing pipe_scraper an empty or missing file to "successfully"
+# scrape zero pages.
+def _write_discovery_output(result, url_file: str) -> None:
+    if not result.ok:
+        print(f"discover_urls FAILED: {result.error}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"ok={result.ok} stop_reason={result.stop_reason} wall_s={result.wall_s:.1f}")
+    print(f"failed_feeders: {result.failed_feeders}")
+    print(f"pages_fetched={result.pages_fetched} pages_failed={result.pages_failed}")
+
+    by_source = {}
+    aliases = 0
+    unfetched = 0
+    scrape_urls = []
+    for u in result.urls:
+        by_source[u.source] = by_source.get(u.source, 0) + 1
+        if u.canonical_url:
+            aliases += 1
+            continue  # known duplicate content — the canonical URL already covers it
+        if not u.fetched:
+            unfetched += 1
+        scrape_urls.append(u.url)
+
+    Path(url_file).write_text(("\n".join(scrape_urls) + "\n") if scrape_urls else "", encoding="utf-8")
+
+    by_source_str = ", ".join(f"{k}={v}" for k, v in sorted(by_source.items()))
+    print(f"total URLs: {len(result.urls)} (by source: {by_source_str})")
+    print(f"known aliases (duplicate content, excluded from url-file): {aliases}")
+    print(f"unfetched entries included in url-file (worth pipe_scraper's own separately-paced retry): {unfetched}")
+    print(f"url-file: {url_file} ({len(scrape_urls)} URLs written)")
+
+
 def main():
     parser = NoHelpParser(
         prog="cli.py",
-        description="websearch CLI — search_web, search_engine_drilldown, scrape_url_chromium."
+        description="websearch CLI — search_web, search_engine_drilldown, scrape_url_chromium, discover_urls."
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
 
@@ -105,6 +147,20 @@ def main():
     # ── scrape_url_chromium ───────────────────────────────────────────────────
     p = sub.add_parser("scrape_url_chromium", help="Scrape URL to filtered markdown (PruningContentFilter, full content, no length cap) plus acquisition facts.")
     p.add_argument("url", help="URL to scrape")
+
+    # ── discover_urls ─────────────────────────────────────────────────────────
+    p = sub.add_parser(
+        "discover_urls",
+        help="Discover a domain's URL set (robots/sitemap/navtree feeders + link-graph traversal); "
+             "writes a pipe_scraper --url-file input."
+    )
+    p.add_argument("seed_url", help="Seed URL to start discovery from")
+    p.add_argument("--url-file", required=True,
+                   help="Path to write the discovered URL list (one per line, for pipe_scraper --url-file)")
+    p.add_argument("--max-pages", type=int, default=None,
+                   help="Override the page budget (default: max(500, seed_count*2)). Cannot go "
+                        "below the seed count and is enforced at BFS-level granularity — a small "
+                        "value still fetches at least every pre-traversal seed, not fewer.")
 
     # ── Dispatch ──────────────────────────────────────────────────────────────
     args = parser.parse_args()
@@ -141,6 +197,11 @@ def main():
             print(f"PDF must be downloaded by the user: {url}")
             return
         result = asyncio.run(scrape_url_chromium_workflow(url))
+
+    elif args.cmd == "discover_urls":
+        result = asyncio.run(discover_urls_workflow(args.seed_url, max_pages=args.max_pages))
+        _write_discovery_output(result, args.url_file)
+        return
 
     print(result[0].text)
 
