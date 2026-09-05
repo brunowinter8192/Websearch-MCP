@@ -20,7 +20,6 @@ sys.path.insert(0, str(SCRIPT_DIR.parent.parent))
 
 from src.search.engines.google import GoogleEngine
 from src.search.engines.duckduckgo import DuckDuckGoEngine
-from src.search.engines.mojeek import MojeekEngine
 from src.search.browser import close_browser
 
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
@@ -47,7 +46,6 @@ SUFFIX = " book"
 ENGINE_ORDER = [
     ("google",     GoogleEngine),
     ("duckduckgo", DuckDuckGoEngine),
-    ("mojeek",     MojeekEngine),
 ]
 
 ENGINE_MAX = {

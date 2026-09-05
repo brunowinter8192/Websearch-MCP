@@ -116,7 +116,7 @@ _DOCS_BAD_HOSTS = frozenset({
 _DOCS_BAD_PATHS = ("/blog/", "/community/")
 
 # --- Mode modifier engines ---
-_MODE_ENGINES = frozenset({"google", "duckduckgo", "mojeek"})
+_MODE_ENGINES = frozenset({"google", "duckduckgo"})
 
 
 # ORCHESTRATOR

@@ -16,7 +16,6 @@ from src.search.browser import get_tab, kill_own_chrome
 from src.search.cache import cache_key, cache_write
 from src.search.engines.google import GoogleEngine
 from src.search.engines.duckduckgo import DuckDuckGoEngine
-from src.search.engines.mojeek import MojeekEngine
 from src.search.engines.startpage import StartpageEngine
 from src.search.engines.brave import BraveEngine
 from src.search.engines.bing import BingEngine
@@ -34,14 +33,14 @@ from src.search.query_logger import log_query
 logger = logging.getLogger(__name__)
 
 _DEFAULT_ENGINES: frozenset[str] = frozenset({
-    "google", "duckduckgo", "mojeek",
+    "google", "duckduckgo",
     "openalex", "startpage", "brave", "bing", "yandex",
 })
 
 # Engines that share the pydoll Chrome session (browser.py) — the only ones _prewarm_browser
 # needs to launch for
 _BROWSER_ENGINES: frozenset[str] = frozenset({
-    "google", "duckduckgo", "mojeek",
+    "google", "duckduckgo",
     "startpage", "brave", "bing", "yandex",
 })
 
@@ -56,7 +55,6 @@ RATE_WAIT_TIMEOUT: float = 60.0
 ENGINE_MAX_RESULTS: dict[str, int] = {
     "google": 100,
     "duckduckgo": 10,
-    "mojeek": 10,
     "openalex": 100,
     "startpage": 10,
     "brave": 10,
@@ -67,7 +65,6 @@ ENGINE_MAX_RESULTS: dict[str, int] = {
 ENGINES = {
     "google": GoogleEngine(),
     "duckduckgo": DuckDuckGoEngine(),
-    "mojeek": MojeekEngine(),
     "openalex": OpenAlexEngine(),
     "startpage": StartpageEngine(),
     "brave": BraveEngine(),
