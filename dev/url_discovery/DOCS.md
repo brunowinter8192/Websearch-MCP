@@ -53,8 +53,9 @@ and its BFS traversal — a documentation site with a nested `<sitemapindex>`, a
 carrying `Allow`/`Disallow`/`Sitemap`, a 3-version `__NEXT_DATA__` navtree (2 pages exclusive to
 the oldest version), an isolated RSC (`self.__next_f.push`) demo page, link-only orphan pages, and
 two switchable failure modes (429-after-N, thin-body-200). `ground_truth()` states total/orphan/
-version-exclusive/sitemap-listed/robots-listed counts, computed from the same source lists that
-generate the served pages.
+version-exclusive/sitemap-listed/robots-listed counts (plus `pre_traversal_seed_count`, the size of
+the single BFS level every pre-traversal seed is injected into — the real ceiling a small
+`max_pages` override lands on), computed from the same source lists that generate the served pages.
 **Reads:** nothing on disk — ground truth is stated as source lists in this file itself.
 **Writes:** nothing (in-memory HTTP responses only).
 **Called by:** `02_fixture_site_server.py` (standalone use); any future dev script/test needing a

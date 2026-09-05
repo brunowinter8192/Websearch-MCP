@@ -327,6 +327,13 @@ def ground_truth() -> dict:
         "pages_fetched_expected": total_urls - pages_failed,
         "pages_failed_expected": pages_failed,
         "expected_stop_reason": "frontier_exhausted",
+        # Every pre-traversal seed is injected into resume_state's "pending" at depth 0 (see
+        # discovery.py's _build_resume_state), so they are all fetched as ONE single BFS level —
+        # this is the real ceiling a small max_pages override lands on, since max_pages is checked
+        # only BETWEEN levels (src/crawler/DOCS.md's Gotchas). Any caller measuring the
+        # BFS-level-granularity overshoot property against this fixture reads it from here, not
+        # from a count re-derived (or worse, hand-typed) a second time elsewhere.
+        "pre_traversal_seed_count": len(seeds),
         "navtree": {
             "total": len(set(NAVTREE_CANONICAL_PAGES) | set(NAVTREE_V1_ONLY_PAGES)),
             "canonical": len(NAVTREE_CANONICAL_PAGES),

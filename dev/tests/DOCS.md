@@ -4,10 +4,15 @@
 The project's pytest suite. Regression coverage for `src/search/`, `src/scraper/`, `src/crawler/`,
 `src/news/engine/proxy_pool/`, and `src/news/platforms/theblock/` — pure-logic branch coverage,
 library-upgrade guards (live calls into installed `crawl4ai`), and production-failure regression
-repros. No network/browser dependency: I/O boundaries (HTTP clients, browser automation,
-subprocess) are mocked per-test; production logic itself is exercised for real. Touch this
-directory when adding/removing test coverage for the modules above; do not touch when only
-production behavior changes without an assertion needing to change.
+repros. Almost entirely no network/browser dependency: I/O boundaries (HTTP clients, browser
+automation, subprocess) are mocked per-test; production logic itself is exercised for real. The one
+deliberate exception is `test_discovery.py`/`test_seed_feeders.py`'s fixture-backed sections, which
+run real network + a real crawl4ai browser traversal, but ONLY ever against the local
+`dev/url_discovery/_fixture_site.py` server, never a live host or a third-party network call — see
+`process-docs/url_discovery/2026-08-28_validation_against_live_sites_was_the_wrong_unit.md` for why
+a live host stopped being an acceptable test dependency. Touch this directory when adding/removing
+test coverage for the modules above; do not touch when only production behavior changes without an
+assertion needing to change.
 
 ## Public Interface
 `__init__.py` is empty — collected via `pytest` from the repo root (`pytest.ini`: `testpaths =
@@ -157,7 +162,7 @@ document response status overriding crawl4ai's own (earliest-hop) `status_code`,
 ordinary-page case, the empty-chain fallback to crawl4ai's value, and non-document/non-main-frame
 responses being filtered out of the chain.
 
-### test_seed_feeders.py (704 LOC)
+### test_seed_feeders.py (784 LOC)
 **Purpose:** `src/crawler/seed_feeders*.py` — the `normalize_url`/`scope_and_dedup` merge-vs-
 keep-distinct boundary (default port, empty path, fragment, `www.`/apex, legacy `;params`
 segment all merged; query string, `http` vs `https`, non-root trailing slash, `;params` all kept
@@ -181,25 +186,52 @@ invalid `seed_url` producing `ok=False` not a silent empty result, and `FeederRe
 asserted on every workflow's happy path). Fetch-layer functions are tested via direct dependency
 injection (`client` is a parameter, no monkeypatching needed); workflow-level tests monkeypatch
 `seed_feeders.httpx.AsyncClient`, an established fake-client pattern in this project's test suite.
+Fixture-backed section (real network, only ever against `dev/url_discovery/_fixture_site.py`, one
+module-scoped server for the whole file): each of the three feeders checked against the exact
+fixture feature built for it — robots against the Allow/Disallow paths, sitemap against the
+2-level nested `<sitemapindex>`, navtree against the 3-version union (recovering the 2
+oldest-version-only pages) and, separately, against the isolated `/rsc-demo` island for the App
+Router RSC-stream shape — replacing the one-off docs.github.com/theblock.co/ui.shadcn.com/
+nextjs.org runs process-docs/url_discovery/2026-08-28_robots_sitemap_seed_feeders.md and
+2026-08-28_navtree_seed_feeder.md recorded.
 
-### test_discovery.py (273 LOC)
-**Purpose:** `src/crawler/discovery.py` — pure-logic coverage only (the full crawl4ai-driven
-traversal is verified by real runs recorded in `process-docs/url_discovery/`, not mocked, matching
-this project's M0 precedent). `_assemble_seeds` (literal `seed_url` always included, first-write-
-wins merge priority across the three feeders, a failed feeder's error landing in `failed_feeders`
-rather than being silently treated as an empty result, `seed_url` normalization dedup against an
-equivalent feeder-found URL), `_default_max_pages` (the floor vs. the per-seed term),
-`_build_resume_state` (every seed's depth stamped explicitly at 0, `"visited"` pre-populated),
-`_validate_resume_state` (every malformed shape M0 documented plus a missing depths entry),
-`_determine_stop_reason` (via a tiny `_StrategyStub` exposing only `._pages_crawled`/`.max_pages`,
-including the real observed overshoot case, 586 vs. a requested 500), `_merge_results` (a seed
-whose own fetch attempt succeeded vs. failed — both visible, attribution preserved either way — a
-genuinely new fetched URL tagged `"traversal"`, a frontier-leftover URL included and marked
-`fetched=False` rather than dropped, and first-write-wins if the three input groups ever overlap),
-and `_ExactHostFilter.apply` (same-host accept with `www.`/apex collapse, sibling-subdomain
-reject, child-subdomain reject, parent-domain reject, a malformed-URL reject that does not raise).
-**Calls out:** none beyond `src.crawler.discovery`/`src.crawler.seed_feeders_scope` themselves —
-no network, no crawl4ai construction.
+### test_discovery.py (404 LOC)
+**Purpose:** `src/crawler/discovery.py` — two layers. Pure-logic, no network: `_assemble_seeds`
+(literal `seed_url` always included, first-write-wins merge priority across the three feeders, a
+failed feeder's error landing in `failed_feeders` rather than being silently treated as an empty
+result, `seed_url` normalization dedup against an equivalent feeder-found URL), `_default_max_pages`
+(the floor vs. the per-seed term), `_build_resume_state` (every seed's depth stamped explicitly at
+0, `"visited"` pre-populated), `_validate_resume_state` (every malformed shape M0 documented plus a
+missing depths entry), `_determine_stop_reason` (via a tiny `_StrategyStub` exposing only
+`._pages_crawled`/`.max_pages`, including the real observed overshoot case, 586 vs. a requested
+500), `_merge_results` (a seed whose own fetch attempt succeeded vs. failed — both visible,
+attribution preserved either way — a genuinely new fetched URL tagged `"traversal"`, a
+frontier-leftover URL included and marked `fetched=False` rather than dropped, and first-write-wins
+if the three input groups ever overlap), and `_ExactHostFilter.apply` (same-host accept with
+`www.`/apex collapse, sibling-subdomain reject, child-subdomain reject, parent-domain reject, a
+malformed-URL reject that does not raise). Fixture-backed (real crawl4ai-driven traversal, only
+ever against `dev/url_discovery/_fixture_site.py`, one module-scoped server + ONE shared
+`discover_urls_workflow` run for the whole file, `discovery_result`, read by several small
+assertion-only tests rather than re-run per assertion): total URL count/per-source breakdown/
+`pages_fetched`/`pages_failed`/`stop_reason`/`failed_feeders` all checked against the fixture's own
+`ground_truth()`; the single `fetched=False` entry identified by URL, not just by count; the
+2-hop orphan chain confirmed reached via traversal; the already-shipped `"visited"`
+pre-population fix confirmed still holding (a link back to an already-delivered sitemap URL stays
+`source="sitemap"`, not re-tagged `"traversal"`); the still-open version-canonicalization gap
+confirmed as CURRENT, DELIBERATELY UNFIXED behavior (an explicit-version duplicate of an
+already-known canonical page counts as a genuinely new `"traversal"` URL — the before-number a
+later milestone's fix must change, not a regression to chase here); and a second, separate real run
+with a deliberately small `max_pages=1` against the same fixture, asserting the PROPERTY rather
+than a coincidence: every pre-traversal seed is injected at depth 0, so they are all fetched as
+ONE BFS level, and the real ceiling a small `max_pages` lands on is exactly
+`ground_truth()["pre_traversal_seed_count"]` (never re-derived or hand-typed a second time, so a
+fixture change that adds/removes a seed cannot point this failure at the wrong cause) —
+`stop_reason="max_pages_reached"`, measured directly (twice, identical both times) at 15 real fetch
+attempts today. The BFS-level-granularity claim, now checked against real code instead of only
+`_determine_stop_reason`'s own arithmetic stub.
+**Calls out:** `dev.url_discovery._fixture_site` (fixture-backed section only) — otherwise none
+beyond `src.crawler.discovery`/`src.crawler.seed_feeders_scope`, no network, no crawl4ai
+construction in the pure-logic section.
 
 ### test_pipe_scraper.py (979 LOC)
 **Purpose:** `src/crawler/pipe_scraper*.py` — config stamp extraction off real
