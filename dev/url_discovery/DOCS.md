@@ -46,13 +46,16 @@ after a `crawl4ai` version bump).
 
 ---
 
-### _fixture_site.py (449 LOC)
+### _fixture_site.py (487 LOC)
 
 **Purpose:** Deterministic local HTTP fixture for `src/crawler/discovery.py`'s three seed feeders
 and its BFS traversal — a documentation site with a nested `<sitemapindex>`, a `robots.txt`
 carrying `Allow`/`Disallow`/`Sitemap`, a 3-version `__NEXT_DATA__` navtree (2 pages exclusive to
 the oldest version), an isolated RSC (`self.__next_f.push`) demo page, link-only orphan pages, and
-two switchable failure modes (429-after-N, thin-body-200). `ground_truth()` states total/orphan/
+two switchable failure modes: thin-body-200 (on/off), and a genuine SLIDING-WINDOW 429
+(`/_control/rate_limit?limit=M&window=T` — "at most M requests in the trailing T seconds",
+recoverable once a caller slows down, not an absolute counter that trips once and never recovers).
+`ground_truth()` states total/orphan/
 version-exclusive/sitemap-listed/robots-listed counts (plus `pre_traversal_seed_count`, the size of
 the single BFS level every pre-traversal seed is injected into — the real ceiling a small
 `max_pages` override lands on), computed from the same source lists that generate the served pages.
@@ -83,6 +86,14 @@ failure-mode flags, mutated only via `/_control/*` and read under `_STATE_LOCK`)
 module-level — see the Gotcha below on the one-instance-per-process consequence of that.
 
 ## Gotchas
+- **The 429 failure mode is a sliding window (`rate_limit_limit`/`rate_limit_window_s` +
+  `_REQUEST_TIMESTAMPS`), not an absolute counter — this replaced an earlier `rate_limit_after=N`
+  shape that could NOT distinguish a well-paced caller from a badly-paced one.** Both eventually
+  send N total requests and both tripped the old counter identically, with no way back — the exact
+  property this fixture exists to let a caller measure (process-docs/url_discovery/
+  2026-09-05_pacing_measurement.md). The window is pruned lazily on every request check
+  (`_REQUEST_TIMESTAMPS[0] < now - window` popped before counting), guarded by the same
+  `_STATE_LOCK` every other piece of shared state uses — no separate lock, no separate race.
 - **`_fixture_site.py`'s `_ROUTES`/`_STATE` are module-level globals, not per-instance — only ONE
   fixture server is meant to run per process at a time.** A second `start_fixture_server()` call in
   the same process overwrites the first's routes/state (the first server keeps serving on its own
