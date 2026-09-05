@@ -56,11 +56,14 @@ the early short-circuit optimization inside `search_with_reason`, independent of
 verdict), `_build_results` (self-link filtering). `_classify_diagnosis` coverage removed with the
 function itself (the guessed-verdict-removal milestone).
 
-### test_mojeek_engine.py (21 LOC)
+### test_mojeek_engine.py (67 LOC)
 **Purpose:** `src/search/engines/mojeek.py` — `_match_marker` (case-insensitive block-keyword scan
-against the page title; populates the diagnosis snapshot's `marker` field directly). Originally
-also covered `_classify_diagnosis`, removed with the function itself (the guessed-verdict-removal
-milestone).
+against the page title; populates the diagnosis snapshot's `marker` field directly; originally also
+covered `_classify_diagnosis`, removed with the function itself, the guessed-verdict-removal
+milestone) and `_wait_for_results`' deadline behavior (the mojeek ALTCHA-wait milestone): a stub
+tab exposing only `execute_script` proves the function returns the instant containers appear
+(never padding to the full budget, keeping `search_ms` an honest measurement) and returns `False`
+once the deadline passes without them — deterministic, no browser, no network.
 
 ### test_document_status.py (92 LOC)
 **Purpose:** `src/search/document_status.py` — `start_document_status_capture` (a fake tab exposing

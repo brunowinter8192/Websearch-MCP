@@ -2,6 +2,7 @@
 import asyncio
 import json
 import logging
+import time
 from urllib.parse import quote_plus
 
 from src.search.browser import new_tab, kill_tab
@@ -13,8 +14,22 @@ from src.search.result import SearchResult
 logger = logging.getLogger(__name__)
 
 SEARCH_URL = "https://www.mojeek.com/search?q={}&safe=1"
-MAX_WAIT_CYCLES = 3
 WAIT_INTERVAL = 0.2
+
+# Total wall-clock budget for search_with_reason's own work (navigation through the results
+# poll), anchored at the function's very first line. Mojeek serves an ALTCHA proof-of-work
+# challenge on most runs (challenge.js computes a PoW client-side, POSTs it to /captcha/verify,
+# then reloads the page once verified — only after that reload does ul.results-standard exist);
+# how long that PoW actually takes on this machine is unmeasured, which is exactly what this
+# budget exists to let the log answer. Deliberately ONE deadline covering navigation AND the
+# results poll together, not a fixed post-navigation wait stacked on top of tab.go_to's own 3.0s
+# cap — stacking would risk exceeding the shared 6.0s per-engine watchdog
+# (search_web.ENGINE_WATCHDOG_TIMEOUT, NOT raised or overridden here) on a slow navigation;
+# anchoring at the top means a slow go_to shrinks the poll's own share automatically instead of
+# adding to it. 4.5s leaves ~1.0-1.5s of margin for the diagnose call and kill_tab teardown that
+# still run after the deadline is spent (historical mojeek search_ms under the old 0.6s-wait
+# scheme ran 800-1020ms, i.e. ~200-400ms of non-wait overhead).
+MOJEEK_BUDGET_S = 4.5
 
 _JS_WAIT = "return document.querySelectorAll('ul.results-standard > li > a.ob').length"
 
@@ -54,19 +69,21 @@ class MojeekEngine(BaseEngine):
     # Full search logic with empty-reason diagnosis; exceptions propagate to _engine_with_timing
     async def search_with_reason(self, query: str, language: str = "en", max_results: int = 10) -> tuple[list[SearchResult], str | None, dict | None]:
         logger.info("Mojeek search: %s", query)
+        t_start = time.monotonic()
         tab = await new_tab()
         search_url = _build_url(query)
         try:
             status_chain = await start_document_status_capture(tab)
             await tab.go_to(search_url, timeout=3.0)
-            if not await _wait_for_results(tab):
+            deadline = t_start + MOJEEK_BUDGET_S
+            if not await _wait_for_results(tab, deadline):
                 diag = await _diagnose(tab)
                 diag["containers_found"] = False
                 logger.debug("Mojeek empty for: %s", query)
                 return [], None, attach_document_status(diag, status_chain)
             results = await _parse_results(tab, max_results)
             if results:
-                return results, None, None
+                return results, None, attach_document_status({}, status_chain)
             diag = await _diagnose(tab)
             diag["containers_found"] = True
             return results, None, attach_document_status(diag, status_chain)
@@ -98,9 +115,11 @@ def _build_url(query: str) -> str:
     return SEARCH_URL.format(quote_plus(query))
 
 
-# Poll for result containers up to MAX_WAIT_CYCLES × WAIT_INTERVAL seconds, return True when found
-async def _wait_for_results(tab) -> bool:
-    for _ in range(MAX_WAIT_CYCLES):
+# Poll for result containers until `deadline` (monotonic time), return True when found — a single
+# wall-clock deadline (not a fixed cycle count) so navigation-time variance shrinks the poll's own
+# share of the budget instead of stacking on top of it and risking the shared watchdog
+async def _wait_for_results(tab, deadline: float) -> bool:
+    while time.monotonic() < deadline:
         raw = await tab.execute_script(_JS_WAIT)
         count = _extract_value(raw)
         if count and int(count) > 0:
