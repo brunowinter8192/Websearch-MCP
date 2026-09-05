@@ -13,6 +13,11 @@ from src.crawler.seed_feeders import robots_feeder_workflow, sitemap_feeder_work
 # From src/crawler/seed_feeders_scope.py: shared host validation/collapse, reused for consistency
 # with what the feeders already consider in-scope
 from src.crawler.seed_feeders_scope import normalize_url, host_key, require_host
+# From src/crawler/seed_feeders_navtree.py: the SAME version-segment canonicalization rule the
+# navtree feeder's own version union already applies internally — imported, not reimplemented, so
+# a traversal-discovered explicit-version duplicate of an already-known canonical page is
+# recognized by the identical rule (see _resolve_canonical_alias below)
+from src.crawler.seed_feeders_navtree import canonicalize_version_url
 
 # max_depth is deliberately generous, not a safety device — max_pages alone guarantees
 # termination (see discover_urls_workflow), so depth only bounds REACH, never WORK. A real
@@ -65,12 +70,18 @@ _FEEDER_WORKFLOWS = (
 # that no feeder and no seed already carried). fetched=False covers TWO real cases, both visible
 # on the result rather than silently dropped: a URL whose own fetch attempt failed (anti-bot
 # block, 429, ...) and a URL the frontier held but the page budget ran out before it was ever
-# attempted at all (see discover_urls_workflow's own docstring).
+# attempted at all (see discover_urls_workflow's own docstring). canonical_url is set ONLY when
+# this URL was recognized, after being genuinely fetched, as an explicit-version duplicate of an
+# already-known canonical page (see _resolve_canonical_alias) — the duplicate keeps its own real
+# fetched status and its own entry (a caller whose goal is a complete URL list still sees it; it is
+# never silently dropped or merged into the canonical entry, which is never touched by this at
+# all). None for every other entry, including the canonical page itself.
 @dataclass
 class DiscoveredURL:
     url: str
     source: str
     fetched: bool = True
+    canonical_url: str | None = None
 
 
 # Result of one discovery run. ok=True even when one or two feeders failed (see
@@ -134,6 +145,7 @@ async def discover_urls_workflow(seed_url: str, max_depth: int | None = None,
 
     feeder_results = await _run_feeders(seed_url)
     seeds, failed_feeders = _assemble_seeds(seed_url, feeder_results)
+    version_keys = _extract_version_keys(feeder_results)
 
     resolved_max_depth = max_depth if max_depth is not None else DEFAULT_MAX_DEPTH
     resolved_max_pages = max_pages if max_pages is not None else _default_max_pages(len(seeds))
@@ -148,7 +160,7 @@ async def discover_urls_workflow(seed_url: str, max_depth: int | None = None,
         return DiscoveryResult(ok=False, error=str(exc), failed_feeders=failed_feeders,
                                wall_s=time.time() - t0)
 
-    urls = _merge_results(seeds, fetched, frontier_leftover)
+    urls = _merge_results(seeds, fetched, frontier_leftover, version_keys)
     return DiscoveryResult(urls=urls, ok=True, stop_reason=stop_reason, wall_s=time.time() - t0,
                            failed_feeders=failed_feeders, pages_fetched=pages_fetched,
                            pages_failed=pages_failed)
@@ -160,6 +172,16 @@ async def discover_urls_workflow(seed_url: str, max_depth: int | None = None,
 async def _run_feeders(seed_url: str) -> dict:
     results = await asyncio.gather(*[workflow(seed_url) for _, workflow in _FEEDER_WORKFLOWS])
     return {name: result for (name, _), result in zip(_FEEDER_WORKFLOWS, results)}
+
+
+# The navtree feeder's own version-key list (see FeederResult), or None for a version-less site
+# (the common case, costing nothing extra) or a failed navtree feeder. Never derived or guessed —
+# only ever the exact list the navtree feeder itself already found on the page it fetched.
+def _extract_version_keys(feeder_results: dict) -> list | None:
+    navtree_result = feeder_results.get("navtree")
+    if navtree_result and navtree_result.ok:
+        return navtree_result.version_keys
+    return None
 
 # Merge feeder output into one {url: source} seed set, first-write-wins (seed_url itself first,
 # then robots/sitemap/navtree in that order), plus {feeder_name: error} for every ok=False feeder.
@@ -289,12 +311,35 @@ def _determine_stop_reason(state: dict | None, max_pages: int) -> str:
     return "frontier_exhausted"
 
 
+# Is url an explicit-version duplicate of an already-known SEED (never of another traversal
+# find — narrowly the case the navtree feeder's own version union already handles, not a general
+# URL-equivalence mechanism)? version_keys is None for a version-less site, skipping this entirely
+# — zero extra work, byte-identical to a site with no navtree version list at all. Uses the SAME
+# canonicalize_version_url the navtree feeder's own union already applies, imported not
+# reimplemented, so a genuinely new URL that happens to contain no matching version segment is
+# guaranteed a no-op (returns url unchanged) rather than a guess. Returns the matching canonical
+# seed URL, or None.
+def _resolve_canonical_alias(url: str, seeds: dict, version_keys: list | None) -> str | None:
+    if not version_keys:
+        return None
+    canonical = canonicalize_version_url(url, version_keys)
+    if canonical != url and canonical in seeds:
+        return canonical
+    return None
+
+
 # Build the final DiscoveredURL list: every seed tagged with its own source and whether ITS OWN
 # fetch attempt succeeded; every genuinely new successfully-fetched traversal URL tagged
 # "traversal"/fetched=True; every frontier-leftover URL (found, never attempted — the page budget
 # ran out first) tagged "traversal"/fetched=False. First-write-wins across all three groups (a
 # URL already accounted for by an earlier group is never duplicated or re-tagged by a later one).
-def _merge_results(seeds: dict, fetched: list, frontier_leftover: list) -> list:
+# A traversal/frontier-leftover URL that canonicalizes to an already-known seed (see
+# _resolve_canonical_alias) gets canonical_url set to that seed's own URL — the canonical seed's
+# own entry is never touched, and the duplicate keeps its own real source/fetched status; it is
+# never dropped, only labeled (see DOCS.md Gotchas for why annotating after a real, confirmed
+# fetch was chosen over preventing the fetch).
+def _merge_results(seeds: dict, fetched: list, frontier_leftover: list,
+                   version_keys: list | None = None) -> list:
     fetched_set = set(fetched)
     urls = []
     seen = set()
@@ -303,10 +348,12 @@ def _merge_results(seeds: dict, fetched: list, frontier_leftover: list) -> list:
         seen.add(url)
     for url in fetched:
         if url not in seen:
-            urls.append(DiscoveredURL(url=url, source="traversal", fetched=True))
+            canonical_url = _resolve_canonical_alias(url, seeds, version_keys)
+            urls.append(DiscoveredURL(url=url, source="traversal", fetched=True, canonical_url=canonical_url))
             seen.add(url)
     for url in frontier_leftover:
         if url not in seen:
-            urls.append(DiscoveredURL(url=url, source="traversal", fetched=False))
+            canonical_url = _resolve_canonical_alias(url, seeds, version_keys)
+            urls.append(DiscoveredURL(url=url, source="traversal", fetched=False, canonical_url=canonical_url))
             seen.add(url)
     return urls

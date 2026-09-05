@@ -2,8 +2,11 @@
 
 Two layers. Pure-logic, no network: seed assembly/merge-priority/failed-feeder recording
 (synthetic FeederResults), resume_state building/validation, stop-reason determination (a plain
-captured-state dict or None, plus max_pages — no strategy object, no private attribute), and the
-exact-host scope filter. Fixture-backed, real crawl4ai-driven traversal but only ever against the
+captured-state dict or None, plus max_pages — no strategy object, no private attribute), the
+exact-host scope filter, and the version-duplicate recognition chain (`_extract_version_keys`,
+`_resolve_canonical_alias`, and `_merge_results`'s own `version_keys` handling — including the
+version-less-site proof: `version_keys=None` produces a byte-identical result to omitting the
+argument entirely). Fixture-backed, real crawl4ai-driven traversal but only ever against the
 local `dev/url_discovery/_fixture_site.py` server, never a live host (see process-docs/
 url_discovery/2026-08-28_validation_against_live_sites_was_the_wrong_unit.md for why): ONE real
 `discover_urls_workflow` run for the whole file (module-scoped `discovery_result` fixture below,
@@ -20,7 +23,8 @@ from src.crawler.seed_feeders_scope import FeederResult
 from src.crawler.discovery import (
     DiscoveredURL, DiscoveryResult, _ExactHostFilter, _assemble_seeds, _default_max_pages,
     _build_resume_state, _validate_resume_state, _determine_stop_reason, _merge_results,
-    discover_urls_workflow, MIN_MAX_PAGES, MAX_PAGES_PER_SEED,
+    _extract_version_keys, _resolve_canonical_alias, discover_urls_workflow,
+    MIN_MAX_PAGES, MAX_PAGES_PER_SEED,
 )
 from dev.url_discovery._fixture_site import (
     start_fixture_server, stop_fixture_server, ground_truth, seed_url, DEFAULT_HOST,
@@ -232,6 +236,112 @@ def test_merge_results_no_duplicate_across_the_three_groups():
 
 
 # ---------------------------------------------------------------------------
+# _extract_version_keys — the navtree feeder's own version-key list, never derived or guessed
+# ---------------------------------------------------------------------------
+
+def test_extract_version_keys_returns_navtree_feeders_own_list():
+    feeder_results = {
+        "robots": FeederResult(urls=[], ok=True, source="robots"),
+        "sitemap": FeederResult(urls=[], ok=True, source="sitemap"),
+        "navtree": FeederResult(urls=[], ok=True, source="navtree_tree", version_keys=["v1", "v2"]),
+    }
+    assert _extract_version_keys(feeder_results) == ["v1", "v2"]
+
+
+def test_extract_version_keys_none_when_navtree_has_no_versions():
+    # The common case: a version-less site. version_keys defaults to None on FeederResult itself.
+    feeder_results = {
+        "navtree": FeederResult(urls=[], ok=True, source="navtree_tree"),
+    }
+    assert _extract_version_keys(feeder_results) is None
+
+
+def test_extract_version_keys_none_when_navtree_feeder_failed():
+    feeder_results = {
+        "navtree": FeederResult(urls=[], ok=False, error="could not fetch seed_url"),
+    }
+    assert _extract_version_keys(feeder_results) is None
+
+
+def test_extract_version_keys_none_when_navtree_missing_entirely():
+    assert _extract_version_keys({}) is None
+
+
+# ---------------------------------------------------------------------------
+# _resolve_canonical_alias — an explicit-version duplicate of an already-known SEED, never of
+# another traversal find (narrowly the navtree feeder's own rule, not general URL-equivalence)
+# ---------------------------------------------------------------------------
+
+def test_resolve_canonical_alias_matches_a_known_seed():
+    seeds = {"https://x.test/docs/guide/intro": "navtree_tree"}
+    assert _resolve_canonical_alias(
+        "https://x.test/docs/v1/guide/intro", seeds, version_keys=["v1", "v2"]
+    ) == "https://x.test/docs/guide/intro"
+
+
+def test_resolve_canonical_alias_none_when_version_keys_is_none():
+    # A version-less site: version_keys is None, canonicalization is skipped entirely — no
+    # exception, no false match, zero extra work.
+    seeds = {"https://x.test/docs/guide/intro": "navtree_tree"}
+    assert _resolve_canonical_alias("https://x.test/docs/v1/guide/intro", seeds, version_keys=None) is None
+
+
+def test_resolve_canonical_alias_none_when_canonicalized_form_is_not_a_known_seed():
+    # Canonicalizes cleanly but doesn't match anything this run already knows — not a duplicate of
+    # a KNOWN seed, so no alias is recorded (the narrow, deliberately-scoped rule).
+    seeds = {"https://x.test/docs/guide/intro": "navtree_tree"}
+    assert _resolve_canonical_alias("https://x.test/docs/v1/guide/other-page", seeds, version_keys=["v1"]) is None
+
+
+def test_resolve_canonical_alias_none_for_a_genuinely_new_url_with_no_version_segment():
+    # canonicalize_version_url is a no-op here (no matching segment) — must not spuriously match.
+    seeds = {"https://x.test/docs/guide/intro": "navtree_tree"}
+    assert _resolve_canonical_alias("https://x.test/blog/post-1", seeds, version_keys=["v1", "v2"]) is None
+
+
+# ---------------------------------------------------------------------------
+# _merge_results + version_keys — the version-duplicate case, and proof a version-less site is
+# entirely unaffected
+# ---------------------------------------------------------------------------
+
+def test_merge_results_version_duplicate_gets_canonical_url_set_after_a_real_fetch():
+    seeds = {"https://x.test/docs/guide/intro": "navtree_tree"}
+    urls = _merge_results(
+        seeds,
+        fetched=["https://x.test/docs/guide/intro", "https://x.test/docs/v1/guide/intro"],
+        frontier_leftover=[], version_keys=["v1", "v2"],
+    )
+    by_url = {u.url: u for u in urls}
+    duplicate = by_url["https://x.test/docs/v1/guide/intro"]
+    canonical = by_url["https://x.test/docs/guide/intro"]
+    assert duplicate.source == "traversal"
+    assert duplicate.fetched is True  # a real fetch still happened — annotation, not prevention
+    assert duplicate.canonical_url == "https://x.test/docs/guide/intro"
+    assert canonical.source == "navtree_tree"
+    assert canonical.canonical_url is None  # the canonical entry itself is never touched
+
+
+def test_merge_results_version_keys_none_is_byte_identical_to_omitting_the_argument():
+    # A version-less site: version_keys defaults to None, canonicalization is skipped entirely —
+    # must produce the exact same result as calling _merge_results with no version_keys at all.
+    seeds = {"https://x.test/a": "seed"}
+    urls_omitted = _merge_results(seeds, fetched=["https://x.test/a", "https://x.test/new"], frontier_leftover=[])
+    urls_explicit_none = _merge_results(
+        seeds, fetched=["https://x.test/a", "https://x.test/new"], frontier_leftover=[], version_keys=None)
+    assert urls_omitted == urls_explicit_none
+    assert {u.url: u for u in urls_explicit_none}["https://x.test/new"].canonical_url is None
+
+
+def test_merge_results_non_matching_traversal_url_unaffected_by_active_version_keys():
+    # A genuinely new page with no version segment must not be spuriously marked, even on a
+    # versioned site where version_keys IS active for other URLs.
+    seeds = {"https://x.test/a": "seed"}
+    urls = _merge_results(seeds, fetched=["https://x.test/a", "https://x.test/genuinely-new"],
+                          frontier_leftover=[], version_keys=["v1"])
+    assert {u.url: u for u in urls}["https://x.test/genuinely-new"].canonical_url is None
+
+
+# ---------------------------------------------------------------------------
 # _ExactHostFilter — exact host match, www./apex collapsed, no subdomain leniency
 # ---------------------------------------------------------------------------
 
@@ -368,20 +478,25 @@ def test_discover_urls_workflow_revisit_target_stays_attributed_to_its_own_feede
     assert target.fetched is True
 
 
-def test_discover_urls_workflow_version_duplicate_currently_counts_as_new_traversal_url(
+def test_discover_urls_workflow_version_duplicate_recognized_as_known_alias_of_canonical(
         discovery_result, fixture_server):
-    # Deliberately asserts CURRENT, UNFIXED behavior — the open item recorded in process-docs/
+    # The gap closed this milestone (previously the open item recorded in process-docs/
     # url_discovery/2026-08-28_fetch_success_and_frontier_visibility.md and src/crawler/DOCS.md's
-    # own Gotchas: discovery.py's traversal never runs a discovered link through
-    # seed_feeders_navtree's own version-canonicalization, so this explicit-version duplicate of
-    # an already-known canonical page counts as genuinely new. This is the BEFORE number — when a
-    # later milestone closes that gap, THIS assertion is what has to change, not be deleted quietly.
+    # own Gotchas): an explicit-version duplicate of an already-known canonical navtree page is
+    # now recognized as an alias of that page, via seed_feeders_navtree.canonicalize_version_url
+    # and the version keys FeederResult.version_keys now exposes. This is annotation, not
+    # prevention — a real fetch still happens (fetched=True, its own real observed status), and
+    # the canonical entry's own attribution is never touched. The duplicate stays visible (a real,
+    # working URL a caller whose goal is a complete URL list should still see), now carrying
+    # canonical_url pointing at the page it duplicates.
     by_url = {u.url: u for u in discovery_result.urls}
     duplicate = by_url[_fixture_url(fixture_server, VERSION_DUP_TARGET)]
     canonical = by_url[_fixture_url(fixture_server, VERSION_DUP_CANONICAL)]
     assert duplicate.source == "traversal"
     assert duplicate.fetched is True
+    assert duplicate.canonical_url == canonical.url
     assert canonical.source == "navtree_tree"
+    assert canonical.canonical_url is None  # the canonical entry itself is never touched
     assert duplicate.url != canonical.url
 
 

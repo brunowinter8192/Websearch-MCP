@@ -121,14 +121,17 @@ module-level — see the Gotcha below on the one-instance-per-process consequenc
   main site's `__NEXT_DATA__` shape. Wiring `/rsc-demo` into the main graph would change
   `total_urls` and conflate two independent purposes (shape-detection demo vs. the site's own
   ground truth) — do not link it in.
-- **`VERSION_DUP_TEST_PAGE`'s link to `VERSION_DUP_TARGET` (`/docs/v1/guide/intro`) is expected,
-  CURRENT, UNFIXED behavior — do not "fix" it via the fixture.** `discovery.py`'s traversal never
-  runs a discovered link through `seed_feeders_navtree.py`'s own version-canonicalization (the open
-  item recorded in `src/crawler/DOCS.md`'s own Gotchas), so this URL counts as a genuinely new
-  `"traversal"` entry distinct from the already-known canonical `/docs/guide/intro`, even though
-  it's the same page. `ground_truth()`'s `version_duplicate_test.expected_current_unfixed_behavior`
-  states this explicitly — it is the "before" number a later milestone's fix needs to change, not a
-  bug in this fixture.
+- **`VERSION_DUP_TEST_PAGE`'s link to `VERSION_DUP_TARGET` (`/docs/v1/guide/intro`) now closes the
+  version-canonicalization gap `src/crawler/DOCS.md`'s Gotchas used to record as open.**
+  `discovery.py`'s traversal recognizes this URL, after genuinely fetching it, as an
+  explicit-version duplicate of the already-known canonical `/docs/guide/intro` —
+  `DiscoveredURL.canonical_url` is set on the duplicate's own entry, which still appears in the
+  result with its own real `source`/`fetched` status (the fetch still happens; this closes the
+  MISCLASSIFICATION gap, not the fetch cost — see `src/crawler/DOCS.md`'s Gotchas for the
+  annotation-vs-prevention tradeoff argued there). The canonical entry itself is never touched.
+  `ground_truth()`'s `version_duplicate_test.expected_behavior` states this explicitly.
+  `total_urls`/`by_source` do NOT change from this fix — the duplicate was already counted as its
+  own entry before, only its shape changes now.
 - **`REVISIT_TEST_PAGE`'s link to `REVISIT_TEST_TARGET` (`/blog/post-1`, already delivered by the
   sitemap feeder) is the opposite case: already-fixed, already-shipped behavior.**
   `_build_resume_state`'s `"visited"` pre-population (see `src/crawler/DOCS.md`'s Gotchas) means

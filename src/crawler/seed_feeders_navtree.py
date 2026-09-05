@@ -254,8 +254,13 @@ def _build_version_urls(seed_url: str, all_versions: dict | None, current_versio
 # canonical, version-implicit form the default version's own tree already uses — this is what
 # lets the union dedup a page instead of counting it once per version. Framework-specific by
 # design; deliberately not pushed into seed_feeders_scope.normalize_url, which keeps such
-# segments intact for every other caller (see src/crawler/DOCS.md).
-def _canonicalize_version_url(url: str, version_keys) -> str:
+# segments intact for every other caller (see src/crawler/DOCS.md). Public (not "_"-prefixed)
+# because discovery.py's own traversal calls this directly too, to recognize an explicit-version
+# duplicate of an already-known canonical page discovered mid-crawl — the same rule, not a
+# reimplementation, imported across the module boundary rather than duplicated (see DOCS.md
+# Gotchas for why re-detecting it independently or deriving it without this exact function was
+# rejected).
+def canonicalize_version_url(url: str, version_keys) -> str:
     parts = urlsplit(url)
     segments = parts.path.split("/")
     for version_key in version_keys:
@@ -289,15 +294,19 @@ async def _resolve_one_version(client: httpx.AsyncClient, version_url: str, all_
         return []
     hrefs, _tier, _source = find_navigation_tree(extract_payloads(html))
     absolute = (urljoin(version_url, href) for href in hrefs)
-    return [_canonicalize_version_url(url, all_version_keys) for url in absolute]
+    return [canonicalize_version_url(url, all_version_keys) for url in absolute]
 
 
 # Fetch seed_url, detect its payload shape, walk its navigation tree (or fall back to a flat href
 # scan), then union in every other version the SAME payload declares, each version's own tree
-# canonicalized back to the default version's URL shape before the union. Returns (urls, tier);
-# tier reflects how the DEFAULT tree itself was obtained ("tree"/"flat") — a version fetched
-# during the union that happens to land on the other tier does not change the overall tag (see
-# DOCS.md Gotchas for why a single tag per result, not one per URL, was the deliberate choice).
+# canonicalized back to the default version's URL shape before the union. Returns (urls, tier,
+# version_keys); tier reflects how the DEFAULT tree itself was obtained ("tree"/"flat") — a version
+# fetched during the union that happens to land on the other tier does not change the overall tag
+# (see DOCS.md Gotchas for why a single tag per result, not one per URL, was the deliberate
+# choice). version_keys is the site's own version-key list (see _find_version_list) whenever one
+# was found on the page — None for a version-less site or a flat-tier result, regardless of
+# whether a full version union was actually built (a caller needing the keys for canonicalization
+# elsewhere, e.g. discovery.py's traversal, does not need a successful union, only the key list).
 #
 # Raises RuntimeError if seed_url itself cannot be fetched — deliberately NOT treated as a normal
 # empty outcome the way a version root's own fetch failure is (see _resolve_one_version). The seed
@@ -316,17 +325,17 @@ async def resolve_navigation_tree(client: httpx.AsyncClient, seed_url: str) -> t
     absolute = [urljoin(seed_url, href) for href in hrefs]
 
     if source_payload is None:
-        return absolute, tier
+        return absolute, tier, None
 
     all_versions = _find_version_list(source_payload)
     current_version = _find_current_version(source_payload)
     path_without_language = _find_path_without_language(source_payload)
     version_urls = _build_version_urls(seed_url, all_versions, current_version, path_without_language)
+    all_version_keys = list(all_versions.keys()) if all_versions else None
     if not version_urls:
-        return absolute, tier
+        return absolute, tier, all_version_keys
 
-    all_version_keys = list(all_versions.keys())
-    canonical_default = [_canonicalize_version_url(url, all_version_keys) for url in absolute]
+    canonical_default = [canonicalize_version_url(url, all_version_keys) for url in absolute]
 
     semaphore = asyncio.Semaphore(NAVTREE_FETCH_CONCURRENCY)
 
@@ -339,4 +348,4 @@ async def resolve_navigation_tree(client: httpx.AsyncClient, seed_url: str) -> t
     union = list(canonical_default)
     for urls in per_version_results:
         union.extend(urls)
-    return union, tier
+    return union, tier, all_version_keys

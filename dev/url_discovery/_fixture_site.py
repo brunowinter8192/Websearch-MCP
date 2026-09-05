@@ -29,10 +29,11 @@ Site shape (seed_url = seed_url(port), i.e. /docs/guide):
   delivered (tests _build_resume_state's "visited" pre-population — the already-known URL must
   stay attributed to its feeder, not be re-tagged "traversal" or double-counted).
   VERSION_DUP_TEST_PAGE links to an explicit-version duplicate of an already-delivered canonical
-  navtree page (tests the OPEN, deliberately unfixed item: discovery.py's traversal never runs a
-  discovered link through seed_feeders_navtree's own version-canonicalization, so this duplicate
-  is currently expected to count as a genuinely new "traversal" URL — the "before" number a later
-  milestone's fix needs to change).
+  navtree page (tests the CLOSED item: discovery.py's traversal now runs a discovered link through
+  seed_feeders_navtree.canonicalize_version_url via the version keys FeederResult.version_keys
+  surfaces, so this duplicate is recognized as an alias of the canonical page — DiscoveredURL.
+  canonical_url is set on it, its own source/fetched stay whatever its own real fetch observed,
+  and the canonical page's own entry is never touched).
 
 Failure modes are switched via /_control/* GET requests, never random, always resettable — see
 _STATE. Thin-body-200 is a simple on/off toggle. 429 is a genuine SLIDING WINDOW ("at most `limit`
@@ -370,10 +371,13 @@ def ground_truth() -> dict:
         "version_duplicate_test": {
             "page": VERSION_DUP_TEST_PAGE, "duplicate_target": VERSION_DUP_TARGET,
             "canonical_original": VERSION_DUP_CANONICAL,
-            "expected_current_unfixed_behavior":
-                "duplicate_target counts as a genuinely new traversal URL, distinct from "
-                "canonical_original — the open item in src/crawler/DOCS.md's Gotchas, not fixed "
-                "by this fixture; this is the 'before' number for that future milestone",
+            "expected_behavior":
+                "duplicate_target is still its own DiscoveredURL entry (total_urls/by_source do "
+                "NOT change — it was already counted before this fix, only its shape changes now), "
+                "source='traversal', fetched=True (a real fetch still happens — this closes the "
+                "canonicalization gap, it does not prevent the fetch), and canonical_url equals "
+                "canonical_original's own URL. canonical_original's own entry is untouched: "
+                "source='navtree_tree', canonical_url=None.",
         },
         "rsc_demo": {
             "root": RSC_DEMO_ROOT, "children": list(RSC_DEMO_CHILDREN),

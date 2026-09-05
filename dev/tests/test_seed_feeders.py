@@ -19,7 +19,7 @@ from src.crawler.seed_feeders_scope import FeederResult, normalize_url, scope_an
 from src.crawler.seed_feeders_robots import fetch_robots_txt, parse_robots_directives
 from src.crawler.seed_feeders_sitemap import fetch_sitemap, parse_sitemap_xml, resolve_sitemap_urls
 from src.crawler.seed_feeders_navtree import (
-    extract_payloads, find_navigation_tree, _build_version_urls, _canonicalize_version_url,
+    extract_payloads, find_navigation_tree, _build_version_urls, canonicalize_version_url,
     resolve_navigation_tree,
 )
 from src.crawler import seed_feeders
@@ -541,7 +541,7 @@ def test_find_navigation_tree_no_payloads_returns_empty_flat():
 
 
 # ---------------------------------------------------------------------------
-# _build_version_urls / _canonicalize_version_url — the framework-specific version handling
+# _build_version_urls / canonicalize_version_url — the framework-specific version handling
 # ---------------------------------------------------------------------------
 
 def test_build_version_urls_constructs_url_per_other_version():
@@ -575,17 +575,17 @@ def test_build_version_urls_empty_when_content_path_not_a_suffix_of_seed():
 
 def test_canonicalize_version_url_strips_matching_segment_anywhere_in_path():
     url = "https://x.test/de/v2/guide/a"
-    assert _canonicalize_version_url(url, ["v1", "v2"]) == "https://x.test/de/guide/a"
+    assert canonicalize_version_url(url, ["v1", "v2"]) == "https://x.test/de/guide/a"
 
 
 def test_canonicalize_version_url_noop_when_no_marker_present():
     url = "https://x.test/de/guide/a"
-    assert _canonicalize_version_url(url, ["v1", "v2"]) == url
+    assert canonicalize_version_url(url, ["v1", "v2"]) == url
 
 
 def test_canonicalize_version_url_preserves_query():
     url = "https://x.test/de/v2/guide?page=2"
-    assert _canonicalize_version_url(url, ["v2"]) == "https://x.test/de/guide?page=2"
+    assert canonicalize_version_url(url, ["v2"]) == "https://x.test/de/guide?page=2"
 
 
 # ---------------------------------------------------------------------------
@@ -615,7 +615,7 @@ async def test_resolve_navigation_tree_unions_versions_and_dedups_via_canonicali
     }
     client = _FakeAsyncClient(routes)
 
-    urls, tier = await resolve_navigation_tree(client, "https://docs.example.com/de/guide")
+    urls, tier, version_keys = await resolve_navigation_tree(client, "https://docs.example.com/de/guide")
     assert tier == "tree"
     assert sorted(set(urls)) == sorted([
         "https://docs.example.com/de/guide",
@@ -623,6 +623,10 @@ async def test_resolve_navigation_tree_unions_versions_and_dedups_via_canonicali
         "https://docs.example.com/de/guide/setup",
         "https://docs.example.com/de/guide/legacy-page",  # recovered only via the v2 union
     ])
+    # version_keys is the site's own version-key list — surfaced so discovery.py's traversal can
+    # recognize an explicit-version duplicate of an already-known canonical page without
+    # reimplementing this feeder's own detection (see FeederResult.version_keys).
+    assert sorted(version_keys) == ["v1", "v2"]
 
 
 @pytest.mark.asyncio
