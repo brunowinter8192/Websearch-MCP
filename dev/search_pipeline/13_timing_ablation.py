@@ -20,7 +20,6 @@ import src.search.engines.google as google_mod
 from src.search.engines.google import GoogleEngine
 from src.search.engines.scholar import ScholarEngine
 from src.search.engines.duckduckgo import DuckDuckGoEngine
-from src.search.engines.mojeek import MojeekEngine
 from src.search.engines.openalex import OpenAlexEngine
 from src.search.browser import close_browser
 from src.search.rate_limiter import _limiters, get_limiter
@@ -41,7 +40,6 @@ ENGINES = [
     ("google",         GoogleEngine()),
     ("google_scholar", ScholarEngine()),
     ("duckduckgo",     DuckDuckGoEngine()),
-    ("mojeek",         MojeekEngine()),
     ("openalex",       OpenAlexEngine()),
 ]
 

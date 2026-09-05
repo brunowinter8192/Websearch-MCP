@@ -16,7 +16,6 @@ sys.path.insert(0, str(SCRIPT_DIR.parent.parent))
 from src.search.engines.google import GoogleEngine
 from src.search.engines.scholar import ScholarEngine
 from src.search.engines.duckduckgo import DuckDuckGoEngine
-from src.search.engines.mojeek import MojeekEngine
 from src.search.engines.openalex import OpenAlexEngine
 from src.search.browser import close_browser
 
@@ -35,11 +34,10 @@ ENGINE_MAX = {
     "google":         100,  # num= capped server-side at 100; 100 avoids bot-signal of num=200
     "google_scholar": 100,  # same as Google; Scholar renders max ~20
     "duckduckgo":     200,  # no count param — slice-only; page renders naturally
-    "mojeek":         200,  # no count param — slice-only; page renders naturally
     "openalex":       200,  # per_page= API param; documented ceiling is 200
 }
 
-BROWSER_ENGINES = {"google", "google_scholar", "duckduckgo", "mojeek"}
+BROWSER_ENGINES = {"google", "google_scholar", "duckduckgo"}
 BROWSER_SLEEP_S = 1.0
 API_SLEEP_S = 0.5
 
@@ -47,7 +45,6 @@ ENGINE_NOTES = {
     "google":         "num= URL param; Google caps at 100 server-side",
     "google_scholar": "num= URL param; Scholar renders max ~20 per page",
     "duckduckgo":     "No count param; post-fetch slice only — page renders naturally",
-    "mojeek":         "No count param; post-fetch slice only — default 10 per page",
     "openalex":       "per_page= API param; documented max 200",
 }
 
@@ -61,7 +58,6 @@ async def run_probe() -> None:
         ("google",         GoogleEngine()),
         ("google_scholar", ScholarEngine()),
         ("duckduckgo",     DuckDuckGoEngine()),
-        ("mojeek",         MojeekEngine()),
         ("openalex",       OpenAlexEngine()),
     ]
 

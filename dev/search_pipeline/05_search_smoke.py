@@ -15,7 +15,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.search.browser import close_browser
 from src.search.engines.google import GoogleEngine
 from src.search.engines.duckduckgo import DuckDuckGoEngine
-from src.search.engines.mojeek import MojeekEngine
 from src.search.engines.scholar import ScholarEngine
 from src.search.engines.openalex import OpenAlexEngine
 from src.search.result import SearchResult
@@ -27,7 +26,6 @@ REPORT_DIR = SCRIPT_DIR / "md"
 AVAILABLE_ENGINES = {
     "google": GoogleEngine,
     "duckduckgo": DuckDuckGoEngine,
-    "mojeek": MojeekEngine,
     "google scholar": ScholarEngine,
     "openalex": OpenAlexEngine,
 }
@@ -207,7 +205,7 @@ if __name__ == "__main__":
         nargs="+",
         default=["google", "duckduckgo"],
         choices=list(AVAILABLE_ENGINES.keys()),
-        help="Engines to test (default: google duckduckgo). Available: google duckduckgo mojeek 'google scholar' openalex",
+        help="Engines to test (default: google duckduckgo). Available: google duckduckgo 'google scholar' openalex",
     )
     parser.add_argument(
         "--max-queries",

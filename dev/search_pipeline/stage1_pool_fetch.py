@@ -78,7 +78,7 @@ _STATUS_HINTS: dict[str, str] = {
     "ERROR":                 "error",
 }
 
-_MODE_ENGINES = frozenset({"google", "duckduckgo", "mojeek"})
+_MODE_ENGINES = frozenset({"google", "duckduckgo"})
 
 
 # ORCHESTRATOR

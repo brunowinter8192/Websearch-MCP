@@ -17,7 +17,6 @@ sys.path.insert(0, str(SCRIPT_DIR.parent.parent))
 from src.search.engines.google import GoogleEngine
 from src.search.engines.scholar import ScholarEngine
 from src.search.engines.duckduckgo import DuckDuckGoEngine
-from src.search.engines.mojeek import MojeekEngine
 from src.search.engines.openalex import OpenAlexEngine
 from src.search.browser import close_browser
 
@@ -41,7 +40,6 @@ ENGINE_ORDER = [
     ("google",         GoogleEngine),
     ("google_scholar", ScholarEngine),
     ("duckduckgo",     DuckDuckGoEngine),
-    ("mojeek",         MojeekEngine),
     ("openalex",       OpenAlexEngine),
 ]
 
@@ -49,11 +47,10 @@ ENGINE_MAX = {
     "google":         100,
     "google_scholar": 100,
     "duckduckgo":     200,
-    "mojeek":         200,
     "openalex":       200,
 }
 
-BROWSER_ENGINES = frozenset({"google", "google_scholar", "duckduckgo", "mojeek"})
+BROWSER_ENGINES = frozenset({"google", "google_scholar", "duckduckgo"})
 BROWSER_SLEEP_S = 1.0
 API_SLEEP_S = 0.5
 

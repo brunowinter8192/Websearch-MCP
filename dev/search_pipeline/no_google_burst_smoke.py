@@ -38,7 +38,6 @@ sys.path.insert(0, str(SCRIPT_DIR.parent.parent))
 from src.search import status as S
 from src.search.browser import close_browser
 from src.search.engines.duckduckgo import DuckDuckGoEngine
-from src.search.engines.mojeek import MojeekEngine
 from src.search.engines.openalex import OpenAlexEngine
 
 from src.search.engines.scholar import ScholarEngine
@@ -81,7 +80,6 @@ async def run_smoke() -> None:
     engines = {
         "google_scholar": ScholarEngine(),
         "duckduckgo": DuckDuckGoEngine(),
-        "mojeek": MojeekEngine(),
         "openalex": OpenAlexEngine(),
     }
 
