@@ -5,6 +5,7 @@ import logging
 from urllib.parse import urlparse
 
 from src.search.browser import new_tab, kill_tab
+from src.search.document_status import attach_document_status, start_document_status_capture
 from src.search.engines.base import BaseEngine
 from src.search.rate_limiter import RateLimiter, _limiters
 from src.search.result import SearchResult
@@ -63,22 +64,23 @@ class YandexEngine(BaseEngine):
         logger.info("Yandex search: %s", query)
         tab = await new_tab()
         try:
+            status_chain = await start_document_status_capture(tab)
             await tab.go_to(SEARCH_URL.format(query.replace(" ", "+")), timeout=10.0)
             current_url = await tab.current_url
             if _is_block_url(current_url):
                 logger.warning("Yandex CAPTCHA redirect detected for: %s", query)
                 diag = await _diagnose(tab)
-                return [], S.EMPTY_BLOCK, diag
+                return [], S.EMPTY_BLOCK, attach_document_status(diag, status_chain)
             if not await _wait_for_results(tab):
                 diag = await _diagnose(tab)
                 reason = _classify_diagnosis(diag["marker"], diag["url"], diag["ready_state"])
                 logger.debug("Yandex empty (%s) for: %s", reason, query)
-                return [], reason, diag
+                return [], reason, attach_document_status(diag, status_chain)
             results = await _parse_results(tab, max_results)
             if results:
                 return results, None, None
             diag = await _diagnose(tab)
-            return results, S.EMPTY_NO_RESULTS, diag
+            return results, S.EMPTY_NO_RESULTS, attach_document_status(diag, status_chain)
         finally:
             await kill_tab(tab)
 

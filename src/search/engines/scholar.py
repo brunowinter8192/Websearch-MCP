@@ -36,8 +36,9 @@ class ScholarEngine(BaseEngine):
     name = "google_scholar"
 
     # Full HTTP search logic; returns (results, reason, diagnosis); exceptions propagate to
-    # _engine_with_timing. diagnosis is always None — this engine builds no diagnosis mechanism
-    # (HTTP + lxml parse, no browser DOM to inspect)
+    # _engine_with_timing. diagnosis carries the one fact this engine already has in hand — the
+    # real HTTP status — on every branch that returns without results; None whenever results are
+    # non-empty (no diagnosis mechanism beyond that one fact: HTTP + lxml parse, no browser DOM)
     async def search_with_reason(self, query: str, language: str = "en", max_results: int = 10) -> tuple[list[SearchResult], str | None, dict | None]:
         logger.info("Scholar search: %s", query)
         url = _build_url(query, language, max_results)
@@ -46,12 +47,14 @@ class ScholarEngine(BaseEngine):
         if r.status_code in (301, 302, 303, 307, 308):
             location = r.headers.get("Location", "")
             logger.warning("Scholar redirect → %s", location)
-            return [], S.EMPTY_BLOCK, None
+            return [], S.EMPTY_BLOCK, {"http_status": r.status_code}
 
         r.raise_for_status()
 
         results, reason = _parse_response(r.text, max_results)
-        return results, reason, None
+        if results:
+            return results, reason, None
+        return results, reason, {"http_status": r.status_code}
 
     # Legacy thin wrapper — delegates to search_with_reason; swallows exceptions for dev-script compat
     async def search(self, query: str, language: str = "en", max_results: int = 10) -> list[SearchResult]:

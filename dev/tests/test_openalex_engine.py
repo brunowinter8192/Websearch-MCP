@@ -119,17 +119,42 @@ async def test_429_surfaces_as_empty_block_not_empty(monkeypatch):
     results, reason, diagnosis = await engine.search_with_reason("noise sleep", max_results=10)
     assert results == []
     assert reason == S.EMPTY_BLOCK
-    assert diagnosis is None
+    assert diagnosis == {"http_status": 429}
 
 
 @pytest.mark.asyncio
-async def test_403_stays_plain_empty_no_reason(monkeypatch):
+async def test_403_stays_plain_empty_no_reason_but_carries_http_status(monkeypatch):
+    """403 keeps reason=None (unchanged status/reason semantics) but the diagnosis now carries the
+    real observed HTTP status — the exact fact a bare EMPTY verdict used to discard."""
     _install_fake_client(monkeypatch, _FakeResponse(403))
     engine = OpenAlexEngine()
     results, reason, diagnosis = await engine.search_with_reason("noise sleep", max_results=10)
     assert results == []
     assert reason is None
+    assert diagnosis == {"http_status": 403}
+
+
+@pytest.mark.asyncio
+async def test_success_with_results_has_no_diagnosis(monkeypatch):
+    """A 200 response with non-empty results is a success path — diagnosis-free, no diagnose call paid for."""
+    _install_fake_client(monkeypatch, _FakeResponse(200, {"results": [_work()]}))
+    engine = OpenAlexEngine()
+    results, reason, diagnosis = await engine.search_with_reason("query", max_results=10)
+    assert len(results) == 1
+    assert reason is None
     assert diagnosis is None
+
+
+@pytest.mark.asyncio
+async def test_success_with_zero_results_carries_http_status(monkeypatch):
+    """A 200 response that parses to zero results still returns WITHOUT results, so it carries the
+    observed HTTP status even though reason stays None (unchanged)."""
+    _install_fake_client(monkeypatch, _FakeResponse(200, {"results": []}))
+    engine = OpenAlexEngine()
+    results, reason, diagnosis = await engine.search_with_reason("query", max_results=10)
+    assert results == []
+    assert reason is None
+    assert diagnosis == {"http_status": 200}
 
 
 @pytest.mark.asyncio
