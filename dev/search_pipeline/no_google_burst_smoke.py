@@ -145,7 +145,7 @@ async def _run_burst(engines: dict, query: str, label: str) -> dict:
 async def _run_engine(engine, query: str, timeout: float) -> tuple[str, int, int]:
     t0 = time.perf_counter()
     try:
-        results, reason = await asyncio.wait_for(
+        results, reason, _ = await asyncio.wait_for(
             engine.search_with_reason(query, "en", 10),
             timeout=timeout,
         )

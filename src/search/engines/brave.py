@@ -48,7 +48,8 @@ return JSON.stringify({
     marker: hit,
     pow_link: !!powLink,
     url: window.location.href,
-    ready_state: document.readyState
+    ready_state: document.readyState,
+    title: document.title
 });
 """
 
@@ -62,7 +63,7 @@ class BraveEngine(BaseEngine):
     name = "brave"
 
     # Full search logic with empty-reason diagnosis; exceptions propagate to _engine_with_timing
-    async def search_with_reason(self, query: str, language: str = "en", max_results: int = 10) -> tuple[list[SearchResult], str | None]:
+    async def search_with_reason(self, query: str, language: str = "en", max_results: int = 10) -> tuple[list[SearchResult], str | None, dict | None]:
         logger.info("Brave search: %s", query)
         tab = await new_tab()
         try:
@@ -71,20 +72,23 @@ class BraveEngine(BaseEngine):
             diag = await _diagnose(tab)
             if diag["marker"] or diag["pow_link"]:
                 logger.warning("Brave PoW/CAPTCHA detected for: %s", query)
-                return [], S.EMPTY_BLOCK
+                return [], S.EMPTY_BLOCK, diag
             if not await _wait_for_results(tab):
                 reason = _classify_diagnosis(diag["marker"], diag["pow_link"], diag["ready_state"])
                 logger.debug("Brave empty (%s) for: %s", reason, query)
-                return [], reason
+                return [], reason, diag
             results = await _parse_results(tab, max_results)
-            return results, (None if results else S.EMPTY_NO_RESULTS)
+            if results:
+                return results, None, None
+            diag = await _diagnose(tab)
+            return results, S.EMPTY_NO_RESULTS, diag
         finally:
             await kill_tab(tab)
 
     # Legacy thin wrapper — delegates to search_with_reason; swallows exceptions for dev-script compat
     async def search(self, query: str, language: str = "en", max_results: int = 10) -> list[SearchResult]:
         try:
-            results, _ = await self.search_with_reason(query, language, max_results)
+            results, _, _ = await self.search_with_reason(query, language, max_results)
             return results
         except Exception as e:
             logger.error("Brave search failed: %s", e)
@@ -148,11 +152,12 @@ def _classify_diagnosis(marker: str | None, pow_link: bool, ready_state: str) ->
     return S.EMPTY_NO_CONTAINER
 
 
-# Diagnose PoW/CAPTCHA trigger via title/body marker scan + pow-captcha help-link presence
+# Snapshot the page facts behind a PoW/CAPTCHA verdict — an OBSERVATION, not a verdict; title/body
+# marker scan + pow-captcha help-link presence
 async def _diagnose(tab) -> dict:
     raw = await tab.execute_script(_JS_DIAGNOSE)
     val = _extract_value(raw)
-    diag = {"marker": None, "pow_link": False, "url": "", "ready_state": ""}
+    diag = {"marker": None, "pow_link": False, "url": "", "ready_state": "", "title": ""}
     if val:
         try:
             diag.update(json.loads(val))

@@ -116,18 +116,20 @@ def test_parse_results_pdf_url_none_when_absent():
 async def test_429_surfaces_as_empty_block_not_empty(monkeypatch):
     _install_fake_client(monkeypatch, _FakeResponse(429))
     engine = OpenAlexEngine()
-    results, reason = await engine.search_with_reason("noise sleep", max_results=10)
+    results, reason, diagnosis = await engine.search_with_reason("noise sleep", max_results=10)
     assert results == []
     assert reason == S.EMPTY_BLOCK
+    assert diagnosis is None
 
 
 @pytest.mark.asyncio
 async def test_403_stays_plain_empty_no_reason(monkeypatch):
     _install_fake_client(monkeypatch, _FakeResponse(403))
     engine = OpenAlexEngine()
-    results, reason = await engine.search_with_reason("noise sleep", max_results=10)
+    results, reason, diagnosis = await engine.search_with_reason("noise sleep", max_results=10)
     assert results == []
     assert reason is None
+    assert diagnosis is None
 
 
 @pytest.mark.asyncio

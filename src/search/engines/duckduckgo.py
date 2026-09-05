@@ -20,7 +20,14 @@ WAIT_INTERVAL = 0.2
 
 _JS_WAIT = "return document.querySelectorAll('#links > div.web-result').length"
 
-_JS_CAPTCHA = f"return document.querySelectorAll('{CAPTCHA_SELECTOR}').length"
+_JS_DIAGNOSE = f"""
+return JSON.stringify({{
+    challenge_form_count: document.querySelectorAll('{CAPTCHA_SELECTOR}').length,
+    title: document.title,
+    url: window.location.href,
+    ready_state: document.readyState
+}});
+"""
 
 _JS_PARSE = """
 var _cs = document.querySelectorAll('#links > div.web-result');
@@ -52,28 +59,33 @@ class DuckDuckGoEngine(BaseEngine):
     name = "duckduckgo"
 
     # Full search logic with empty-reason diagnosis; exceptions propagate to _engine_with_timing
-    async def search_with_reason(self, query: str, language: str = "en", max_results: int = 10) -> tuple[list[SearchResult], str | None]:
+    async def search_with_reason(self, query: str, language: str = "en", max_results: int = 10) -> tuple[list[SearchResult], str | None, dict | None]:
         logger.info("DuckDuckGo search: %s", query)
         tab = await new_tab()
         search_url = _build_url(query)
         try:
             await tab.go_to(search_url, timeout=3.0)
-            if await _has_captcha(tab):
+            diag = await _diagnose(tab)
+            if diag["challenge_form"]:
                 logger.warning("DuckDuckGo CAPTCHA detected for: %s", query)
-                return [], S.EMPTY_BLOCK
+                return [], S.EMPTY_BLOCK, diag
             if not await _wait_for_results(tab):
-                reason = await _diagnose_empty(tab)
+                diag = await _diagnose(tab)
+                reason = _classify_diagnosis(diag["challenge_form"], diag["ready_state"])
                 logger.debug("DuckDuckGo empty (%s) for: %s", reason, query)
-                return [], reason
+                return [], reason, diag
             results = await _parse_results(tab, max_results)
-            return results, (None if results else S.EMPTY_NO_RESULTS)
+            if results:
+                return results, None, None
+            diag = await _diagnose(tab)
+            return results, S.EMPTY_NO_RESULTS, diag
         finally:
             await kill_tab(tab)
 
     # Legacy thin wrapper — delegates to search_with_reason; swallows exceptions for dev-script compat
     async def search(self, query: str, language: str = "en", max_results: int = 10) -> list[SearchResult]:
         try:
-            results, _ = await self.search_with_reason(query, language, max_results)
+            results, _, _ = await self.search_with_reason(query, language, max_results)
             return results
         except Exception as e:
             logger.error("DuckDuckGo search failed: %s", e)
@@ -93,13 +105,6 @@ def _extract_value(result):
 # Build DuckDuckGo search URL with encoded query
 def _build_url(query: str) -> str:
     return SEARCH_URL.format(quote_plus(query))
-
-
-# Check for DDG bot-challenge form in DOM
-async def _has_captcha(tab) -> bool:
-    raw = await tab.execute_script(_JS_CAPTCHA)
-    val = _extract_value(raw)
-    return bool(val and int(val) > 0)
 
 
 # Poll for result containers up to MAX_WAIT_CYCLES × WAIT_INTERVAL seconds, return True when found
@@ -160,12 +165,31 @@ def _extract_date(date_raw: str) -> str | None:
     return None
 
 
-# Diagnose why DDG returned empty after _wait_for_results failed (priority: BLOCK -> CONCURRENT_RACE -> NO_CONTAINER)
-async def _diagnose_empty(tab) -> str:
-    captcha_raw = await tab.execute_script(_JS_CAPTCHA)
-    if _extract_value(captcha_raw) and int(_extract_value(captcha_raw) or 0) > 0:
+# Classify a diagnosis snapshot into an EMPTY sub-status (priority: BLOCK -> CONCURRENT_RACE -> NO_CONTAINER)
+def _classify_diagnosis(challenge_form: bool, ready_state: str) -> str:
+    if challenge_form:
         return S.EMPTY_BLOCK
-    state = _extract_value(await tab.execute_script("return document.readyState")) or ""
-    if state != "complete":
+    if ready_state != "complete":
         return S.EMPTY_CONCURRENT_RACE
     return S.EMPTY_NO_CONTAINER
+
+
+# Snapshot the page facts behind an empty-reason verdict — an OBSERVATION, not a verdict; marker
+# stays None (DDG's block signal is a structural element count, not a text marker) — the fact lives
+# in its own named field, challenge_form, matching brave's pow_link / startpage's iframe_challenge
+async def _diagnose(tab) -> dict:
+    raw = await tab.execute_script(_JS_DIAGNOSE)
+    val = _extract_value(raw)
+    parsed = {"challenge_form_count": 0, "title": "", "url": "", "ready_state": ""}
+    if val:
+        try:
+            parsed.update(json.loads(val))
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return {
+        "marker": None,
+        "challenge_form": bool(parsed.get("challenge_form_count", 0)),
+        "title": parsed["title"],
+        "url": parsed["url"],
+        "ready_state": parsed["ready_state"],
+    }

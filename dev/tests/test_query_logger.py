@@ -16,16 +16,18 @@ import pytest
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_mock_engine_with_reason(name: str, results: list, delay: float = 0.0, empty_reason: str | None = None):
+def _make_mock_engine_with_reason(
+    name: str, results: list, delay: float = 0.0, empty_reason: str | None = None, diagnosis: dict | None = None,
+):
     """Mock engine matching the current _engine_with_timing interface:
-    engine.search_with_reason(query, language, max_results) -> (results, empty_reason)."""
+    engine.search_with_reason(query, language, max_results) -> (results, empty_reason, diagnosis)."""
     eng = MagicMock()
     eng.name = name
 
     async def _search_with_reason(query, language, max_results):
         if delay:
             await asyncio.sleep(delay)
-        return results, empty_reason
+        return results, empty_reason, diagnosis
 
     eng.search_with_reason = _search_with_reason
     return eng
@@ -103,13 +105,14 @@ async def test_engine_with_timing_ok():
     r = _fake_result("https://x.com", engine="fast")
     fast = _make_mock_engine_with_reason("fast", [r])
 
-    results, rate_wait_ms, search_ms, status, drop_reason = await _engine_with_timing(
+    results, rate_wait_ms, search_ms, status, drop_reason, diagnosis = await _engine_with_timing(
         fast, "query", "en", 10, timeout=3.6
     )
 
     assert len(results) == 1
     assert status == "OK"
     assert drop_reason is None
+    assert diagnosis is None
     assert isinstance(rate_wait_ms, int) and rate_wait_ms >= 0
     assert isinstance(search_ms, int) and search_ms >= 0
 
@@ -121,13 +124,14 @@ async def test_engine_with_timing_timeout():
 
     slow = _make_mock_engine_with_reason("slow_eng", [], delay=5.0)
 
-    results, rate_wait_ms, search_ms, status, drop_reason = await _engine_with_timing(
+    results, rate_wait_ms, search_ms, status, drop_reason, diagnosis = await _engine_with_timing(
         slow, "query", "en", 10, timeout=0.05
     )
 
     assert results == []
     assert status == "TIMEOUT_WATCHDOG"
     assert drop_reason is not None and "watchdog" in drop_reason
+    assert diagnosis is None
     assert isinstance(rate_wait_ms, int)
     assert isinstance(search_ms, int)
 
@@ -139,13 +143,14 @@ async def test_engine_with_timing_empty():
 
     empty = _make_mock_engine_with_reason("empty_eng", [])
 
-    results, _, _, status, drop_reason = await _engine_with_timing(
+    results, _, _, status, drop_reason, diagnosis = await _engine_with_timing(
         empty, "query", "en", 10, timeout=3.6
     )
 
     assert results == []
     assert status == "EMPTY"
     assert drop_reason is None
+    assert diagnosis is None
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +209,38 @@ async def test_search_web_workflow_writes_log(tmp_path, monkeypatch):
     assert rec["bottleneck_engine"] in ("google", "duckduckgo")
     assert "search_key" in rec
     assert rec["engines_excluded"] == {}
+
+
+@pytest.mark.asyncio
+async def test_search_web_workflow_propagates_diagnosis_into_both_records(tmp_path, monkeypatch):
+    """A browser-engine-shaped mock returning (results, empty_reason, diagnosis) has that diagnosis
+    dict land unchanged in engines[name]['diagnosis'] for BOTH the engine_run record (written by
+    _query_engines_concurrent) and the workflow_summary record (written by _build_query_log_entry) —
+    the milestone this test guards: an EMPTY_BLOCK verdict must carry the observation it was derived
+    from, not just the bare status string. The OK-status engine's diagnosis stays None."""
+    from src.search import search_web
+    log_file = tmp_path / "query_log.jsonl"
+    monkeypatch.setenv("WEBSEARCH_QUERY_LOG_PATH", str(log_file))
+
+    diag = {"marker": "captcha", "title": "Attention Required", "url": "https://example.com/blocked", "ready_state": "complete"}
+    result_a = _fake_result("https://a.com", engine="google")
+    mock_engines = {
+        "google": _make_mock_engine_with_reason("google", [result_a]),
+        "duckduckgo": _make_mock_engine_with_reason("duckduckgo", [], empty_reason="EMPTY_BLOCK", diagnosis=diag),
+    }
+
+    with (
+        patch.object(search_web, "ENGINES", mock_engines),
+        patch.object(search_web, "_DEFAULT_ENGINES", {"google", "duckduckgo"}),
+        patch.object(search_web, "cache_write"),
+    ):
+        await search_web.search_web_workflow("test query", language="en")
+
+    records = [json.loads(l) for l in log_file.read_text().splitlines()]
+    for rec in records:
+        assert rec["engines"]["google"]["diagnosis"] is None
+        assert rec["engines"]["duckduckgo"]["diagnosis"] == diag
+        assert rec["engines"]["duckduckgo"]["status"] == "EMPTY_BLOCK"
 
 
 # ---------------------------------------------------------------------------

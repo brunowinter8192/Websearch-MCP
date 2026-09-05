@@ -207,7 +207,7 @@ async def _run_engine_fanout(
         ]
         timed = await asyncio.gather(*tasks)
         engine_details: dict[str, dict] = {}
-        for (name, eng), (eng_results, rate_wait_ms, search_ms, status, drop_reason) in zip(names_and_engines, timed):
+        for (name, eng), (eng_results, rate_wait_ms, search_ms, status, drop_reason, diagnosis) in zip(names_and_engines, timed):
             raw_results.extend(eng_results)
             key = name.replace(' ', '_')
             engine_ms[f"engine_{key}_ms"] = search_ms
@@ -218,6 +218,7 @@ async def _run_engine_fanout(
                 "status": status,
                 "result_count": len(eng_results),
                 "drop_reason": drop_reason,
+                "diagnosis": diagnosis,
             }
     else:
         raw_results, engine_stats = await _query_engines_concurrent(
@@ -244,7 +245,7 @@ async def _query_engines_concurrent(
     timed = await asyncio.gather(*tasks)
     combined: list = []
     engine_stats: dict[str, dict] = {}
-    for engine, (eng_results, rate_wait_ms, search_ms, status, drop_reason) in zip(selected.values(), timed):
+    for engine, (eng_results, rate_wait_ms, search_ms, status, drop_reason, diagnosis) in zip(selected.values(), timed):
         combined.extend(eng_results)
         engine_stats[engine.name] = {
             "rate_wait_ms": rate_wait_ms,
@@ -252,6 +253,7 @@ async def _query_engines_concurrent(
             "status": status,
             "result_count": len(eng_results),
             "drop_reason": drop_reason,
+            "diagnosis": diagnosis,
         }
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
     log_query({
@@ -286,7 +288,9 @@ def _classify_engine_exception(exc: Exception, timeout: float | None, search_ms:
     return S.ERROR_OTHER, str(exc)
 
 
-# Wrap single engine search; return (results, rate_wait_ms, search_ms, status, drop_reason)
+# Wrap single engine search; return (results, rate_wait_ms, search_ms, status, drop_reason, diagnosis) —
+# diagnosis is the raw-facts snapshot behind a non-None empty_reason (browser engines), or None
+# (success, or engines with no diagnosis mechanism: openalex, scholar)
 async def _engine_with_timing(
     engine,
     query: str,
@@ -294,13 +298,13 @@ async def _engine_with_timing(
     max_results: int,
     timeout: float | None = None,
     query_modifier_map: dict[str, Callable[[str], str]] | None = None,
-) -> tuple[list, int, int, str, str | None]:
+) -> tuple[list, int, int, str, str | None, dict | None]:
     t_before_acquire = time.perf_counter()
     try:
         await asyncio.wait_for(get_limiter(engine.name).acquire(), timeout=RATE_WAIT_TIMEOUT)
     except asyncio.TimeoutError:
         rate_wait_ms = round((time.perf_counter() - t_before_acquire) * 1000)
-        return [], rate_wait_ms, 0, S.RATE_SKIP, f"rate_wait > {RATE_WAIT_TIMEOUT}s"
+        return [], rate_wait_ms, 0, S.RATE_SKIP, f"rate_wait > {RATE_WAIT_TIMEOUT}s", None
     rate_wait_ms = round((time.perf_counter() - t_before_acquire) * 1000)
     effective_query = query
     if query_modifier_map and engine.name in query_modifier_map:
@@ -310,17 +314,17 @@ async def _engine_with_timing(
     t0 = time.perf_counter()
     try:
         if timeout is not None:
-            results, empty_reason = await asyncio.wait_for(engine.search_with_reason(effective_query, language, effective_max), timeout=timeout)
+            results, empty_reason, diagnosis = await asyncio.wait_for(engine.search_with_reason(effective_query, language, effective_max), timeout=timeout)
         else:
-            results, empty_reason = await engine.search_with_reason(effective_query, language, effective_max)
+            results, empty_reason, diagnosis = await engine.search_with_reason(effective_query, language, effective_max)
         search_ms = round((time.perf_counter() - t0) * 1000)
         if results:
-            return results, rate_wait_ms, search_ms, S.OK, None
-        return [], rate_wait_ms, search_ms, empty_reason or S.EMPTY, None
+            return results, rate_wait_ms, search_ms, S.OK, None, diagnosis
+        return [], rate_wait_ms, search_ms, empty_reason or S.EMPTY, None, diagnosis
     except Exception as e:
         search_ms = round((time.perf_counter() - t0) * 1000)
         status, drop_reason = _classify_engine_exception(e, timeout, search_ms)
-        return [], rate_wait_ms, search_ms, status, drop_reason
+        return [], rate_wait_ms, search_ms, status, drop_reason, None
 
 
 # Format per-engine result counts as a breakdown table with drilldown hint

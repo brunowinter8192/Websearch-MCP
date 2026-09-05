@@ -61,6 +61,14 @@ if (btn) { btn.click(); return true; }
 return false;
 """
 
+_JS_DIAGNOSE = """
+return JSON.stringify({
+    title: document.title,
+    url: window.location.href,
+    ready_state: document.readyState
+});
+"""
+
 _limiters["google"] = RateLimiter(max_requests=4, window_seconds=60)
 
 
@@ -71,7 +79,7 @@ class GoogleEngine(BaseEngine):
     name = "google"
 
     # Full search logic with empty-reason diagnosis; exceptions propagate to _engine_with_timing
-    async def search_with_reason(self, query: str, language: str = "en", max_results: int = 10) -> tuple[list[SearchResult], str | None]:
+    async def search_with_reason(self, query: str, language: str = "en", max_results: int = 10) -> tuple[list[SearchResult], str | None, dict | None]:
         logger.info("Google search: %s", query)
         tab = await new_tab()
         await _inject_socs_cookie(tab)
@@ -85,20 +93,25 @@ class GoogleEngine(BaseEngine):
                 current = await tab.current_url
             if CAPTCHA_PATH in current:
                 logger.warning("Google CAPTCHA detected for: %s", query)
-                return [], S.EMPTY_BLOCK
+                diag = await _diagnose(tab)
+                return [], S.EMPTY_BLOCK, diag
             if not await _wait_for_results(tab):
-                reason = await _diagnose_empty(tab)
+                diag = await _diagnose(tab)
+                reason = _classify_diagnosis(diag["url"], diag["ready_state"])
                 logger.debug("Google empty (%s) for: %s", reason, query)
-                return [], reason
+                return [], reason, diag
             results = await _parse_results(tab, max_results)
-            return results, (None if results else S.EMPTY_NO_RESULTS)
+            if results:
+                return results, None, None
+            diag = await _diagnose(tab)
+            return results, S.EMPTY_NO_RESULTS, diag
         finally:
             await kill_tab(tab)
 
     # Legacy thin wrapper — delegates to search_with_reason; swallows exceptions for dev-script compat
     async def search(self, query: str, language: str = "en", max_results: int = 10) -> list[SearchResult]:
         try:
-            results, _ = await self.search_with_reason(query, language, max_results)
+            results, _, _ = await self.search_with_reason(query, language, max_results)
             return results
         except Exception as e:
             logger.error("Google search failed: %s", e)
@@ -193,14 +206,27 @@ async def _parse_results(tab, max_results: int) -> list[SearchResult]:
     return results
 
 
-# Diagnose why Google returned empty after _wait_for_results failed (priority: BLOCK -> CONSENT -> CONCURRENT_RACE -> NO_CONTAINER)
-async def _diagnose_empty(tab) -> str:
-    url = _extract_value(await tab.execute_script("return window.location.href")) or ""
+# Classify a diagnosis snapshot into an EMPTY sub-status (priority: BLOCK -> CONSENT -> CONCURRENT_RACE -> NO_CONTAINER)
+def _classify_diagnosis(url: str, ready_state: str) -> str:
     if "/sorry/" in url:
         return S.EMPTY_BLOCK
     if CONSENT_DOMAIN in url:
         return S.EMPTY_CONSENT
-    state = _extract_value(await tab.execute_script("return document.readyState")) or ""
-    if state != "complete":
+    if ready_state != "complete":
         return S.EMPTY_CONCURRENT_RACE
     return S.EMPTY_NO_CONTAINER
+
+
+# Snapshot the page facts behind an empty-reason verdict — an OBSERVATION, not a verdict; marker is
+# always None here (Google's block/consent signal is the URL path, not a text marker)
+async def _diagnose(tab) -> dict:
+    raw = await tab.execute_script(_JS_DIAGNOSE)
+    val = _extract_value(raw)
+    diag = {"title": "", "url": "", "ready_state": ""}
+    if val:
+        try:
+            diag.update(json.loads(val))
+        except (json.JSONDecodeError, TypeError):
+            pass
+    diag["marker"] = None
+    return diag
