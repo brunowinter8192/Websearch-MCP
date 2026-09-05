@@ -9,7 +9,6 @@ from src.search.document_status import attach_document_status, start_document_st
 from src.search.engines.base import BaseEngine
 from src.search.rate_limiter import RateLimiter, _limiters
 from src.search.result import SearchResult
-from src.search import status as S
 
 logger = logging.getLogger(__name__)
 
@@ -70,17 +69,19 @@ class YandexEngine(BaseEngine):
             if _is_block_url(current_url):
                 logger.warning("Yandex CAPTCHA redirect detected for: %s", query)
                 diag = await _diagnose(tab)
-                return [], S.EMPTY_BLOCK, attach_document_status(diag, status_chain)
+                diag["containers_found"] = None
+                return [], None, attach_document_status(diag, status_chain)
             if not await _wait_for_results(tab):
                 diag = await _diagnose(tab)
-                reason = _classify_diagnosis(diag["marker"], diag["url"], diag["ready_state"])
-                logger.debug("Yandex empty (%s) for: %s", reason, query)
-                return [], reason, attach_document_status(diag, status_chain)
+                diag["containers_found"] = False
+                logger.debug("Yandex empty for: %s", query)
+                return [], None, attach_document_status(diag, status_chain)
             results = await _parse_results(tab, max_results)
             if results:
                 return results, None, None
             diag = await _diagnose(tab)
-            return results, S.EMPTY_NO_RESULTS, attach_document_status(diag, status_chain)
+            diag["containers_found"] = True
+            return results, None, attach_document_status(diag, status_chain)
         finally:
             await kill_tab(tab)
 
@@ -156,16 +157,7 @@ async def _parse_results(tab, max_results: int) -> list[SearchResult]:
     return _build_results(items, max_results)
 
 
-# Classify a diagnosis snapshot into an EMPTY sub-status (priority: block marker -> CONCURRENT_RACE -> NO_CONTAINER)
-def _classify_diagnosis(marker: str | None, url: str, ready_state: str) -> str:
-    if marker or _is_block_url(url):
-        return S.EMPTY_BLOCK
-    if ready_state != "complete":
-        return S.EMPTY_CONCURRENT_RACE
-    return S.EMPTY_NO_CONTAINER
-
-
-# Snapshot the page facts behind an empty-reason verdict — an OBSERVATION, not a verdict; tab is still open
+# Snapshot the page facts behind an empty result — an OBSERVATION, never a verdict; tab is still open
 async def _diagnose(tab) -> dict:
     raw = await tab.execute_script(_JS_DIAGNOSE)
     val = _extract_value(raw)

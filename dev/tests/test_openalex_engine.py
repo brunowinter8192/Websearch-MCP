@@ -7,7 +7,6 @@ Also covers the pdf_url chain through build_engine_pools (merge.py) and format_e
 """
 import pytest
 
-from src.search import status as S
 from src.search.cache import format_engine_pool
 from src.search.engines.openalex import OpenAlexEngine, _extract_pdf_url, _parse_results
 from src.search.merge import build_engine_pools
@@ -113,12 +112,15 @@ def test_parse_results_pdf_url_none_when_absent():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.asyncio
-async def test_429_surfaces_as_empty_block_not_empty(monkeypatch):
+async def test_429_carries_http_status_but_reason_stays_none(monkeypatch):
+    """429 used to surface a guessed EMPTY_BLOCK verdict; that verdict carried no information the
+    observed HTTP status (already in diagnosis) did not already carry, so it is gone — reason is
+    now None like every other empty branch, and the real fact (429) lives in diagnosis alone."""
     _install_fake_client(monkeypatch, _FakeResponse(429))
     engine = OpenAlexEngine()
     results, reason, diagnosis = await engine.search_with_reason("noise sleep", max_results=10)
     assert results == []
-    assert reason == S.EMPTY_BLOCK
+    assert reason is None
     assert diagnosis == {"http_status": 429}
 
 

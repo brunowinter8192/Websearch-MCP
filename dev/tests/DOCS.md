@@ -22,33 +22,53 @@ production log paths.
 
 ## Modules
 
-### test_bing_engine.py (91 LOC)
+### test_bing_engine.py (77 LOC)
 **Purpose:** `src/search/engines/bing.py` — `_clean_url` (ck/a redirect unwrap, real captured
-sample), `_build_results`, `_classify_diagnosis`.
+sample), `_build_results`. `_classify_diagnosis` coverage removed with the function itself (the
+guessed-verdict-removal milestone) — its marker/ready_state inputs are now plain diagnosis fields.
 **Calls out:** none (pure function tests, one `monkeypatch` on `base64.urlsafe_b64decode`).
 
-### test_brave_engine.py (61 LOC)
-**Purpose:** `src/search/engines/brave.py` — `_build_results`, `_classify_diagnosis` (PoW/CAPTCHA).
+### test_brave_engine.py (42 LOC)
+**Purpose:** `src/search/engines/brave.py` — `_build_results`. `_classify_diagnosis` (PoW/CAPTCHA)
+coverage removed with the function itself (the guessed-verdict-removal milestone).
 
-### test_openalex_engine.py (219 LOC)
+### test_openalex_engine.py (248 LOC)
 **Purpose:** `src/search/engines/openalex.py` (2026 API migration) — `_extract_pdf_url`/
 `_parse_results` populate `SearchResult.pdf_url` from `best_oa_location.pdf_url` (null when the
-location or the pdf_url itself is null); `search_with_reason` surfaces a 429 as `S.EMPTY_BLOCK`
-(not a silent empty) while 403 stays a plain empty with no reason; `api_key` query param present
-only when `OPENALEX_API_KEY` is set, `mailto` never sent; `per_page` clamped to the vendor's
-100-max. Also covers the pdf_url chain end to end: `build_engine_pools` (merge.py) carries the
-winner's `pdf_url`, `format_engine_pool` (cache.py) renders a `PDF:` line directly after `URL:`
+location or the pdf_url itself is null); `search_with_reason`'s 429/403/zero-results-at-200
+branches all carry `diagnosis={"http_status": <code>}` while `reason` stays `None` on every one of
+them (the guessed-verdict-removal milestone deleted the 429→`EMPTY_BLOCK` verdict, since it carried
+no information the fact didn't already); non-empty results are diagnosis-free; `api_key` query
+param present only when `OPENALEX_API_KEY` is set, `mailto` never sent; `per_page` clamped to the
+vendor's 100-max. Also covers the pdf_url chain end to end: `build_engine_pools` (merge.py) carries
+the winner's `pdf_url`, `format_engine_pool` (cache.py) renders a `PDF:` line directly after `URL:`
 when present and omits it when absent or when the cached dict predates the key (`.get()` compat).
 **Calls out:** none (pure function tests, `httpx.AsyncClient` monkeypatched with a fake client
 that records request params, the pattern established in `test_seed_feeders.py`).
 
-### test_startpage_engine.py (61 LOC)
-**Purpose:** `src/search/engines/startpage.py` — `_build_results`, `_classify_diagnosis` (iframe
-challenge).
+### test_startpage_engine.py (42 LOC)
+**Purpose:** `src/search/engines/startpage.py` — `_build_results`. `_classify_diagnosis` (iframe
+challenge) coverage removed with the function itself (the guessed-verdict-removal milestone).
 
-### test_yandex_engine.py (106 LOC)
-**Purpose:** `src/search/engines/yandex.py` — `_is_self_referential`, `_is_block_url`,
-`_build_results` (self-link filtering), `_classify_diagnosis`.
+### test_yandex_engine.py (89 LOC)
+**Purpose:** `src/search/engines/yandex.py` — `_is_self_referential`, `_is_block_url` (kept: also
+the early short-circuit optimization inside `search_with_reason`, independent of the removed
+verdict), `_build_results` (self-link filtering). `_classify_diagnosis` coverage removed with the
+function itself (the guessed-verdict-removal milestone).
+
+### test_mojeek_engine.py (21 LOC)
+**Purpose:** `src/search/engines/mojeek.py` — `_match_marker` (case-insensitive block-keyword scan
+against the page title; populates the diagnosis snapshot's `marker` field directly). Originally
+also covered `_classify_diagnosis`, removed with the function itself (the guessed-verdict-removal
+milestone).
+
+### test_document_status.py (92 LOC)
+**Purpose:** `src/search/document_status.py` — `start_document_status_capture` (a fake tab exposing
+`_target_id`/`enable_network_events`/`on` proves the `Network.responseReceived` filter: main-frame
+document responses collected in order, non-document/other-frame events ignored, setup failure
+degrades to an empty list rather than raising) and `attach_document_status` (last-entry-wins
+`http_status`, `None` — never a fabricated default — on an empty chain, does not mutate the input
+diagnosis dict).
 
 ### test_browser_lock.py (91 LOC)
 **Purpose:** `src/search/browser_lock.py` — real-flock behavior against `tmp_path` (no mocking):
@@ -80,7 +100,7 @@ path when `close_browser()` itself raises (Chrome already dead mid-sweep).
 direct coverage; the scrape-lane tests only mock it as a no-op). Engine field present and correct
 per lane (chromium/camoufox), existing fields unaffected, empty-content still returns `None`.
 
-### test_query_logger.py (319 LOC)
+### test_query_logger.py (358 LOC)
 **Purpose:** `src/search/query_logger.py` (`log_query` fail-soft JSONL write) + per-engine timing
 capture in `src/search/search_web.py` (`_engine_with_timing`, `search_web_workflow` log shape,
 `search_key` matches real `cache.cache_key`) + `cli.py:_log_drilldown` via an isolated subprocess.

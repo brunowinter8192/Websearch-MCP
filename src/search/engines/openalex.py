@@ -8,7 +8,6 @@ import httpx
 from src.search.engines.base import BaseEngine
 from src.search.rate_limiter import RateLimiter, _limiters
 from src.search.result import SearchResult
-from src.search import status as S
 
 logger = logging.getLogger(__name__)
 
@@ -24,17 +23,19 @@ _limiters["openalex"] = RateLimiter(max_requests=4, window_seconds=60)
 class OpenAlexEngine(BaseEngine):
     name = "openalex"
 
-    # Full HTTP search logic; returns (results, reason, diagnosis) — 429 (daily/per-second budget)
-    # surfaces as EMPTY_BLOCK instead of a silent empty result; 403 (forbidden resource) stays a
-    # plain empty (reason=None, unchanged). diagnosis carries the one fact this engine already has
-    # in hand — the real HTTP status — on every branch that returns without results; None whenever
-    # results are non-empty (no diagnosis mechanism beyond that one fact: HTTP API, no browser DOM)
+    # Full HTTP search logic; returns (results, reason, diagnosis). reason is always None — 429
+    # (daily/per-second budget) and 403 (forbidden resource) both used to surface a guessed verdict
+    # here (429 as EMPTY_BLOCK); that verdict carried no information the observed HTTP status did
+    # not already carry, so it is gone, not renamed. diagnosis carries the one fact this engine
+    # already has in hand — the real HTTP status — on every branch that returns without results;
+    # None whenever results are non-empty (no diagnosis mechanism beyond that one fact: HTTP API,
+    # no browser DOM)
     async def search_with_reason(self, query: str, language: str = "en", max_results: int = 10) -> tuple[list[SearchResult], str | None, dict | None]:
         logger.info("OpenAlex search: %s", query)
         status_code, works = await _fetch_results(query, max_results)
         if status_code == 429:
             logger.warning("OpenAlex rate limited: 429")
-            return [], S.EMPTY_BLOCK, {"http_status": status_code}
+            return [], None, {"http_status": status_code}
         if works is None:
             return [], None, {"http_status": status_code}
         results = _parse_results(works)

@@ -1,12 +1,14 @@
-"""Tests for src/search/engines/bing.py pure result-parsing / URL-unwrap / diagnosis logic.
+"""Tests for src/search/engines/bing.py pure result-parsing / URL-unwrap logic.
 
-No network, no browser — covers the three seams factored out of the DOM-driven engine:
+No network, no browser — covers the two seams factored out of the DOM-driven engine:
 - _clean_url: bing.com/ck/a?...&u=<prefixed-base64> tracking redirect -> real destination URL
 - _build_results: JSON items (as if already parsed from the page) -> SearchResult list
-- _classify_diagnosis: block / race / no-container classification
+
+_classify_diagnosis was removed (the guessed-verdict-removal milestone): its output was one of
+the EMPTY_* sub-statuses that no longer exist — the marker/ready_state facts it classified are
+still available directly in the diagnosis snapshot.
 """
-from src.search import status as S
-from src.search.engines.bing import _build_results, _classify_diagnosis, _clean_url
+from src.search.engines.bing import _build_results, _clean_url
 
 
 # ---------------------------------------------------------------------------
@@ -73,19 +75,3 @@ def test_build_results_respects_max_results_cap():
     results = _build_results(items, max_results=5)
     assert len(results) == 5
     assert [r.position for r in results] == [1, 2, 3, 4, 5]
-
-
-# ---------------------------------------------------------------------------
-# _classify_diagnosis
-# ---------------------------------------------------------------------------
-
-def test_classify_diagnosis_marker_is_block():
-    assert _classify_diagnosis("captcha", "complete") == S.EMPTY_BLOCK
-
-
-def test_classify_diagnosis_page_still_loading_is_concurrent_race():
-    assert _classify_diagnosis(None, "loading") == S.EMPTY_CONCURRENT_RACE
-
-
-def test_classify_diagnosis_clean_page_no_results_is_no_container():
-    assert _classify_diagnosis(None, "complete") == S.EMPTY_NO_CONTAINER

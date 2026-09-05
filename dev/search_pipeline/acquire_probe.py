@@ -145,8 +145,12 @@ async def run_acquire_probe(max_queries: int | None, smoke: bool) -> None:
             google_status = det.get("google", {}).get("status", "—")
             all_statuses = {k: v.get("status", "—") for k, v in det.items()}
             all_rate_skip = bool(all_statuses) and all(s == "RATE_SKIP" for s in all_statuses.values())
+            # "captcha" (keyed on the removed EMPTY_BLOCK verdict) renamed to "empty" — the
+            # guessed-verdict-removal milestone collapsed EMPTY_BLOCK into bare "EMPTY", and
+            # engine_details (status+ms only) carries no diagnosis to reconstruct which kind of
+            # empty this was; an honest narrower label beats a familiar wrong one.
             category = (
-                "captcha" if google_status == "EMPTY_BLOCK"
+                "empty" if google_status == "EMPTY"
                 else "zero_cascade" if all_rate_skip
                 else "normal"
             )
@@ -164,7 +168,7 @@ async def run_acquire_probe(max_queries: int | None, smoke: bool) -> None:
             }
             query_records.append(record)
 
-            flag = {"captcha": "⚡", "zero_cascade": "🚫", "normal": ""}[category]
+            flag = {"empty": "⚡", "zero_cascade": "🚫", "normal": ""}[category]
             print(
                 f"[{qi:2}/{len(queries)}] {query[:48]!r:50} "
                 f"cat={category:<12} disc={disc:<8} ev={len(new_events)} {flag}",
@@ -313,7 +317,7 @@ def _canary_stats(records: list[dict]) -> dict[str, dict]:
         return {"n": len(data), "p50": round(_pct(data, 50), 1),
                 "p99": round(_pct(data, 99), 1), "max": round(max(data), 1)}
 
-    return {k: _s(by_cat.get(k, [])) for k in ("normal", "captcha", "zero_cascade")}
+    return {k: _s(by_cat.get(k, [])) for k in ("normal", "empty", "zero_cascade")}
 
 
 def _agg_ratios(records: list[dict]) -> tuple:
@@ -348,14 +352,14 @@ def _write_report(records: list[dict], cascade_ok: bool, zero_n: int) -> Path:
     path = REPORT_DIR / f"acquire_probe_{ts_str}.md"
     od = _overall_disc(records)
     cstats = _canary_stats(records)
-    captcha_n = sum(1 for r in records if r["category"] == "captcha")
+    empty_n = sum(1 for r in records if r["category"] == "empty")
 
     lines: list[str] = [
         f"# Acquire Probe Report — {ts_str}",
         "",
         f"**Overall discriminator:** {od}  ",
         f"**Cascade reproduced:** {cascade_ok} ({zero_n}/{len(records)} zero_cascade)  ",
-        f"**CAPTCHA queries:** {captcha_n}  ",
+        f"**Empty queries:** {empty_n}  ",
         f"**Total acquire events:** {len(_acq_events)}  ",
         "",
         "---",
@@ -408,7 +412,7 @@ def _write_report(records: list[dict], cascade_ok: bool, zero_n: int) -> Path:
         "| Category | n_q | avg_ent | avg_lg | avg_ok | avg_err | p99_dur_ms |",
         "|----------|-----|---------|--------|--------|---------|------------|",
     ]
-    for cat in ("normal", "captcha", "zero_cascade"):
+    for cat in ("normal", "empty", "zero_cascade"):
         cat_rec = [r for r in records if r["category"] == cat]
         if not cat_rec:
             lines.append(f"| {cat} | 0 | — | — | — | — | — |")
@@ -423,7 +427,7 @@ def _write_report(records: list[dict], cascade_ok: bool, zero_n: int) -> Path:
         "| Category | n | p50 ms | p99 ms | max ms |",
         "|----------|---|--------|--------|--------|",
     ]
-    for cat in ("normal", "captcha", "zero_cascade"):
+    for cat in ("normal", "empty", "zero_cascade"):
         s = cstats[cat]
         lines.append(f"| {cat} | {s['n']} | {s['p50']} | {s['p99']} | {s['max']} |")
 
@@ -460,7 +464,7 @@ def _write_findings(records: list[dict], report_path: Path, cascade_ok: bool, ze
         ent = lg = ok = err = dp99 = "—"
 
     normal_n = sum(1 for r in records if r["category"] == "normal")
-    captcha_n = sum(1 for r in records if r["category"] == "captcha")
+    empty_n = sum(1 for r in records if r["category"] == "empty")
 
     disc_text = {
         "B": (
@@ -532,7 +536,7 @@ def _write_findings(records: list[dict], report_path: Path, cascade_ok: bool, ze
         "| Category | n_q | avg_ent | avg_lg | avg_ok | avg_err | dur_p99_ms | canary_p99_ms |",
         "|----------|-----|---------|--------|--------|---------|------------|---------------|",
         f"| normal | {normal_n} | — | — | — | — | — | {s_norm['p99']} |",
-        f"| captcha | {captcha_n} | — | — | — | — | — | — |",
+        f"| empty | {empty_n} | — | — | — | — | — | — |",
         f"| zero_cascade | {zero_n} | {ent} | {lg} | {ok} | {err} | {dp99} | {s_zc['p99']} |",
         "",
         "## Verdict",

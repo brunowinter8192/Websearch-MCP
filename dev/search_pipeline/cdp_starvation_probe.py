@@ -105,8 +105,12 @@ async def run_cdp_probe(max_queries: int | None) -> None:
             cdp_in_query = sum(1 for ts in _cdp_ts if t_start <= ts < t_end)
             dur_s = max(t_end - t_start, 0.001)
 
-            if google_status == "EMPTY_BLOCK":
-                category = "captcha"
+            # "captcha" (keyed on the removed EMPTY_BLOCK verdict) renamed to "empty" — the
+            # guessed-verdict-removal milestone collapsed EMPTY_BLOCK into bare "EMPTY", and
+            # engine_details (status+ms only) carries no diagnosis to reconstruct which kind of
+            # empty this was; an honest narrower label beats a familiar wrong one.
+            if google_status == "EMPTY":
+                category = "empty"
             elif all_rate_skip:
                 category = "zero_cascade"
             else:
@@ -128,7 +132,7 @@ async def run_cdp_probe(max_queries: int | None) -> None:
             }
             query_records.append(record)
 
-            flag = "⚡CAPTCHA" if category == "captcha" else ("🚫ZERO" if category == "zero_cascade" else "")
+            flag = "⚡EMPTY" if category == "empty" else ("🚫ZERO" if category == "zero_cascade" else "")
             print(
                 f"[{qi}/{len(queries)}] {query!r} -> "
                 f"google={google_status} cdp={cdp_in_query}({record['cdp_rate']:.0f}/s) "
@@ -235,7 +239,7 @@ def _compute_stats(records: list[dict]) -> dict[str, dict]:
     return {
         "overall": _stats(all_lat),
         "normal": _stats(by_cat.get("normal", [])),
-        "captcha": _stats(by_cat.get("captcha", [])),
+        "empty": _stats(by_cat.get("empty", [])),
         "zero_cascade": _stats(by_cat.get("zero_cascade", [])),
         "cold_start": _stats(cold_lat),
     }
@@ -243,7 +247,7 @@ def _compute_stats(records: list[dict]) -> dict[str, dict]:
 
 # Derive verdict string from stats
 def _derive_verdict(stats: dict) -> str:
-    s_cap = stats["captcha"]
+    s_cap = stats["empty"]
     s_zc = stats["zero_cascade"]
     s_norm = stats["normal"]
     norm_p99 = max(s_norm["p99"], 1.0)
@@ -292,7 +296,7 @@ def _write_findings(records: list[dict], report_path: Path) -> Path:
     path = FINDINGS_DIR / "01_probe.md"
     stats = _compute_stats(records)
     verdict = _derive_verdict(stats)
-    s_cap = stats["captcha"]
+    s_cap = stats["empty"]
     s_zc = stats["zero_cascade"]
     s_norm = stats["normal"]
     report_rel = report_path.relative_to(Path(__file__).parent.parent.parent)
@@ -329,13 +333,15 @@ def _write_findings(records: list[dict], report_path: Path) -> Path:
         "  (`connection_handler.py:244`): timestamps each CDP message received.",
         "",
         "Query categories used for latency segmentation:",
-        "- `captcha`: google_status == EMPTY_BLOCK (Chrome actively navigating CAPTCHA page)",
+        "- `empty`: google_status == EMPTY (was EMPTY_BLOCK — removed along with the query log's",
+        "  guessed-verdict sub-statuses; `empty` now also covers what used to be the other EMPTY_*",
+        "  causes, since engine_details carries no diagnosis to distinguish them)",
         "- `zero_cascade`: all 9 engines RATE_SKIP simultaneously",
         "- `normal`: all other queries",
         "",
         "## Key Numbers",
         "",
-        "| Metric | normal | captcha | zero_cascade |",
+        "| Metric | normal | empty | zero_cascade |",
         "|--------|--------|---------|--------------|",
         f"| samples n | {s_norm['n']} | {s_cap['n']} | {s_zc['n']} |",
         f"| scheduling latency p50 ms | {s_norm['p50']} | {s_cap['p50']} | {s_zc['p50']} |",
@@ -364,7 +370,7 @@ def _write_findings(records: list[dict], report_path: Path) -> Path:
     ]
 
     if verdict == "CONFIRMED":
-        worst_cat = "captcha" if s_cap["p99"] >= s_zc["p99"] else "zero_cascade"
+        worst_cat = "empty" if s_cap["p99"] >= s_zc["p99"] else "zero_cascade"
         worst = stats[worst_cat]
         lines += [
             f"Scheduling latency p99 during `{worst_cat}` windows: {worst['p99']}ms vs",
@@ -374,13 +380,13 @@ def _write_findings(records: list[dict], report_path: Path) -> Path:
         ]
     elif verdict == "PARTIALLY_CONFIRMED":
         lines += [
-            f"Latency elevated: captcha p99={s_cap['p99']}ms, zero_cascade p99={s_zc['p99']}ms",
+            f"Latency elevated: empty p99={s_cap['p99']}ms, zero_cascade p99={s_zc['p99']}ms",
             f"vs normal {s_norm['p99']}ms. CDP event loop mechanism consistent but starvation",
             "weaker than predicted — may require heavier CAPTCHA page to trigger full cascade.",
         ]
     elif verdict == "REFUTED":
         lines += [
-            f"No significant elevation: captcha p99={s_cap['p99']}ms,",
+            f"No significant elevation: empty p99={s_cap['p99']}ms,",
             f"zero_cascade p99={s_zc['p99']}ms vs normal p99={s_norm['p99']}ms.",
             "CDP starvation hypothesis not supported. Alternative root cause required.",
         ]
@@ -395,7 +401,7 @@ def _write_findings(records: list[dict], report_path: Path) -> Path:
     ]
     if verdict in ("CONFIRMED", "PARTIALLY_CONFIRMED"):
         lines += [
-            "- **Mitigation:** after detecting CAPTCHA (google EMPTY_BLOCK in `search_batch_workflow`),",
+            "- **Mitigation:** after detecting an empty google result (google EMPTY, was EMPTY_BLOCK, in `search_batch_workflow`),",
             "  yield event loop with repeated `await asyncio.sleep(0)` or a short `asyncio.sleep(0.5)`",
             "  before next query to drain the CDP backlog.",
             "- **Structural:** custom `ConnectionHandler` subclass throttling `_receive_events` with",
@@ -415,14 +421,14 @@ def _write_findings(records: list[dict], report_path: Path) -> Path:
 # Report section renderers
 
 def _r_header(records: list[dict], ts_str: str, run_dur_s: float, verdict: str) -> list[str]:
-    captcha_n = sum(1 for r in records if r["category"] == "captcha")
+    empty_n = sum(1 for r in records if r["category"] == "empty")
     zero_n = sum(1 for r in records if r["category"] == "zero_cascade")
     return [
         f"# CDP Starvation Probe Report — {ts_str}",
         "",
         f"**Verdict:** {verdict}  ",
         f"**Queries:** {len(records)}  ",
-        f"**CAPTCHA queries:** {captcha_n}  ",
+        f"**Empty queries:** {empty_n}  ",
         f"**Zero-cascade queries:** {zero_n}  ",
         f"**Total CDP messages:** {len(_cdp_ts)}  ",
         f"**Total canary samples:** {len(_canary_samples)}  ",
@@ -463,7 +469,7 @@ def _r_latency_stats(stats: dict) -> list[str]:
     ]
     for label, key in [
         ("Normal queries", "normal"),
-        ("CAPTCHA queries (google=EMPTY_BLOCK)", "captcha"),
+        ("Empty queries (google=EMPTY, was EMPTY_BLOCK)", "empty"),
         ("Zero-cascade (all RATE_SKIP)", "zero_cascade"),
         ("Overall (non-cold-start)", "overall"),
         ("Cold-start (first 5s)", "cold_start"),
@@ -547,7 +553,7 @@ def _r_slow_callbacks() -> list[str]:
 
 
 def _r_verdict_section(stats: dict, verdict: str) -> list[str]:
-    s_cap = stats["captcha"]
+    s_cap = stats["empty"]
     s_zc = stats["zero_cascade"]
     s_norm = stats["normal"]
     return [
@@ -556,7 +562,7 @@ def _r_verdict_section(stats: dict, verdict: str) -> list[str]:
         "",
         f"**{verdict}**",
         "",
-        "| Metric | normal | captcha | zero_cascade |",
+        "| Metric | normal | empty | zero_cascade |",
         "|--------|--------|---------|--------------|",
         f"| p99 ms | {s_norm['p99']} | {s_cap['p99']} | {s_zc['p99']} |",
         f"| max ms | {s_norm['max']} | {s_cap['max']} | {s_zc['max']} |",

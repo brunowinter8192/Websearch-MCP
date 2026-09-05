@@ -9,7 +9,6 @@ from src.search.document_status import attach_document_status, start_document_st
 from src.search.engines.base import BaseEngine
 from src.search.rate_limiter import RateLimiter, _limiters
 from src.search.result import SearchResult
-from src.search import status as S
 
 logger = logging.getLogger(__name__)
 
@@ -62,14 +61,15 @@ class MojeekEngine(BaseEngine):
             await tab.go_to(search_url, timeout=3.0)
             if not await _wait_for_results(tab):
                 diag = await _diagnose(tab)
-                reason = _classify_diagnosis(diag["marker"], diag["ready_state"])
-                logger.debug("Mojeek empty (%s) for: %s", reason, query)
-                return [], reason, attach_document_status(diag, status_chain)
+                diag["containers_found"] = False
+                logger.debug("Mojeek empty for: %s", query)
+                return [], None, attach_document_status(diag, status_chain)
             results = await _parse_results(tab, max_results)
             if results:
                 return results, None, None
             diag = await _diagnose(tab)
-            return results, S.EMPTY_NO_RESULTS, attach_document_status(diag, status_chain)
+            diag["containers_found"] = True
+            return results, None, attach_document_status(diag, status_chain)
         finally:
             await kill_tab(tab)
 
@@ -134,15 +134,6 @@ async def _parse_results(tab, max_results: int) -> list[SearchResult]:
     return results
 
 
-# Classify a diagnosis snapshot into an EMPTY sub-status (priority: BLOCK -> CONCURRENT_RACE -> NO_CONTAINER)
-def _classify_diagnosis(marker: str | None, ready_state: str) -> str:
-    if marker:
-        return S.EMPTY_BLOCK
-    if ready_state != "complete":
-        return S.EMPTY_CONCURRENT_RACE
-    return S.EMPTY_NO_CONTAINER
-
-
 # Match a title against the known block-keyword list, case-insensitive; returns the matched keyword or None
 def _match_marker(title: str) -> str | None:
     lowered = title.lower()
@@ -152,7 +143,7 @@ def _match_marker(title: str) -> str | None:
     return None
 
 
-# Snapshot the page facts behind an empty-reason verdict — an OBSERVATION, not a verdict
+# Snapshot the page facts behind an empty result — an OBSERVATION, never a verdict
 async def _diagnose(tab) -> dict:
     raw = await tab.execute_script(_JS_DIAGNOSE)
     val = _extract_value(raw)

@@ -1,11 +1,12 @@
-"""Tests for src/search/engines/startpage.py pure result-parsing / diagnosis logic.
+"""Tests for src/search/engines/startpage.py's pure result-parsing logic.
 
-No network, no browser — covers the two seams factored out of the DOM-driven engine:
-- _build_results: JSON items (as if already parsed from the page) -> SearchResult list
-- _classify_diagnosis: block/race/no-container classification from a diagnosis snapshot
+No network, no browser — _build_results (JSON items, as if already parsed from the page, into
+SearchResult list) is the one seam factored out of the DOM-driven engine. _classify_diagnosis was
+removed (the guessed-verdict-removal milestone): its output was one of the EMPTY_* sub-statuses
+that no longer exist — the marker/iframe_challenge/ready_state facts it classified are still
+available directly in the diagnosis snapshot.
 """
-from src.search import status as S
-from src.search.engines.startpage import _build_results, _classify_diagnosis
+from src.search.engines.startpage import _build_results
 
 
 # ---------------------------------------------------------------------------
@@ -39,23 +40,3 @@ def test_build_results_respects_max_results_cap():
     results = _build_results(items, max_results=5)
     assert len(results) == 5
     assert [r.position for r in results] == [1, 2, 3, 4, 5]
-
-
-# ---------------------------------------------------------------------------
-# _classify_diagnosis
-# ---------------------------------------------------------------------------
-
-def test_classify_diagnosis_block_marker_wins():
-    assert _classify_diagnosis("captcha", False, "https://www.startpage.com/sp/search", "complete") == S.EMPTY_BLOCK
-
-
-def test_classify_diagnosis_iframe_challenge_is_block():
-    assert _classify_diagnosis(None, True, "https://www.startpage.com/sp/search", "complete") == S.EMPTY_BLOCK
-
-
-def test_classify_diagnosis_page_still_loading_is_concurrent_race():
-    assert _classify_diagnosis(None, False, "https://www.startpage.com/sp/search", "loading") == S.EMPTY_CONCURRENT_RACE
-
-
-def test_classify_diagnosis_clean_page_no_results_is_no_container():
-    assert _classify_diagnosis(None, False, "https://www.startpage.com/sp/search", "complete") == S.EMPTY_NO_CONTAINER
