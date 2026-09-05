@@ -26,17 +26,21 @@ class OpenAlexEngine(BaseEngine):
 
     # Full HTTP search logic; returns (results, reason, diagnosis) — 429 (daily/per-second budget)
     # surfaces as EMPTY_BLOCK instead of a silent empty result; 403 (forbidden resource) stays a
-    # plain empty. diagnosis is always None — this engine builds no diagnosis mechanism (HTTP API,
-    # no browser DOM to inspect)
+    # plain empty (reason=None, unchanged). diagnosis carries the one fact this engine already has
+    # in hand — the real HTTP status — on every branch that returns without results; None whenever
+    # results are non-empty (no diagnosis mechanism beyond that one fact: HTTP API, no browser DOM)
     async def search_with_reason(self, query: str, language: str = "en", max_results: int = 10) -> tuple[list[SearchResult], str | None, dict | None]:
         logger.info("OpenAlex search: %s", query)
         status_code, works = await _fetch_results(query, max_results)
         if status_code == 429:
             logger.warning("OpenAlex rate limited: 429")
-            return [], S.EMPTY_BLOCK, None
+            return [], S.EMPTY_BLOCK, {"http_status": status_code}
         if works is None:
-            return [], None, None
-        return _parse_results(works), None, None
+            return [], None, {"http_status": status_code}
+        results = _parse_results(works)
+        if results:
+            return results, None, None
+        return results, None, {"http_status": status_code}
 
     async def search(self, query: str, language: str = "en", max_results: int = 10) -> list[SearchResult]:
         results, _, _ = await self.search_with_reason(query, language, max_results)

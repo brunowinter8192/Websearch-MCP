@@ -4,6 +4,7 @@ import json
 import logging
 
 from src.search.browser import new_tab, kill_tab
+from src.search.document_status import attach_document_status, start_document_status_capture
 from src.search.engines.base import BaseEngine
 from src.search.rate_limiter import RateLimiter, _limiters
 from src.search.result import SearchResult
@@ -67,21 +68,22 @@ class BraveEngine(BaseEngine):
         logger.info("Brave search: %s", query)
         tab = await new_tab()
         try:
+            status_chain = await start_document_status_capture(tab)
             await tab.go_to(SEARCH_URL.format(query.replace(" ", "+")), timeout=10.0)
             await asyncio.sleep(1.5)
             diag = await _diagnose(tab)
             if diag["marker"] or diag["pow_link"]:
                 logger.warning("Brave PoW/CAPTCHA detected for: %s", query)
-                return [], S.EMPTY_BLOCK, diag
+                return [], S.EMPTY_BLOCK, attach_document_status(diag, status_chain)
             if not await _wait_for_results(tab):
                 reason = _classify_diagnosis(diag["marker"], diag["pow_link"], diag["ready_state"])
                 logger.debug("Brave empty (%s) for: %s", reason, query)
-                return [], reason, diag
+                return [], reason, attach_document_status(diag, status_chain)
             results = await _parse_results(tab, max_results)
             if results:
                 return results, None, None
             diag = await _diagnose(tab)
-            return results, S.EMPTY_NO_RESULTS, diag
+            return results, S.EMPTY_NO_RESULTS, attach_document_status(diag, status_chain)
         finally:
             await kill_tab(tab)
 

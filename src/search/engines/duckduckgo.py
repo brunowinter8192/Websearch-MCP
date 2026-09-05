@@ -6,6 +6,7 @@ import re
 from urllib.parse import quote_plus, urlparse, parse_qs
 
 from src.search.browser import new_tab, kill_tab
+from src.search.document_status import attach_document_status, start_document_status_capture
 from src.search.engines.base import BaseEngine
 from src.search.rate_limiter import RateLimiter, _limiters
 from src.search.result import SearchResult
@@ -64,21 +65,22 @@ class DuckDuckGoEngine(BaseEngine):
         tab = await new_tab()
         search_url = _build_url(query)
         try:
+            status_chain = await start_document_status_capture(tab)
             await tab.go_to(search_url, timeout=3.0)
             diag = await _diagnose(tab)
             if diag["challenge_form"]:
                 logger.warning("DuckDuckGo CAPTCHA detected for: %s", query)
-                return [], S.EMPTY_BLOCK, diag
+                return [], S.EMPTY_BLOCK, attach_document_status(diag, status_chain)
             if not await _wait_for_results(tab):
                 diag = await _diagnose(tab)
                 reason = _classify_diagnosis(diag["challenge_form"], diag["ready_state"])
                 logger.debug("DuckDuckGo empty (%s) for: %s", reason, query)
-                return [], reason, diag
+                return [], reason, attach_document_status(diag, status_chain)
             results = await _parse_results(tab, max_results)
             if results:
                 return results, None, None
             diag = await _diagnose(tab)
-            return results, S.EMPTY_NO_RESULTS, diag
+            return results, S.EMPTY_NO_RESULTS, attach_document_status(diag, status_chain)
         finally:
             await kill_tab(tab)
 

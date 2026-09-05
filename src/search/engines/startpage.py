@@ -4,6 +4,7 @@ import json
 import logging
 
 from src.search.browser import new_tab, kill_tab
+from src.search.document_status import attach_document_status, start_document_status_capture
 from src.search.engines.base import BaseEngine
 from src.search.rate_limiter import RateLimiter, _limiters
 from src.search.result import SearchResult
@@ -70,17 +71,18 @@ class StartpageEngine(BaseEngine):
         logger.info("Startpage search: %s", query)
         tab = await new_tab()
         try:
+            status_chain = await start_document_status_capture(tab)
             await _submit_search(tab, query)
             if not await _wait_for_results(tab):
                 diag = await _diagnose(tab)
                 reason = _classify_diagnosis(diag["marker"], diag["iframe_challenge"], diag["url"], diag["ready_state"])
                 logger.debug("Startpage empty (%s) for: %s", reason, query)
-                return [], reason, diag
+                return [], reason, attach_document_status(diag, status_chain)
             results = await _parse_results(tab, max_results)
             if results:
                 return results, None, None
             diag = await _diagnose(tab)
-            return results, S.EMPTY_NO_RESULTS, diag
+            return results, S.EMPTY_NO_RESULTS, attach_document_status(diag, status_chain)
         finally:
             await kill_tab(tab)
 
