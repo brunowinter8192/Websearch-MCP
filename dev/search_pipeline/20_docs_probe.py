@@ -373,7 +373,7 @@ def _section_miss_set_analysis(all_runs: dict) -> list[str]:
             sample = domain_sample.get(d, "")[:100].replace("|", "%7C")
             lines.append(f"| {d} | {total} | {g} | {ddg} | {sample} |")
     else:
-        lines.append("| — | — | — | — | — | (no miss-set domains at this threshold) |")
+        lines.append("| — | — | — | — | (no miss-set domains at this threshold) |")
     lines.append("")
     return lines
 
