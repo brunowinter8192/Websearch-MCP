@@ -1,24 +1,33 @@
 # dev/url_discovery/
 
 ## Role
-Execution-verified probes for the link-graph-traversal redesign of the capture pipeline's
-URL-discovery step (robots.txt/sitemaps/framework-nav feeding seed URLs into a traversal frontier
-before crawl4ai's `BFSDeepCrawlStrategy` runs). Touch this directory when a new assumption about
-`crawl4ai`'s deep-crawling internals (frontier pre-seeding, filter/scorer behavior, resume/state
-shape) needs to be checked by RUNNING it against a real site, not by re-reading the vendored
-source. Not the place for the seed-feeder implementations themselves or a discovery CLI — those
-belong under `src/` once the design is confirmed.
+Two independent tools for the link-graph-traversal redesign of the capture pipeline's
+URL-discovery step (`src/crawler/discovery.py` + its three seed feeders): (1) execution-verified
+probes of `crawl4ai`'s deep-crawling internals against a REAL site (`01_resume_state_probe.py`) —
+touch this when a new assumption about frontier pre-seeding/filter/scorer/resume-state shape needs
+to be checked by running it, not by re-reading the vendored source; (2) a deterministic LOCAL
+fixture site (`_fixture_site.py`/`02_fixture_site_server.py`) whose page inventory is a fact stated
+in code, replacing a live host as the thing `discover_urls_workflow`'s feeders/traversal get
+checked against — see
+`process-docs/url_discovery/2026-08-28_validation_against_live_sites_was_the_wrong_unit.md` for why
+live-site verification stopped being trustworthy. Not the place for the seed-feeder implementations
+themselves or a discovery CLI — those belong under `src/` once a design is confirmed.
 
 ## Public Interface
-No `__init__.py` — the script is a standalone entry point, run directly:
-`./venv/bin/python dev/url_discovery/01_resume_state_probe.py`.
+No `__init__.py`. Two standalone entry points, run directly:
+`./venv/bin/python dev/url_discovery/01_resume_state_probe.py` (live-site probe) and
+`./venv/bin/python3 dev/url_discovery/02_fixture_site_server.py [--port N]` (fixture server,
+Ctrl+C to stop). `_fixture_site.py` is also imported directly by any future dev script/test that
+needs a deterministic discovery target: `start_fixture_server()`/`stop_fixture_server()`/
+`ground_truth()`/`seed_url()`.
 
 ## Flow
-Fixed set of real `books.toscrape.com` URLs (static, stable, low volume) → four small
-`BFSDeepCrawlStrategy` runs against one shared `AsyncWebCrawler`, each isolated to a handful of
-real requests via `max_depth`/an `on_state_change` callback that cancels the strategy right after
-the first BFS level → measured results (which URLs got fetched, what depth/filter state resulted)
-→ one timestamped report under `md/`.
+`01_resume_state_probe.py`: fixed set of real `books.toscrape.com` URLs → four small
+`BFSDeepCrawlStrategy` runs against one shared `AsyncWebCrawler` → one timestamped report under
+`md/`. `_fixture_site.py`/`02_fixture_site_server.py`: source lists of page paths (navtree
+versions, sitemap entries, robots paths, orphans) → generated HTML/XML routes served by a
+`ThreadingHTTPServer` → a caller (a real `discover_urls_workflow` run, or a feeder called directly)
+gets checked against `ground_truth()`, computed from those same source lists.
 
 ## Modules
 
@@ -37,12 +46,88 @@ after a `crawl4ai` version bump).
 
 ---
 
+### _fixture_site.py (449 LOC)
+
+**Purpose:** Deterministic local HTTP fixture for `src/crawler/discovery.py`'s three seed feeders
+and its BFS traversal — a documentation site with a nested `<sitemapindex>`, a `robots.txt`
+carrying `Allow`/`Disallow`/`Sitemap`, a 3-version `__NEXT_DATA__` navtree (2 pages exclusive to
+the oldest version), an isolated RSC (`self.__next_f.push`) demo page, link-only orphan pages, and
+two switchable failure modes (429-after-N, thin-body-200). `ground_truth()` states total/orphan/
+version-exclusive/sitemap-listed/robots-listed counts, computed from the same source lists that
+generate the served pages.
+**Reads:** nothing on disk — ground truth is stated as source lists in this file itself.
+**Writes:** nothing (in-memory HTTP responses only).
+**Called by:** `02_fixture_site_server.py` (standalone use); any future dev script/test needing a
+deterministic discovery target.
+**Calls out:** stdlib only (`http.server`, `threading`, `json`, `urllib.parse`) — no
+`crawl4ai`/`httpx` dependency, since this module is a target, never a client.
+
+### 02_fixture_site_server.py (45 LOC)
+
+**Purpose:** Standalone entry point — starts `_fixture_site.py` on a fixed/given port, prints its
+seed URL + `ground_truth()`, blocks until Ctrl+C, then shuts it down cleanly.
+**Reads:** nothing on disk.
+**Writes:** stdout/stderr only (the startup banner).
+**Called by:** run directly, ad hoc: `./venv/bin/python3 dev/url_discovery/02_fixture_site_server.py [--port N]`.
+**Calls out:** `_fixture_site.py` (same directory, `sys.path`-inserted import, matching
+`dev/browser_posture/_lib.py`'s own convention).
+
+---
+
 ## State
-No persistent state of its own. Each run's `md/` report is a dated, standalone snapshot; nothing
-here is resumed or accumulated across runs.
+`01_resume_state_probe.py`: no persistent state of its own — each run's `md/` report is a dated,
+standalone snapshot, nothing resumed or accumulated across runs. `_fixture_site.py`: `_ROUTES`
+(built fresh per `start_fixture_server()` call) and `_STATE` (request counter + the two
+failure-mode flags, mutated only via `/_control/*` and read under `_STATE_LOCK`) are both
+module-level — see the Gotcha below on the one-instance-per-process consequence of that.
 
 ## Gotchas
-- Each of the four experiments cancels its `BFSDeepCrawlStrategy` from inside its own
+- **`_fixture_site.py`'s `_ROUTES`/`_STATE` are module-level globals, not per-instance — only ONE
+  fixture server is meant to run per process at a time.** A second `start_fixture_server()` call in
+  the same process overwrites the first's routes/state (the first server keeps serving on its own
+  port, but against the second's route table). Tests/scripts that need genuine isolation should run
+  in separate processes, not just separate threads.
+- **A plain HTTP 404 with a real (non-empty) body does NOT read as a failed fetch to crawl4ai —
+  confirmed by reading `async_webcrawler.py`/`antibot_detector.py` directly, not assumed.**
+  `crawl_result.success = bool(html)` is set before any anti-bot check runs; only `status_code==429`
+  (unconditional), `403`/`503` (content-checked), or a genuinely thin/malformed body (the Tier-3
+  structural check, independent of status code) force `success=False`. This is why
+  `ROBOTS_EMPTY_404_PATHS` (`/internal/staging-notes`) is a genuine EMPTY-body 404, not an ordinary
+  one with a small default error page — an ordinary 404 page would still be `fetched=True` in a
+  real `discover_urls_workflow` run, which would silently defeat the one case this fixture needs to
+  demonstrate a robots-declared seed's own re-fetch genuinely failing.
+- **`THIN_BODY_HTML`'s exact shape (`<div id="app"></div>`, no `p`/`h1`/etc.) is deliberate, not
+  arbitrary minification.** `antibot_detector._structural_integrity_check` needs 2+ signals to
+  block a page this small (`<5000` bytes): 0 visible chars after stripping tags (`minimal_text`)
+  AND 0 of `p/h1-6/article/section/li/td/a/pre` anywhere in the html (`no_content_elements`). Every
+  other page this fixture serves deliberately carries a real `<h1>`+`<p>` sentence for the opposite
+  reason — to never accidentally trip this same check on the "normal" ground-truth run.
+- **`/rsc-demo` and its two children are deliberately never linked from the main site graph, and
+  are NOT counted in `ground_truth()`'s `total_urls`.** They exist solely so
+  `navtree_feeder_workflow` can be called directly against the RSC (`self.__next_f.push`) shape,
+  since a real `discover_urls_workflow` run only ever calls the navtree feeder once, against the
+  main site's `__NEXT_DATA__` shape. Wiring `/rsc-demo` into the main graph would change
+  `total_urls` and conflate two independent purposes (shape-detection demo vs. the site's own
+  ground truth) — do not link it in.
+- **`VERSION_DUP_TEST_PAGE`'s link to `VERSION_DUP_TARGET` (`/docs/v1/guide/intro`) is expected,
+  CURRENT, UNFIXED behavior — do not "fix" it via the fixture.** `discovery.py`'s traversal never
+  runs a discovered link through `seed_feeders_navtree.py`'s own version-canonicalization (the open
+  item recorded in `src/crawler/DOCS.md`'s own Gotchas), so this URL counts as a genuinely new
+  `"traversal"` entry distinct from the already-known canonical `/docs/guide/intro`, even though
+  it's the same page. `ground_truth()`'s `version_duplicate_test.expected_current_unfixed_behavior`
+  states this explicitly — it is the "before" number a later milestone's fix needs to change, not a
+  bug in this fixture.
+- **`REVISIT_TEST_PAGE`'s link to `REVISIT_TEST_TARGET` (`/blog/post-1`, already delivered by the
+  sitemap feeder) is the opposite case: already-fixed, already-shipped behavior.**
+  `_build_resume_state`'s `"visited"` pre-population (see `src/crawler/DOCS.md`'s Gotchas) means
+  this rediscovery should NOT be re-fetched and should NOT be re-tagged `"traversal"` — a real
+  `discover_urls_workflow` run against this fixture confirmed `/blog/post-1` stays
+  `source="sitemap"`, fetched exactly once. Kept as a simple root-relative path with no query
+  string deliberately — the DOCS.md Gotcha on this fix notes the "visited" comparison uses TWO
+  different URL normalizers (this project's own vs. crawl4ai's `normalize_url_for_deep_crawl`) that
+  are only guaranteed to coincide for simple paths; this fixture's own test case is exactly that
+  simple case, not a stress test of the normalization-mismatch edge itself.
+- Each of the four `01_resume_state_probe.py` experiments cancels its `BFSDeepCrawlStrategy` from inside its own
   `on_state_change` callback right after the single seed URL's first BFS level is processed —
   the discovered next-level URLs are inspected via the captured state dict, never actually
   fetched. This keeps every run to a handful of real requests; it also means `results` lists in
