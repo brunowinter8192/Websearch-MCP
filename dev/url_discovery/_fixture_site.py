@@ -34,13 +34,19 @@ Site shape (seed_url = seed_url(port), i.e. /docs/guide):
   is currently expected to count as a genuinely new "traversal" URL — the "before" number a later
   milestone's fix needs to change).
 
-Failure modes (429-after-N, thin-body-200) are switched via /_control/* GET requests, never
-random, always resettable — see _STATE.
+Failure modes are switched via /_control/* GET requests, never random, always resettable — see
+_STATE. Thin-body-200 is a simple on/off toggle. 429 is a genuine SLIDING WINDOW ("at most `limit`
+requests within the trailing `window` seconds", /_control/rate_limit?limit=M&window=T) rather than
+an absolute counter that trips once and never recovers — a window is what lets a caller that spaces
+its own requests stay under it indefinitely, and lets a bursty one recover once it slows down,
+which is the property real per-domain pacing needs to be checked against (process-docs/
+url_discovery/2026-09-05_pacing_measurement.md).
 """
 # INFRASTRUCTURE
 import http.server
 import json
 import threading
+import time
 from urllib.parse import parse_qs, urljoin, urlsplit
 
 DEFAULT_HOST = "127.0.0.1"
@@ -101,7 +107,16 @@ THIN_BODY_HTML = '<html><body><div id="app"></div></body></html>'  # ~50 bytes: 
 
 _ROUTES: dict = {}
 _STATE_LOCK = threading.Lock()
-_STATE = {"request_count": 0, "rate_limit_after": None, "thin_body": False}
+# rate_limit_limit/rate_limit_window_s: a SLIDING WINDOW, not an absolute counter that trips once
+# and never recovers. The absolute-counter shape this replaced (process-docs/url_discovery/
+# 2026-09-05_pacing_measurement.md) could not distinguish a well-paced crawler from a badly-paced
+# one — both eventually send N total requests and both trip it identically, with no way back.
+# A window lets a caller that spaces its requests stay under the limit indefinitely, and lets one
+# that bursts recover once it slows down — the actual property real per-domain pacing needs to be
+# checked against. _REQUEST_TIMESTAMPS holds one monotonic timestamp per non-control request
+# admitted or checked while the window is armed; pruned to the trailing window on every check.
+_STATE = {"request_count": 0, "rate_limit_limit": None, "rate_limit_window_s": None, "thin_body": False}
+_REQUEST_TIMESTAMPS: list = []
 
 
 # FUNCTIONS
@@ -379,23 +394,28 @@ class _FixtureHandler(http.server.BaseHTTPRequestHandler):
         else:
             self._serve_content()
 
-    # Read/mutate failure-mode state; never counted against the rate-limit counter itself
+    # Read/mutate failure-mode state; never counted against the rate-limit window itself
     def _serve_control(self):
+        global _REQUEST_TIMESTAMPS
         parsed = urlsplit(self.path)
         action = parsed.path[len("/_control/"):]
         params = parse_qs(parsed.query)
         with _STATE_LOCK:
             if action == "reset":
-                _STATE.update(request_count=0, rate_limit_after=None, thin_body=False)
+                _STATE.update(request_count=0, rate_limit_limit=None, rate_limit_window_s=None, thin_body=False)
+                _REQUEST_TIMESTAMPS = []
             elif action == "rate_limit":
-                _STATE["rate_limit_after"] = int(params.get("after", ["0"])[0])
-                _STATE["request_count"] = 0
+                _STATE["rate_limit_limit"] = int(params.get("limit", ["0"])[0])
+                _STATE["rate_limit_window_s"] = float(params.get("window", ["1"])[0])
+                _REQUEST_TIMESTAMPS = []
             elif action == "thin_body":
                 _STATE["thin_body"] = params.get("on", ["true"])[0].lower() == "true"
             elif action != "status":
                 self._respond(404, b"unknown control action", "text/plain")
                 return
-            body = json.dumps(dict(_STATE)).encode("utf-8")
+            reportable = dict(_STATE)
+            reportable["requests_in_window"] = len(_REQUEST_TIMESTAMPS)
+            body = json.dumps(reportable).encode("utf-8")
         self._respond(200, body, "application/json")
 
     # Normal content path: apply failure modes first (both override any real route), else serve
@@ -404,11 +424,21 @@ class _FixtureHandler(http.server.BaseHTTPRequestHandler):
     def _serve_content(self):
         with _STATE_LOCK:
             _STATE["request_count"] += 1
-            count = _STATE["request_count"]
-            rate_limit_after = _STATE["rate_limit_after"]
+            limit = _STATE["rate_limit_limit"]
+            window = _STATE["rate_limit_window_s"]
             thin_body = _STATE["thin_body"]
+            over_limit = False
+            if limit is not None:
+                now = time.monotonic()
+                cutoff = now - window
+                while _REQUEST_TIMESTAMPS and _REQUEST_TIMESTAMPS[0] < cutoff:
+                    _REQUEST_TIMESTAMPS.pop(0)
+                if len(_REQUEST_TIMESTAMPS) >= limit:
+                    over_limit = True
+                else:
+                    _REQUEST_TIMESTAMPS.append(now)
 
-        if rate_limit_after is not None and count > rate_limit_after:
+        if over_limit:
             self._respond(429, b"Too Many Requests", "text/plain")
             return
         if thin_body:
@@ -438,13 +468,14 @@ class _FixtureHandler(http.server.BaseHTTPRequestHandler):
 # state. Returns (server, thread, bound_port). Only ONE fixture server is meant to run per process
 # at a time — routes/state are module-level, not per-instance (see Gotchas in DOCS.md).
 def start_fixture_server(host: str = DEFAULT_HOST, port: int = 0):
-    global _ROUTES
+    global _ROUTES, _REQUEST_TIMESTAMPS
     server = http.server.ThreadingHTTPServer((host, port), _FixtureHandler)
     bound_port = server.server_address[1]
     base_url = f"http://{host}:{bound_port}/"
     _ROUTES = _build_routes(base_url)
     with _STATE_LOCK:
-        _STATE.update(request_count=0, rate_limit_after=None, thin_body=False)
+        _STATE.update(request_count=0, rate_limit_limit=None, rate_limit_window_s=None, thin_body=False)
+        _REQUEST_TIMESTAMPS = []
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     return server, thread, bound_port

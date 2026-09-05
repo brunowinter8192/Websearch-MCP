@@ -37,14 +37,20 @@ MAX_PAGES_PER_SEED = 2
 # explicitly — confirmed by reading async_webcrawler.py directly, not assumed). crawl4ai's own
 # defaults (mean_delay=0.1s, max_range=0.3s, semaphore_count=5) are tuned for speed, not for a
 # real anti-bot-protected site under this project's own hundreds-of-seeds-in-one-BFS-level traffic
-# pattern. These three values are NOT invented for this module — they match this project's own
-# MEASURED chromium pacing (`pipe_scraper_constants.DOWNLOAD_DELAY`/`CONCURRENCY_PER_DOMAIN`,
-# validated by a real concurrency probe, `process-docs/pipe_scraper_hardening/2026-08-04_stealth_concurrency_probe.md`)
-# rather than a value guessed for this specific site. See DOCS.md Gotchas for the measured
-# before/after on docs.github.com.
+# pattern. MEAN_DELAY_S/MAX_RANGE_S are unchanged from this project's own measured chromium pacing
+# (`pipe_scraper_constants.DOWNLOAD_DELAY`/`process-docs/pipe_scraper_hardening/2026-08-04_stealth_concurrency_probe.md`)
+# — the measurement below confirmed they were never the problem. TRAVERSAL_CONCURRENCY was
+# corrected from 8 to 1 by that same measurement: crawl4ai's own RateLimiter.wait_if_needed
+# (async_dispatcher.py) has no lock around its read-sleep-write sequence, so concurrent tasks can
+# read the SAME stale last_request_time before any of them writes it and wake up together — a real,
+# measured burst of 7-8 near-simultaneous requests at semaphore_count=8, not the claimed ~1 req/s
+# per domain. pipe_scraper's own DOWNLOAD_DELAY/CONCURRENCY_PER_DOMAIN=8 were measured for a
+# DIFFERENT, lock-serialized gate (`pipe_scraper_pacing.py`'s `_gate_domain`) that cannot race this
+# way — the value did not transfer to this mechanism. See DOCS.md Gotchas and
+# process-docs/url_discovery/2026-09-05_pacing_measurement.md for the full before/after numbers.
 TRAVERSAL_MEAN_DELAY_S = 1.0
 TRAVERSAL_MAX_RANGE_S = 0.5
-TRAVERSAL_CONCURRENCY = 8
+TRAVERSAL_CONCURRENCY = 1
 
 _FEEDER_WORKFLOWS = (
     ("robots", robots_feeder_workflow),
