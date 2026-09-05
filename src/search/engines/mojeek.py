@@ -32,6 +32,16 @@ for (var _i = 0; _i < _cs.length; _i++) {
 return JSON.stringify(_out);
 """
 
+_JS_DIAGNOSE = """
+return JSON.stringify({
+    title: document.title,
+    url: window.location.href,
+    ready_state: document.readyState
+});
+"""
+
+_BLOCK_MARKERS = ("captcha", "unusual traffic", "are you a bot", "robot", "access denied")
+
 _limiters["mojeek"] = RateLimiter(max_requests=4, window_seconds=60)
 
 
@@ -42,25 +52,29 @@ class MojeekEngine(BaseEngine):
     name = "mojeek"
 
     # Full search logic with empty-reason diagnosis; exceptions propagate to _engine_with_timing
-    async def search_with_reason(self, query: str, language: str = "en", max_results: int = 10) -> tuple[list[SearchResult], str | None]:
+    async def search_with_reason(self, query: str, language: str = "en", max_results: int = 10) -> tuple[list[SearchResult], str | None, dict | None]:
         logger.info("Mojeek search: %s", query)
         tab = await new_tab()
         search_url = _build_url(query)
         try:
             await tab.go_to(search_url, timeout=3.0)
             if not await _wait_for_results(tab):
-                reason = await _diagnose_empty(tab)
+                diag = await _diagnose(tab)
+                reason = _classify_diagnosis(diag["marker"], diag["ready_state"])
                 logger.debug("Mojeek empty (%s) for: %s", reason, query)
-                return [], reason
+                return [], reason, diag
             results = await _parse_results(tab, max_results)
-            return results, (None if results else S.EMPTY_NO_RESULTS)
+            if results:
+                return results, None, None
+            diag = await _diagnose(tab)
+            return results, S.EMPTY_NO_RESULTS, diag
         finally:
             await kill_tab(tab)
 
     # Legacy thin wrapper — delegates to search_with_reason; swallows exceptions for dev-script compat
     async def search(self, query: str, language: str = "en", max_results: int = 10) -> list[SearchResult]:
         try:
-            results, _ = await self.search_with_reason(query, language, max_results)
+            results, _, _ = await self.search_with_reason(query, language, max_results)
             return results
         except Exception as e:
             logger.error("Mojeek search failed: %s", e)
@@ -118,12 +132,33 @@ async def _parse_results(tab, max_results: int) -> list[SearchResult]:
     return results
 
 
-# Diagnose why Mojeek returned empty after _wait_for_results failed (priority: BLOCK -> CONCURRENT_RACE -> NO_CONTAINER)
-async def _diagnose_empty(tab) -> str:
-    title = _extract_value(await tab.execute_script("return document.title.toLowerCase()")) or ""
-    if any(x in title for x in ("captcha", "unusual traffic", "are you a bot", "robot", "access denied")):
+# Classify a diagnosis snapshot into an EMPTY sub-status (priority: BLOCK -> CONCURRENT_RACE -> NO_CONTAINER)
+def _classify_diagnosis(marker: str | None, ready_state: str) -> str:
+    if marker:
         return S.EMPTY_BLOCK
-    state = _extract_value(await tab.execute_script("return document.readyState")) or ""
-    if state != "complete":
+    if ready_state != "complete":
         return S.EMPTY_CONCURRENT_RACE
     return S.EMPTY_NO_CONTAINER
+
+
+# Match a title against the known block-keyword list, case-insensitive; returns the matched keyword or None
+def _match_marker(title: str) -> str | None:
+    lowered = title.lower()
+    for marker in _BLOCK_MARKERS:
+        if marker in lowered:
+            return marker
+    return None
+
+
+# Snapshot the page facts behind an empty-reason verdict — an OBSERVATION, not a verdict
+async def _diagnose(tab) -> dict:
+    raw = await tab.execute_script(_JS_DIAGNOSE)
+    val = _extract_value(raw)
+    diag = {"title": "", "url": "", "ready_state": ""}
+    if val:
+        try:
+            diag.update(json.loads(val))
+        except (json.JSONDecodeError, TypeError):
+            pass
+    diag["marker"] = _match_marker(diag["title"])
+    return diag

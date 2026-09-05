@@ -24,20 +24,22 @@ _limiters["openalex"] = RateLimiter(max_requests=4, window_seconds=60)
 class OpenAlexEngine(BaseEngine):
     name = "openalex"
 
-    # Full HTTP search logic; returns (results, reason) — 429 (daily/per-second budget) surfaces
-    # as EMPTY_BLOCK instead of a silent empty result; 403 (forbidden resource) stays a plain empty
-    async def search_with_reason(self, query: str, language: str = "en", max_results: int = 10) -> tuple[list[SearchResult], str | None]:
+    # Full HTTP search logic; returns (results, reason, diagnosis) — 429 (daily/per-second budget)
+    # surfaces as EMPTY_BLOCK instead of a silent empty result; 403 (forbidden resource) stays a
+    # plain empty. diagnosis is always None — this engine builds no diagnosis mechanism (HTTP API,
+    # no browser DOM to inspect)
+    async def search_with_reason(self, query: str, language: str = "en", max_results: int = 10) -> tuple[list[SearchResult], str | None, dict | None]:
         logger.info("OpenAlex search: %s", query)
         status_code, works = await _fetch_results(query, max_results)
         if status_code == 429:
             logger.warning("OpenAlex rate limited: 429")
-            return [], S.EMPTY_BLOCK
+            return [], S.EMPTY_BLOCK, None
         if works is None:
-            return [], None
-        return _parse_results(works), None
+            return [], None, None
+        return _parse_results(works), None, None
 
     async def search(self, query: str, language: str = "en", max_results: int = 10) -> list[SearchResult]:
-        results, _ = await self.search_with_reason(query, language, max_results)
+        results, _, _ = await self.search_with_reason(query, language, max_results)
         return results
 
 
