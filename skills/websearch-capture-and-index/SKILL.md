@@ -7,9 +7,6 @@ description:
 
 Pipeline: Discovery → URL Selection → STOP (Opus cull) → Scrape → Cleanup → Index.
 
-**/tmp files are written with a heredoc, never with Write.**
-Every file this pipeline produces under `/tmp` — URL lists, discovery scripts, cleaner scripts — is written from Bash via a quoted heredoc (`cat > /tmp/x <<'EOF' … EOF`).
-
 **Multiple domains = step-by-step across ALL of them, never domain-by-domain.**
 Discover all → select all → ONE Step-3 stop covering all → scrape all → clean all → index once at the end. `rag-cli index` operates on the whole collection directory — indexing after domain 1 sweeps up domain 2's raw, uncleaned files as garbage. Index is the LAST action and runs exactly once.
 
@@ -63,7 +60,11 @@ Then WAIT. Opus edits the file itself. On go, re-read the file and proceed — d
 
 Scrape every URL in the filtered list **raw and maximal** — no content filter, no truncation.
 
+**OUTPUT_DIR is a staging directory under `/tmp`, never the collection directory.** Scrape and Cleanup both work in `/tmp/<COLLECTION>_staging/`; the files move into `data/documents/<COLLECTION>/` in Step 6, right before the index call.
+
 ```bash
+COLLECTION=<collection>
+OUTPUT_DIR=/tmp/${COLLECTION}_staging
 mkdir -p $OUTPUT_DIR
 WEBSEARCH=/Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/cli/websearch
 cd "$WEBSEARCH" && ./venv/bin/python -m src.crawler.pipe_scraper \
@@ -142,13 +143,15 @@ Edge cases: no `# ` heading (redirect pages) → keep content between source com
 
 One call, once per run, AFTER all domains are scraped and cleaned — `rag-cli index` indexes the ENTIRE collection directory, incrementally (hash-based skip).
 
-**OUTPUT_DIR must be the collection dir** — set BEFORE Step 4:
+**Move the cleaned staging files into the collection dir first**, in a Bash call of its own — only the `.md` files that survived Cleanup, nothing else from staging:
 
 ```bash
 RAG_ROOT=~/Documents/ai/Meta/ClaudeCode/cli/rag-cli
-OUTPUT_DIR="$RAG_ROOT/data/documents/$COLLECTION"
-mkdir -p "$OUTPUT_DIR"
+mkdir -p "$RAG_ROOT/data/documents/$COLLECTION"
+mv /tmp/${COLLECTION}_staging/*.md "$RAG_ROOT/data/documents/$COLLECTION/"
 ```
+
+Then the index call, alone in its Bash call:
 
 ```bash
 PYTHONUNBUFFERED=1 rag-cli index --collection "$COLLECTION" \
