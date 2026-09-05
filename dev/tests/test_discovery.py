@@ -1,8 +1,8 @@
 """Tests for src/crawler/discovery.py — the feeders-into-traversal discovery entry point.
 
 Two layers. Pure-logic, no network: seed assembly/merge-priority/failed-feeder recording
-(synthetic FeederResults), resume_state building/validation, stop-reason determination (a tiny
-stub standing in for BFSDeepCrawlStrategy — only ._pages_crawled/.max_pages are read), and the
+(synthetic FeederResults), resume_state building/validation, stop-reason determination (a plain
+captured-state dict or None, plus max_pages — no strategy object, no private attribute), and the
 exact-host scope filter. Fixture-backed, real crawl4ai-driven traversal but only ever against the
 local `dev/url_discovery/_fixture_site.py` server, never a live host (see process-docs/
 url_discovery/2026-08-28_validation_against_live_sites_was_the_wrong_unit.md for why): ONE real
@@ -157,27 +157,30 @@ def test_validate_resume_state_rejects_missing_depths_entry():
 
 
 # ---------------------------------------------------------------------------
-# _determine_stop_reason — a tiny stub standing in for BFSDeepCrawlStrategy
+# _determine_stop_reason — takes the SAME captured state dict discovery.py's own on_state_change
+# callback already produces (a plain dict, or None for zero successful fetches), plus max_pages;
+# no strategy object and no private attribute read anywhere in this module anymore.
 # ---------------------------------------------------------------------------
 
-class _StrategyStub:
-    def __init__(self, pages_crawled: int, max_pages: int):
-        self._pages_crawled = pages_crawled
-        self.max_pages = max_pages
-
-
 def test_determine_stop_reason_frontier_exhausted_when_under_budget():
-    assert _determine_stop_reason(_StrategyStub(pages_crawled=42, max_pages=500)) == "frontier_exhausted"
+    assert _determine_stop_reason({"pages_crawled": 42}, max_pages=500) == "frontier_exhausted"
 
 
 def test_determine_stop_reason_max_pages_reached_at_exact_budget():
-    assert _determine_stop_reason(_StrategyStub(pages_crawled=500, max_pages=500)) == "max_pages_reached"
+    assert _determine_stop_reason({"pages_crawled": 500}, max_pages=500) == "max_pages_reached"
 
 
 def test_determine_stop_reason_max_pages_reached_when_overshot():
     # Real, observed behavior (books.toscrape.com: 586 actual vs. 500 requested) — max_pages is
     # enforced at BFS-level granularity, not per-page, so pages_crawled can exceed max_pages.
-    assert _determine_stop_reason(_StrategyStub(pages_crawled=586, max_pages=500)) == "max_pages_reached"
+    assert _determine_stop_reason({"pages_crawled": 586}, max_pages=500) == "max_pages_reached"
+
+
+def test_determine_stop_reason_frontier_exhausted_when_state_is_none():
+    # state is None when no URL was ever successfully processed — the on_state_change callback
+    # never fires in that case (crawl4ai only calls it after a successful result), so pages_crawled
+    # must default to 0 rather than raise.
+    assert _determine_stop_reason(None, max_pages=500) == "frontier_exhausted"
 
 
 # ---------------------------------------------------------------------------

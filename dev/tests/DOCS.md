@@ -195,15 +195,16 @@ Router RSC-stream shape — replacing the one-off docs.github.com/theblock.co/ui
 nextjs.org runs process-docs/url_discovery/2026-08-28_robots_sitemap_seed_feeders.md and
 2026-08-28_navtree_seed_feeder.md recorded.
 
-### test_discovery.py (404 LOC)
+### test_discovery.py (410 LOC)
 **Purpose:** `src/crawler/discovery.py` — two layers. Pure-logic, no network: `_assemble_seeds`
 (literal `seed_url` always included, first-write-wins merge priority across the three feeders, a
 failed feeder's error landing in `failed_feeders` rather than being silently treated as an empty
 result, `seed_url` normalization dedup against an equivalent feeder-found URL), `_default_max_pages`
 (the floor vs. the per-seed term), `_build_resume_state` (every seed's depth stamped explicitly at
 0, `"visited"` pre-populated), `_validate_resume_state` (every malformed shape M0 documented plus a
-missing depths entry), `_determine_stop_reason` (via a tiny `_StrategyStub` exposing only
-`._pages_crawled`/`.max_pages`, including the real observed overshoot case, 586 vs. a requested
+missing depths entry), `_determine_stop_reason` (takes the same captured on_state_change state dict
+`discovery.py` itself reads, or `None` for zero successful fetches, plus `max_pages` — no strategy
+object, no private attribute, including the real observed overshoot case, 586 vs. a requested
 500), `_merge_results` (a seed whose own fetch attempt succeeded vs. failed — both visible,
 attribution preserved either way — a genuinely new fetched URL tagged `"traversal"`, a
 frontier-leftover URL included and marked `fetched=False` rather than dropped, and first-write-wins
