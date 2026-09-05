@@ -382,7 +382,7 @@ def test_discover_urls_workflow_version_duplicate_currently_counts_as_new_traver
     assert duplicate.url != canonical.url
 
 
-def test_discover_urls_workflow_small_max_pages_overshoots_by_one_bfs_level(fixture_server):
+def test_discover_urls_workflow_small_max_pages_overshoots_by_one_bfs_level(fixture_server, gt):
     # The claim on record (src/crawler/DOCS.md's Gotchas, live books.toscrape.com measurement:
     # 586 actual vs. a requested 500): max_pages is enforced at BFS-LEVEL granularity, not
     # per-page — an entire in-flight level's batch completes before the next check can catch it,
@@ -392,13 +392,16 @@ def test_discover_urls_workflow_small_max_pages_overshoots_by_one_bfs_level(fixt
     # here for real, not just via _determine_stop_reason's own arithmetic stub above.
     #
     # A separate real run (not the shared discovery_result — a deliberately different max_pages),
-    # against the same already-running fixture_server. Measured directly before writing this
-    # assertion, twice, identical both times: with max_pages=1, the run stops after the first BFS
-    # level completes — that level is all 15 pre-seeded (depth-0) URLs, injected as one batch — so
-    # the real ceiling here is 15, not 1.
+    # against the same already-running fixture_server. The PROPERTY, not a coincidence: every
+    # pre-traversal seed is injected at depth 0 (_build_resume_state), so they are all fetched as
+    # ONE BFS level — with max_pages set below that level's size, the real ceiling is the
+    # pre-traversal seed count itself, from ground_truth() (never re-derived or hand-typed here,
+    # so a fixture change that adds/removes a seed cannot silently point this failure at the wrong
+    # cause). Measured directly before writing this assertion, twice, identical both times: with
+    # max_pages=1, actual attempts landed at gt["pre_traversal_seed_count"] (15 today).
     result = asyncio.run(discover_urls_workflow(seed_url(fixture_server), max_pages=1))
     assert result.ok is True
     assert result.stop_reason == "max_pages_reached"
     actual_pages = result.pages_fetched + result.pages_failed
     assert actual_pages > 1  # the overshoot property itself
-    assert actual_pages == 15  # the exact figure measured against this fixture, twice
+    assert actual_pages == gt["pre_traversal_seed_count"]  # the real ceiling: one whole BFS level

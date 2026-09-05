@@ -221,11 +221,14 @@ pre-population fix confirmed still holding (a link back to an already-delivered 
 confirmed as CURRENT, DELIBERATELY UNFIXED behavior (an explicit-version duplicate of an
 already-known canonical page counts as a genuinely new `"traversal"` URL — the before-number a
 later milestone's fix must change, not a regression to chase here); and a second, separate real run
-with a deliberately small `max_pages=1` against the same fixture, measured directly (twice,
-identical both times) rather than asserted from a guess: the first BFS level alone (all 15
-pre-seeded depth-0 URLs, injected as one batch) already overshoots `max_pages=1`, landing at 15
-real fetch attempts, `stop_reason="max_pages_reached"` — the BFS-level-granularity claim, now
-checked against real code instead of only `_determine_stop_reason`'s own arithmetic stub.
+with a deliberately small `max_pages=1` against the same fixture, asserting the PROPERTY rather
+than a coincidence: every pre-traversal seed is injected at depth 0, so they are all fetched as
+ONE BFS level, and the real ceiling a small `max_pages` lands on is exactly
+`ground_truth()["pre_traversal_seed_count"]` (never re-derived or hand-typed a second time, so a
+fixture change that adds/removes a seed cannot point this failure at the wrong cause) —
+`stop_reason="max_pages_reached"`, measured directly (twice, identical both times) at 15 real fetch
+attempts today. The BFS-level-granularity claim, now checked against real code instead of only
+`_determine_stop_reason`'s own arithmetic stub.
 **Calls out:** `dev.url_discovery._fixture_site` (fixture-backed section only) — otherwise none
 beyond `src.crawler.discovery`/`src.crawler.seed_feeders_scope`, no network, no crawl4ai
 construction in the pure-logic section.
