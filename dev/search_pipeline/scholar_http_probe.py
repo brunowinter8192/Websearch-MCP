@@ -25,11 +25,16 @@ from lxml import html as lhtml
 
 from src.search.rate_limiter import RateLimiter
 from src.search.result import SearchResult
-from src.search import status as S
-
 logger = logging.getLogger(__name__)
 
 SEARCH_URL = "https://scholar.google.com/scholar?q={}&hl={}&num={}&as_sdt=2007&as_vis=0"
+
+# Probe-local sub-status sentinels — deliberately NOT src.search.status's EMPTY_BLOCK/
+# EMPTY_NO_RESULTS, which were removed along with the query log's guessed-verdict sub-statuses.
+# This probe's own backoff experiment (self._limiter.backoff() on a detected block) is internal to
+# this file and never reaches the production query log, so it keeps its own local vocabulary.
+_BLOCK = "BLOCK"
+_NO_RESULTS = "NO_RESULTS"
 
 _HEADERS = {
     "User-Agent": (
@@ -77,12 +82,12 @@ class ScholarHTTPProbe:
             location = r.headers.get("Location", "")
             logger.warning("ScholarHTTPProbe redirect → %s", location)
             self._limiter.backoff()
-            return [], S.EMPTY_BLOCK
+            return [], _BLOCK
 
         r.raise_for_status()
 
         results, reason = _parse_response(r.text, max_results)
-        if reason == S.EMPTY_BLOCK:
+        if reason == _BLOCK:
             self._limiter.backoff()
         else:
             self._limiter.reset_backoff()
@@ -107,15 +112,15 @@ async def _fetch(url: str) -> httpx.Response:
         return await client.get(url)
 
 
-# Parse Scholar HTML; return (results, reason) — reason None on success, EMPTY_BLOCK on captcha form
+# Parse Scholar HTML; return (results, reason) — reason None on success, _BLOCK on captcha form
 def _parse_response(body: str, max_results: int) -> tuple[list[SearchResult], str | None]:
     dom = lhtml.fromstring(body)
     if dom.xpath("//form[@id='gs_captcha_f']"):
         logger.warning("ScholarHTTPProbe inline captcha form detected")
-        return [], S.EMPTY_BLOCK
+        return [], _BLOCK
     results = _extract_results(dom, max_results)
     if not results:
-        return [], S.EMPTY_NO_RESULTS
+        return [], _NO_RESULTS
     return results, None
 
 

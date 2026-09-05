@@ -22,12 +22,9 @@ QUERIES_FILE = SCRIPT_DIR / "queries.txt"
 REPORT_DIR   = SCRIPT_DIR / "md"
 
 # Short human-readable hint per non-OK status (shown in per-query engine breakdown table)
+# EMPTY_NO_RESULTS/EMPTY_NO_CONTAINER/EMPTY_CONSENT/EMPTY_BLOCK/EMPTY_CONCURRENT_RACE entries
+# removed with the guessed-verdict sub-statuses — every empty result now logs bare "EMPTY".
 _STATUS_HINTS: dict[str, str] = {
-    "EMPTY_NO_RESULTS":      "0 hits",
-    "EMPTY_NO_CONTAINER":    "no DOM container",
-    "EMPTY_CONSENT":         "consent page",
-    "EMPTY_BLOCK":           "CAPTCHA",
-    "EMPTY_CONCURRENT_RACE": "page not ready",
     "TIMEOUT_WATCHDOG":      "watchdog timeout",
     "TIMEOUT_NONCOOP":       "non-cooperative",
     "TIMEOUT_HTTPX":         "httpx timeout",
@@ -232,11 +229,12 @@ def _render_timing_checkpoints(checkpoints: list[dict]) -> list[str]:
 
 # Per-engine reliability baseline: full status breakdown, mean/p95 search_ms for OK entries
 def _render_engine_reliability(records: list[dict]) -> list[str]:
-    # Collect per-engine: status counts, OK search_ms list
+    # Collect per-engine: status counts, OK search_ms list. EMPTY_NO_RESULTS/EMPTY_NO_CONTAINER/
+    # EMPTY_CONSENT/EMPTY_BLOCK/EMPTY_CONCURRENT_RACE were removed with the guessed-verdict
+    # sub-statuses — every empty result now logs bare "EMPTY", tracked as its own key below so it
+    # is not miscounted into ERROR_OTHER by the `else "ERROR_OTHER"` fallback further down.
     STATUS_KEYS = [
-        "OK",
-        "EMPTY_NO_RESULTS", "EMPTY_NO_CONTAINER", "EMPTY_CONSENT",
-        "EMPTY_BLOCK", "EMPTY_CONCURRENT_RACE",
+        "OK", "EMPTY",
         "TIMEOUT_WATCHDOG", "TIMEOUT_NONCOOP", "TIMEOUT_HTTPX",
         "ERROR_BROWSER", "ERROR_HTTP", "ERROR_PARSE", "ERROR_OTHER",
         "RATE_SKIP",
@@ -258,7 +256,7 @@ def _render_engine_reliability(records: list[dict]) -> list[str]:
     # Header
     cols = [
         "Engine", "n",
-        "OK%", "NO_RES%", "NO_CONT%", "CONSENT%", "BLOCK%", "RACE%",
+        "OK%", "EMPTY%",
         "T_WD%", "T_NC%", "T_HX%",
         "E_BR%", "E_HT%", "E_PA%", "E_OT%",
         "RS%", "mean_ms(OK)", "p95_ms",
@@ -300,8 +298,7 @@ def _render_engine_reliability(records: list[dict]) -> list[str]:
 
         L.append(
             f"| {eng} | {n} "
-            f"| {pct('OK')} | {pct('EMPTY_NO_RESULTS')} | {pct('EMPTY_NO_CONTAINER')} "
-            f"| {pct('EMPTY_CONSENT')} | {pct('EMPTY_BLOCK')} | {pct('EMPTY_CONCURRENT_RACE')} "
+            f"| {pct('OK')} | {pct('EMPTY')} "
             f"| {pct('TIMEOUT_WATCHDOG')} | {pct('TIMEOUT_NONCOOP')} | {pct('TIMEOUT_HTTPX')} "
             f"| {pct('ERROR_BROWSER')} | {pct('ERROR_HTTP')} | {pct('ERROR_PARSE')} | {pct('ERROR_OTHER')} "
             f"| {pct('RATE_SKIP')} | {mean_ms} | {p95_ms} |"

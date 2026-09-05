@@ -69,9 +69,9 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 **Called by:** CLI only.
 **Calls out:** `src.search.engines.openalex.OpenAlexEngine`.
 
-### 11_pipeline_smoke.py (376 LOC)
+### 11_pipeline_smoke.py (373 LOC)
 
-**Purpose:** Full-pipeline smoke — calls `search_web_workflow(query, _with_timings=True, engine_timeout=N)` per query (unlike `05`'s per-engine fanout, this goes through `_merge_and_rank`). Produces the singular baseline consumed by downstream investigation scripts (`snippet_quality_analysis.py`, `engine_distribution_analysis.py`, `snippet_selection_simulator.py`). Per-URL block: title/URL/engines + chosen `source`/`display` + `og`/`meta` + per-engine snippets. Per-query timing + slot-fill line. Per-Engine Status Aggregate section at end.
+**Purpose:** Full-pipeline smoke — calls `search_web_workflow(query, _with_timings=True, engine_timeout=N)` per query (unlike `05`'s per-engine fanout, this goes through `_merge_and_rank`). Produces the singular baseline consumed by downstream investigation scripts (`snippet_quality_analysis.py`, `engine_distribution_analysis.py`, `snippet_selection_simulator.py`). Per-URL block: title/URL/engines + chosen `source`/`display` + `og`/`meta` + per-engine snippets. Per-query timing + slot-fill line. Per-Engine Status Aggregate section at end — `_STATUS_HINTS` and the reliability table's `STATUS_KEYS` dropped their 5 EMPTY_* sub-status entries (removed along with `src/search/status.py`'s guessed verdicts) and gained a plain `EMPTY` key, tracked explicitly so it is not miscounted into `ERROR_OTHER` by the fallback bucket.
 **Reads:** `queries.txt`, cache via `cache_key`/`cache_read`.
 **Writes:** `md/pipeline_smoke_<ts>.md`.
 **Called by:** CLI only. Flags: `--max-queries N`, `--language` (default `en`), `--engine-timeout N` (float seconds, per-engine watchdog).
@@ -205,9 +205,9 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 **Called by:** CLI only.
 **Calls out:** `pydoll` (Chrome, ChromiumOptions, PageCommands, NetworkCommands, CookieSameSite), `yaml`. Imports `load_config`/`start_browser` pattern mirrored from `01_google_smoke.py` (not imported directly).
 
-### acquire_probe.py (584 LOC)
+### acquire_probe.py (588 LOC)
 
-**Purpose:** Phase 2 bee investigation — `RateLimiter.acquire()` instrumentation probe. Monkey-patches `RateLimiter.__init__` (installs `_WatchedLock`) + `acquire()` (enter/exit events). Discriminates hypotheses B (task never scheduled) / A-lock (stale lock) / A-sleep (sleeping on backoff) / C (acquire innocent). Historical verdict (as of the investigation date, see process-docs): A-sleep confirmed.
+**Purpose:** Phase 2 bee investigation — `RateLimiter.acquire()` instrumentation probe. Monkey-patches `RateLimiter.__init__` (installs `_WatchedLock`) + `acquire()` (enter/exit events). Discriminates hypotheses B (task never scheduled) / A-lock (stale lock) / A-sleep (sleeping on backoff) / C (acquire innocent). Historical verdict (as of the investigation date, see process-docs): A-sleep confirmed. Query category renamed `"captcha"` → `"empty"` (the guessed-verdict-removal milestone collapsed `EMPTY_BLOCK` into bare `EMPTY`; `engine_details`, the only status source this probe reads, carries no diagnosis to reconstruct which kind of empty a query was — an honest narrower label over a familiar wrong one).
 **Reads:** none (live instrumented run against production engines).
 **Writes:** `md/acquire_probe_<ts>.md` (full run only; `--smoke` writes nothing).
 **Called by:** CLI only. Flags: `--max-queries N`, `--smoke` (4-query dry-run, no report).
@@ -245,17 +245,17 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 **Called by:** CLI + imported by `bm25_compare_smoke.py`, `bm25_idf_engine_smoke.py`, `bm25_capped_smoke.py`, `pooling_probe.py`, `rerank_probe_smoke.py`, `single_query_pool_dump.py`, `stage1_pool_fetch.py`, `stage3_method_run.py`, `stage3_method_run_v3.py`, `value_eval_probe.py`.
 **Calls out:** `rank_bm25` (BM25Okapi).
 
-### branch_probe.py (700 LOC)
+### branch_probe.py (704 LOC)
 
-**Purpose:** Phase 3 bee investigation — sleep-branch discriminator. Distinguishes which of the two `asyncio.sleep` branches inside `RateLimiter.acquire()` fires during zero-cascade queries: `backoff_sleep_attempt` vs `tokencap_sleep_attempt`. Full replacement of `RateLimiter.acquire()` (byte-identical body + branch-discriminator event-emits) installed via monkeypatch before any `src.search` import. Structural discriminator: 6 engines have `.backoff()` calls (google, google_scholar, lobsters, mojeek, duckduckgo, semantic_scholar), 4 do not (crossref, openalex, stack_exchange, open_library).
+**Purpose:** Phase 3 bee investigation — sleep-branch discriminator. Distinguishes which of the two `asyncio.sleep` branches inside `RateLimiter.acquire()` fires during zero-cascade queries: `backoff_sleep_attempt` vs `tokencap_sleep_attempt`. Full replacement of `RateLimiter.acquire()` (byte-identical body + branch-discriminator event-emits) installed via monkeypatch before any `src.search` import. Structural discriminator: 6 engines have `.backoff()` calls (google, google_scholar, lobsters, mojeek, duckduckgo, semantic_scholar), 4 do not (crossref, openalex, stack_exchange, open_library). Query category renamed `"captcha"` → `"empty"` (same reason as `acquire_probe.py` above).
 **Reads:** none (live instrumented run).
 **Writes:** `md/branch_probe_<ts>.md` (full run only).
 **Called by:** CLI only. Flags: `--max-queries N`, `--smoke` (4-query dry-run, no report).
 **Calls out:** `src.search.rate_limiter` (monkeypatched via `importlib`), full engine set via production search path.
 
-### cdp_starvation_probe.py (575 LOC)
+### cdp_starvation_probe.py (581 LOC)
 
-**Purpose:** Phase 1 bee investigation — asyncio event-loop starvation probe. Pattern A (slow-callback logger), Pattern B (scheduling-latency canary), CDP event counter (monkey-patch on `ConnectionHandler._process_single_message`). Categorizes queries as normal/captcha/zero_cascade. Historical verdict (as of the investigation date, see process-docs): REFUTED (event loop p99=1.4ms, 0 CDP events during cascade).
+**Purpose:** Phase 1 bee investigation — asyncio event-loop starvation probe. Pattern A (slow-callback logger), Pattern B (scheduling-latency canary), CDP event counter (monkey-patch on `ConnectionHandler._process_single_message`). Categorizes queries as normal/empty/zero_cascade (`empty` was `captcha`, keyed on `EMPTY_BLOCK` — renamed when that verdict was removed; `engine_details` carries no diagnosis to reconstruct which kind of empty a query was). Historical verdict (as of the investigation date, see process-docs): REFUTED (event loop p99=1.4ms, 0 CDP events during cascade).
 **Reads:** `queries.txt` (20-30 queries).
 **Writes:** `md/cdp_probe_<ts>.md`.
 **Called by:** CLI only. Flags: `--max-queries N`.
@@ -293,9 +293,9 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 **Called by:** CLI only.
 **Calls out:** `_lib.parse` (`KNOWN_ENGINES`, `parse_smoke_report`).
 
-### engine_health_audit.py (214 LOC)
+### engine_health_audit.py (206 LOC)
 
-**Purpose:** Reads `src/logs/query_log.jsonl` and aggregates per-engine status counts. Sub-status-aware classification (rules fire before the coarse success-rate bucket): `BROKEN (DOM-DRIFT)` when `EMPTY_NO_CONTAINER > 50%` of empty samples, `DEGRADED (ANTI-BOT)` when `EMPTY_BLOCK > 30%`, `HEALTHY-EMPTY` when `EMPTY_NO_RESULTS` dominates with acceptable success rate, `FLAG (PYDOLL-CANCEL-LEAK)` when `TIMEOUT_NONCOOP > 10%` of timeouts. Bucket aggregation uses `startswith("EMPTY"/"TIMEOUT"/"ERROR")` to tolerate sub-status names.
+**Purpose:** Reads `src/logs/query_log.jsonl` and aggregates per-engine status counts. The EMPTY sub-status-aware rules (`BROKEN (DOM-DRIFT)`/`DEGRADED (ANTI-BOT)`/`HEALTHY-EMPTY`, keyed on `EMPTY_NO_CONTAINER`/`EMPTY_BLOCK`/`EMPTY_NO_RESULTS`) were removed — those sub-statuses no longer exist as of the guessed-verdict-removal milestone (every empty result now logs bare `EMPTY`, with its own diagnosis snapshot in the log record instead). The remaining `FLAG (PYDOLL-CANCEL-LEAK)` rule (`TIMEOUT_NONCOOP > 10%` of timeouts) is unaffected — `TIMEOUT_*` was never a guessed verdict. Bucket aggregation still uses `startswith("EMPTY"/"TIMEOUT"/"ERROR")` to tolerate sub-status names, which still works (`"EMPTY"` itself starts with `"EMPTY"`).
 **Reads:** `src/logs/query_log.jsonl`.
 **Writes:** `md/<report>.md`.
 **Called by:** CLI only. Flags: `--last N` (default 100), `--since ISO_TS`, `--engine NAME`.
@@ -317,9 +317,9 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 **Called by:** CLI only. Flags: `--tail N`, `--log-path PATH`, `--all-types` (include `engine_run` records).
 **Calls out:** none beyond stdlib.
 
-### no_google_burst_smoke.py (200 LOC)
+### no_google_burst_smoke.py (219 LOC)
 
-**Purpose:** No-Google concurrent burst smoke — production `ScholarEngine` (HTTP) vs the 3 other remaining production engines under concurrent multi-engine burst pattern, without Google browser present. Architectural discriminator: does HTTP Scholar survive the burst pattern without the Google-driven browser warmup? Import switched from the dev-only `ScholarHTTPProbe` (see `scholar_http_probe.py`) to production `ScholarEngine` as part of an HTTP migration.
+**Purpose:** No-Google concurrent burst smoke — production `ScholarEngine` (HTTP) vs the 3 other remaining production engines under concurrent multi-engine burst pattern, without Google browser present. Architectural discriminator: does HTTP Scholar survive the burst pattern without the Google-driven browser warmup? Import switched from the dev-only `ScholarHTTPProbe` (see `scholar_http_probe.py`) to production `ScholarEngine` as part of an HTTP migration. The probe's whole purpose — Scholar's block rate — used to key on the removed `EMPTY_BLOCK` verdict; `_run_engine` now captures `search_with_reason`'s diagnosis dict directly (unlike `acquire_probe.py`/`branch_probe.py`/`cdp_starvation_probe.py`, which only see status through `engine_details` and cannot reconstruct this) and `_is_blocked(diagnosis)` derives the fact from `captcha_form` or a 30x `http_status`, both already in scholar's snapshot.
 **Reads:** hardcoded 12-query set (academic queries, 3 bursts × 4).
 **Writes:** `jsonl/no_google_burst_<ts>.jsonl` (per-query records); summary table to stderr.
 **Called by:** CLI only.
@@ -357,9 +357,9 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 **Called by:** CLI + imported by `pooling_probe.py`, `single_query_pool_dump.py`, `stage1_pool_fetch.py`, `stage3_method_run.py`, `stage3_method_run_v3.py`, `value_eval_probe.py`.
 **Calls out:** `httpx`, `numpy`, GPU services (embedding-0.6b, reranker-0.6b).
 
-### scholar_http_probe.py (144 LOC)
+### scholar_http_probe.py (149 LOC)
 
-**Purpose:** HTTP-based architectural alternative to `src/search/engines/scholar.py` — pure httpx + lxml against `scholar.google.com`, no browser. Status: dev-only PROBE, not wired into production `ENGINES` dict. `ScholarHTTPProbe` class (`name="scholar_http"`) uses a probe-local `RateLimiter` distinct from production `_limiters`.
+**Purpose:** HTTP-based architectural alternative to `src/search/engines/scholar.py` — pure httpx + lxml against `scholar.google.com`, no browser. Status: dev-only PROBE, not wired into production `ENGINES` dict. `ScholarHTTPProbe` class (`name="scholar_http"`) uses a probe-local `RateLimiter` distinct from production `_limiters`. Its own sub-status sentinels (`_BLOCK`, `_NO_RESULTS`) are local module constants, not `src.search.status` — that module's `EMPTY_BLOCK`/`EMPTY_NO_RESULTS` were removed (the guessed-verdict-removal milestone), but this probe's own backoff experiment (`self._limiter.backoff()` on a detected block) is internal to this file and never reaches the production query log, so it keeps its own local vocabulary rather than adopting the production diagnosis-snapshot pattern.
 **Reads:** none (live HTTP fetch).
 **Writes:** returns `SearchResult` list — no file I/O.
 **Called by:** imported historically by `no_google_burst_smoke.py` (that script has since switched to production `ScholarEngine`; import is currently unused there, see module docstring cross-reference).
@@ -389,9 +389,9 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 **Called by:** CLI only.
 **Calls out:** `_lib.parse.parse_smoke_report`, `_lib.text` (`strip_bloat`, `lexical_density`).
 
-### stage1_pool_fetch.py (381 LOC)
+### stage1_pool_fetch.py (379 LOC)
 
-**Purpose:** Phase 12+ pool fetch (v3 schema) — 4 modes × 4 queries, per-pair `<mode>_<slug>_pool.json` + `<mode>_<slug>_engine_report.md`, global `engine_report_summary.md`. Every pool entry carries `positions: {engine: rank}` alongside `engines` + `min_position` (invariants: `set(engines)==set(positions.keys())`, `min_position==min(positions.values())`).
+**Purpose:** Phase 12+ pool fetch (v3 schema) — 4 modes × 4 queries, per-pair `<mode>_<slug>_pool.json` + `<mode>_<slug>_engine_report.md`, global `engine_report_summary.md`. Every pool entry carries `positions: {engine: rank}` alongside `engines` + `min_position` (invariants: `set(engines)==set(positions.keys())`, `min_position==min(positions.values())`). `_STATUS_HINTS` dropped its 5 EMPTY_* sub-status entries and `engine_report_summary.md`'s per-engine table dropped its BLOCK% column (both removed along with `src/search/status.py`'s guessed verdicts — every empty result now logs bare `EMPTY`, so there is no more BLOCK-vs-EMPTY distinction left to report).
 **Reads:** imports pool-build utilities from `bm25_sweep_smoke.py`, `rerank_probe_smoke.py`.
 **Writes:** `runs/value_eval_v3_<ts>/` — per-pair `*_pool.json` + `*_engine_report.md`, `engine_report_summary.md`.
 **Called by:** CLI only. Flags: `--smoke` (1-pair), `--ts-dir PATH`.
@@ -455,7 +455,7 @@ Smoke tests, selector-drift probes, ranking-method eval harness, and bee-investi
 
 ### with_google_decoupling_smoke.py (189 LOC)
 
-**Purpose:** Verifies Scholar is absent from the default engine set (production `_select_engines(None)` path). Checks: Google browser engine present, `google_scholar` NOT in `engines_requested`, `engines_excluded["google_scholar"] == "decoupled_from_google"` in query log, no `EMPTY_BLOCK` attributed to Scholar. Runs 5 queries through `search_web_workflow(query, engines=None)` then reads the last 5 `query_log.jsonl` lines.
+**Purpose:** Verifies Scholar is absent from the default engine set (production `_select_engines(None)` path). Checks: Google browser engine present, `google_scholar` NOT in `engines_requested`, `engines_excluded["google_scholar"] == "decoupled_from_google"` in query log, no status attributed to Scholar at all. Runs 5 queries through `search_web_workflow(query, engines=None)` then reads the last 5 `query_log.jsonl` lines.
 **Reads:** `src/logs/query_log.jsonl` (tail, before/after count).
 **Writes:** `md/with_google_decoupling_<ts>.md`.
 **Called by:** CLI only.

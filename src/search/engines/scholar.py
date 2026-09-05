@@ -8,7 +8,6 @@ from lxml import html as lhtml
 from src.search.engines.base import BaseEngine
 from src.search.rate_limiter import RateLimiter, _limiters
 from src.search.result import SearchResult
-from src.search import status as S
 
 logger = logging.getLogger(__name__)
 
@@ -36,9 +35,10 @@ class ScholarEngine(BaseEngine):
     name = "google_scholar"
 
     # Full HTTP search logic; returns (results, reason, diagnosis); exceptions propagate to
-    # _engine_with_timing. diagnosis carries the one fact this engine already has in hand — the
-    # real HTTP status — on every branch that returns without results; None whenever results are
-    # non-empty (no diagnosis mechanism beyond that one fact: HTTP + lxml parse, no browser DOM)
+    # _engine_with_timing. reason is always None — the redirect and inline-captcha-form branches
+    # used to surface guessed verdicts here; both facts (the observed HTTP status, the captcha-form
+    # element's presence) are now in diagnosis instead, and the verdicts they fed are gone.
+    # diagnosis is None whenever results are non-empty
     async def search_with_reason(self, query: str, language: str = "en", max_results: int = 10) -> tuple[list[SearchResult], str | None, dict | None]:
         logger.info("Scholar search: %s", query)
         url = _build_url(query, language, max_results)
@@ -47,14 +47,14 @@ class ScholarEngine(BaseEngine):
         if r.status_code in (301, 302, 303, 307, 308):
             location = r.headers.get("Location", "")
             logger.warning("Scholar redirect → %s", location)
-            return [], S.EMPTY_BLOCK, {"http_status": r.status_code}
+            return [], None, {"http_status": r.status_code}
 
         r.raise_for_status()
 
-        results, reason = _parse_response(r.text, max_results)
+        results, captcha_form = _parse_response(r.text, max_results)
         if results:
-            return results, reason, None
-        return results, reason, {"http_status": r.status_code}
+            return results, None, None
+        return results, None, {"http_status": r.status_code, "captcha_form": captcha_form}
 
     # Legacy thin wrapper — delegates to search_with_reason; swallows exceptions for dev-script compat
     async def search(self, query: str, language: str = "en", max_results: int = 10) -> list[SearchResult]:
@@ -84,16 +84,14 @@ async def _fetch(url: str) -> httpx.Response:
         return await client.get(url)
 
 
-# Parse Scholar HTML; return (results, reason) — reason None on success, EMPTY_BLOCK on captcha form
-def _parse_response(body: str, max_results: int) -> tuple[list[SearchResult], str | None]:
+# Parse Scholar HTML; return (results, captcha_form) — captcha_form is a FACT (the inline
+# form#gs_captcha_f element's presence), never a verdict; results stays [] either way it's True
+def _parse_response(body: str, max_results: int) -> tuple[list[SearchResult], bool]:
     dom = lhtml.fromstring(body)
     if dom.xpath("//form[@id='gs_captcha_f']"):
         logger.warning("Scholar inline captcha form detected")
-        return [], S.EMPTY_BLOCK
-    results = _extract_results(dom, max_results)
-    if not results:
-        return [], S.EMPTY_NO_RESULTS
-    return results, None
+        return [], True
+    return _extract_results(dom, max_results), False
 
 
 # Extract SearchResult list from parsed Scholar DOM — skips [CITATION] blocks (no anchor)

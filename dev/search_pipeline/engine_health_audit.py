@@ -128,18 +128,10 @@ def classify_health(s: dict) -> tuple[str, str]:
         return "⚪", "INSUFFICIENT"
     sc = s.get("status_counts", {})
 
-    # Sub-status-aware EMPTY rules (fire before coarse success_rate checks when signal is clear)
-    empty_total = s["empty"]
-    if empty_total >= MIN_SAMPLES:
-        no_container = sc.get("EMPTY_NO_CONTAINER", 0)
-        block = sc.get("EMPTY_BLOCK", 0)
-        no_results = sc.get("EMPTY_NO_RESULTS", 0)
-        if no_container / empty_total > 0.50:
-            return "🔴", "BROKEN (DOM-DRIFT)"
-        if block / empty_total > 0.30:
-            return "🟡", "DEGRADED (ANTI-BOT)"
-        if no_results / empty_total > 0.70 and s["success_rate"] >= SUCCESS_DEGRADED:
-            return "✅", "HEALTHY-EMPTY"
+    # Sub-status-aware EMPTY rules (EMPTY_NO_CONTAINER/EMPTY_BLOCK/EMPTY_NO_RESULTS) were removed
+    # along with the query log's guessed-verdict sub-statuses — every empty result now logs a bare
+    # "EMPTY" carrying its own diagnosis snapshot instead, so no sub-status breakdown remains to
+    # bucket on here; see src/search/DOCS.md's diagnosis Gotcha for what replaced the distinction.
 
     # TIMEOUT sub-status: PYDOLL-CANCEL-LEAK flag
     timeout_total = s["timeout"]

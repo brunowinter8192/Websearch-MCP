@@ -10,7 +10,6 @@ from src.search.document_status import attach_document_status, start_document_st
 from src.search.engines.base import BaseEngine
 from src.search.rate_limiter import RateLimiter, _limiters
 from src.search.result import SearchResult
-from src.search import status as S
 
 logger = logging.getLogger(__name__)
 
@@ -70,17 +69,19 @@ class DuckDuckGoEngine(BaseEngine):
             diag = await _diagnose(tab)
             if diag["challenge_form"]:
                 logger.warning("DuckDuckGo CAPTCHA detected for: %s", query)
-                return [], S.EMPTY_BLOCK, attach_document_status(diag, status_chain)
+                diag["containers_found"] = None
+                return [], None, attach_document_status(diag, status_chain)
             if not await _wait_for_results(tab):
                 diag = await _diagnose(tab)
-                reason = _classify_diagnosis(diag["challenge_form"], diag["ready_state"])
-                logger.debug("DuckDuckGo empty (%s) for: %s", reason, query)
-                return [], reason, attach_document_status(diag, status_chain)
+                diag["containers_found"] = False
+                logger.debug("DuckDuckGo empty for: %s", query)
+                return [], None, attach_document_status(diag, status_chain)
             results = await _parse_results(tab, max_results)
             if results:
                 return results, None, None
             diag = await _diagnose(tab)
-            return results, S.EMPTY_NO_RESULTS, attach_document_status(diag, status_chain)
+            diag["containers_found"] = True
+            return results, None, attach_document_status(diag, status_chain)
         finally:
             await kill_tab(tab)
 
@@ -167,16 +168,7 @@ def _extract_date(date_raw: str) -> str | None:
     return None
 
 
-# Classify a diagnosis snapshot into an EMPTY sub-status (priority: BLOCK -> CONCURRENT_RACE -> NO_CONTAINER)
-def _classify_diagnosis(challenge_form: bool, ready_state: str) -> str:
-    if challenge_form:
-        return S.EMPTY_BLOCK
-    if ready_state != "complete":
-        return S.EMPTY_CONCURRENT_RACE
-    return S.EMPTY_NO_CONTAINER
-
-
-# Snapshot the page facts behind an empty-reason verdict — an OBSERVATION, not a verdict; marker
+# Snapshot the page facts behind an empty result — an OBSERVATION, never a verdict; marker
 # stays None (DDG's block signal is a structural element count, not a text marker) — the fact lives
 # in its own named field, challenge_form, matching brave's pow_link / startpage's iframe_challenge
 async def _diagnose(tab) -> dict:

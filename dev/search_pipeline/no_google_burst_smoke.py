@@ -128,10 +128,10 @@ async def _run_burst(engines: dict, query: str, label: str) -> dict:
     engine_stats = {}
     for name, result in results_map.items():
         if isinstance(result, Exception):
-            engine_stats[name] = {"status": S.ERROR, "search_ms": 0, "result_count": 0, "error": str(result)}
+            engine_stats[name] = {"status": "ERROR", "search_ms": 0, "result_count": 0, "error": str(result), "blocked": False}
         else:
-            status, search_ms, result_count = result
-            engine_stats[name] = {"status": status, "search_ms": search_ms, "result_count": result_count}
+            status, search_ms, result_count, blocked = result
+            engine_stats[name] = {"status": status, "search_ms": search_ms, "result_count": result_count, "blocked": blocked}
 
     return {
         "label": label,
@@ -141,33 +141,47 @@ async def _run_burst(engines: dict, query: str, label: str) -> dict:
     }
 
 
-# Drive one engine with watchdog timeout; return (status, search_ms, result_count)
-async def _run_engine(engine, query: str, timeout: float) -> tuple[str, int, int]:
+# A block observed as a FACT from scholar's diagnosis snapshot — the inline captcha-form element's
+# presence, or a 30x redirect status — never the removed EMPTY_BLOCK verdict this metric used to
+# key on. Applies to any engine's diagnosis shape that carries these two fields; scholar is the
+# only one in this probe's engine set that ever populates them.
+def _is_blocked(diagnosis: dict | None) -> bool:
+    if not diagnosis:
+        return False
+    if diagnosis.get("captcha_form"):
+        return True
+    status = diagnosis.get("http_status")
+    return isinstance(status, int) and 300 <= status < 400
+
+
+# Drive one engine with watchdog timeout; return (status, search_ms, result_count, blocked)
+async def _run_engine(engine, query: str, timeout: float) -> tuple[str, int, int, bool]:
     t0 = time.perf_counter()
     try:
-        results, reason, _ = await asyncio.wait_for(
+        results, reason, diagnosis = await asyncio.wait_for(
             engine.search_with_reason(query, "en", 10),
             timeout=timeout,
         )
         search_ms = round((time.perf_counter() - t0) * 1000)
+        blocked = _is_blocked(diagnosis)
         if results:
-            return S.OK, search_ms, len(results)
-        return reason or S.EMPTY, search_ms, 0
+            return S.OK, search_ms, len(results), blocked
+        return reason or S.EMPTY, search_ms, 0, blocked
     except asyncio.TimeoutError:
         search_ms = round((time.perf_counter() - t0) * 1000)
-        return S.TIMEOUT_WATCHDOG, search_ms, 0
+        return S.TIMEOUT_WATCHDOG, search_ms, 0, False
     except httpx.TimeoutException:
         search_ms = round((time.perf_counter() - t0) * 1000)
-        return S.TIMEOUT_HTTPX, search_ms, 0
+        return S.TIMEOUT_HTTPX, search_ms, 0, False
     except (_pydoll_exc.PydollException, _ws_exc.WebSocketException, ConnectionError):
         search_ms = round((time.perf_counter() - t0) * 1000)
-        return S.ERROR_BROWSER, search_ms, 0
+        return S.ERROR_BROWSER, search_ms, 0, False
     except httpx.HTTPError:
         search_ms = round((time.perf_counter() - t0) * 1000)
-        return S.ERROR_HTTP, search_ms, 0
+        return S.ERROR_HTTP, search_ms, 0, False
     except Exception:
         search_ms = round((time.perf_counter() - t0) * 1000)
-        return S.ERROR, search_ms, 0
+        return "ERROR", search_ms, 0, False
 
 
 # Print per-query Scholar status table + aggregate to stderr
@@ -175,25 +189,30 @@ def _print_summary(records: list[dict]) -> None:
     print("\n=== SCHOLAR HTTP (PRODUCTION) SUMMARY ===", file=sys.stderr)
     print(f"{'#':3} {'Label':7} {'Scholar status':22} {'ms':6} {'n':4} {'query':45}", file=sys.stderr)
     print("-" * 95, file=sys.stderr)
-    scholar_statuses = []
+    scholar_entries = []
     for i, rec in enumerate(records):
         s = rec["engines"].get("google_scholar", {})
         status = s.get("status", "?")
         ms = s.get("search_ms", 0)
         n = s.get("result_count", 0)
-        scholar_statuses.append(status)
+        blocked = s.get("blocked", False)
+        scholar_entries.append((status, blocked))
         print(f"{i + 1:3} {rec['label']:7} {status:22} {ms:6} {n:4} {rec['query'][:45]}", file=sys.stderr)
 
     from collections import Counter
-    counts = Counter(scholar_statuses)
-    effective = [s for s in scholar_statuses if s != S.RATE_SKIP]
-    blocks = [s for s in effective if s == S.EMPTY_BLOCK]
+    counts = Counter(status for status, _ in scholar_entries)
+    effective = [(status, blocked) for status, blocked in scholar_entries if status != S.RATE_SKIP]
+    # Block rate keyed on the FACT (scholar's diagnosis: captcha_form present, or a 30x http_status)
+    # instead of the removed EMPTY_BLOCK verdict — this metric is the probe's whole purpose, and
+    # search_with_reason's diagnosis dict is directly in hand here (unlike acquire_probe.py/
+    # branch_probe.py/cdp_starvation_probe.py, which only see status through engine_details).
+    blocks = [blocked for _, blocked in effective if blocked]
 
     print(file=sys.stderr)
     print("Scholar status distribution:", dict(counts), file=sys.stderr)
-    print(f"Effective attempts (non-RATE_SKIP): {len(effective)}/{len(scholar_statuses)}", file=sys.stderr)
+    print(f"Effective attempts (non-RATE_SKIP): {len(effective)}/{len(scholar_entries)}", file=sys.stderr)
     block_rate = f"{len(blocks) / len(effective) * 100:.0f}%" if effective else "N/A"
-    print(f"EMPTY_BLOCK: {len(blocks)}/{len(effective)} effective → block rate {block_rate}", file=sys.stderr)
+    print(f"Blocked (captcha_form or 30x http_status fact): {len(blocks)}/{len(effective)} effective → block rate {block_rate}", file=sys.stderr)
 
 
 if __name__ == "__main__":

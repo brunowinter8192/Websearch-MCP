@@ -6,7 +6,7 @@ Tests the production _select_engines(None) path end-to-end:
   - Google browser engine IS in the set
   - google_scholar is NOT in engines_requested
   - engines_excluded["google_scholar"] == "decoupled_from_google" in query log
-  - No EMPTY_BLOCK attributed to Scholar (it never fired)
+  - No status attributed to Scholar at all (it never fired)
 
 Runs 5 queries through search_web_workflow(query, engines=None) — the real production
 path — then reads the last 5 lines of query_log.jsonl to verify the exclusion machinery.

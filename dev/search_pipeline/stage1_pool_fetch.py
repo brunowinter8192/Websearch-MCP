@@ -63,12 +63,9 @@ SMOKE_QUERY = "transformer attention mechanism"
 
 # NOTE: _STATUS_HINTS duplicated from 11_pipeline_smoke.py, keep in sync manually
 # until extracted to shared helper.
+# EMPTY_NO_RESULTS/EMPTY_NO_CONTAINER/EMPTY_CONSENT/EMPTY_BLOCK/EMPTY_CONCURRENT_RACE entries
+# removed with the guessed-verdict sub-statuses — every empty result now logs bare "EMPTY".
 _STATUS_HINTS: dict[str, str] = {
-    "EMPTY_NO_RESULTS":      "0 hits",
-    "EMPTY_NO_CONTAINER":    "no DOM container",
-    "EMPTY_CONSENT":         "consent page",
-    "EMPTY_BLOCK":           "CAPTCHA",
-    "EMPTY_CONCURRENT_RACE": "page not ready",
     "TIMEOUT_WATCHDOG":      "watchdog timeout",
     "TIMEOUT_NONCOOP":       "non-cooperative",
     "TIMEOUT_HTTPX":         "httpx timeout",
@@ -292,8 +289,10 @@ def _save_engine_report(
 
 # Write engine_report_summary.md aggregated over all pairs
 def _save_engine_summary(ts_dir: Path, rows: list[dict], ts: str) -> None:
-    _EMPTY_STATUSES   = {"EMPTY_NO_RESULTS", "EMPTY_NO_CONTAINER", "EMPTY_CONSENT", "EMPTY_CONCURRENT_RACE", "EMPTY"}
-    _BLOCK_STATUSES   = {"EMPTY_BLOCK"}
+    # EMPTY_NO_RESULTS/EMPTY_NO_CONTAINER/EMPTY_CONSENT/EMPTY_CONCURRENT_RACE/EMPTY_BLOCK were
+    # removed with the guessed-verdict sub-statuses — every empty result now logs bare "EMPTY", so
+    # there is no more BLOCK-vs-EMPTY distinction to bucket separately (BLOCK% column dropped below).
+    _EMPTY_STATUSES   = {"EMPTY"}
     _TIMEOUT_STATUSES = {"TIMEOUT_WATCHDOG", "TIMEOUT_NONCOOP", "TIMEOUT_HTTPX"}
     _ERROR_STATUSES   = {"ERROR_BROWSER", "ERROR_HTTP", "ERROR_PARSE", "ERROR_OTHER", "ERROR"}
 
@@ -336,8 +335,8 @@ def _save_engine_summary(ts_dir: Path, rows: list[dict], ts: str) -> None:
         "",
         "## Per-Engine Aggregate",
         "",
-        "| Engine | n | OK | EMPTY% | BLOCK% | TIMEOUT% | ERROR% | Total URLs | Mean URLs/Pool | Dominant Failure |",
-        "|--------|---|----|----|----|----|---|---|---|---|",
+        "| Engine | n | OK | EMPTY% | TIMEOUT% | ERROR% | Total URLs | Mean URLs/Pool | Dominant Failure |",
+        "|--------|---|----|----|----|---|---|---|---|",
     ]
     for eng in sorted(engine_data):
         d   = engine_data[eng]
@@ -346,12 +345,11 @@ def _save_engine_summary(ts_dir: Path, rows: list[dict], ts: str) -> None:
         tu  = d["total_urls"]
         mu  = f"{tu / n:.1f}" if n else "0"
         emp = sum(sc.get(s, 0) for s in _EMPTY_STATUSES)
-        blk = sum(sc.get(s, 0) for s in _BLOCK_STATUSES)
         tmo = sum(sc.get(s, 0) for s in _TIMEOUT_STATUSES)
         err = sum(sc.get(s, 0) for s in _ERROR_STATUSES)
         dom = _dominant_failure(sc)
         lines.append(
-            f"| {eng} | {n} | {d['ok']} | {_pct(emp, n)} | {_pct(blk, n)}"
+            f"| {eng} | {n} | {d['ok']} | {_pct(emp, n)}"
             f" | {_pct(tmo, n)} | {_pct(err, n)} | {tu} | {mu} | {dom} |"
         )
 

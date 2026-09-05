@@ -215,9 +215,11 @@ async def test_search_web_workflow_writes_log(tmp_path, monkeypatch):
 async def test_search_web_workflow_propagates_diagnosis_into_both_records(tmp_path, monkeypatch):
     """A browser-engine-shaped mock returning (results, empty_reason, diagnosis) has that diagnosis
     dict land unchanged in engines[name]['diagnosis'] for BOTH the engine_run record (written by
-    _query_engines_concurrent) and the workflow_summary record (written by _build_query_log_entry) —
-    the milestone this test guards: an EMPTY_BLOCK verdict must carry the observation it was derived
-    from, not just the bare status string. The OK-status engine's diagnosis stays None."""
+    _query_engines_concurrent) and the workflow_summary record (written by _build_query_log_entry).
+    empty_reason is None here — every real engine's search_with_reason returns None as of the
+    guessed-verdict-removal milestone — so status falls through to the generic "EMPTY"; the point
+    this test guards is that an empty result still carries its observation snapshot, not just the
+    bare status string. The OK-status engine's diagnosis stays None."""
     from src.search import search_web
     log_file = tmp_path / "query_log.jsonl"
     monkeypatch.setenv("WEBSEARCH_QUERY_LOG_PATH", str(log_file))
@@ -226,7 +228,7 @@ async def test_search_web_workflow_propagates_diagnosis_into_both_records(tmp_pa
     result_a = _fake_result("https://a.com", engine="google")
     mock_engines = {
         "google": _make_mock_engine_with_reason("google", [result_a]),
-        "duckduckgo": _make_mock_engine_with_reason("duckduckgo", [], empty_reason="EMPTY_BLOCK", diagnosis=diag),
+        "duckduckgo": _make_mock_engine_with_reason("duckduckgo", [], empty_reason=None, diagnosis=diag),
     }
 
     with (
@@ -240,7 +242,7 @@ async def test_search_web_workflow_propagates_diagnosis_into_both_records(tmp_pa
     for rec in records:
         assert rec["engines"]["google"]["diagnosis"] is None
         assert rec["engines"]["duckduckgo"]["diagnosis"] == diag
-        assert rec["engines"]["duckduckgo"]["status"] == "EMPTY_BLOCK"
+        assert rec["engines"]["duckduckgo"]["status"] == "EMPTY"
 
 
 # ---------------------------------------------------------------------------

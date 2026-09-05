@@ -145,8 +145,12 @@ async def run_branch_probe(max_queries: int | None, smoke: bool) -> None:
             google_status = det.get("google", {}).get("status", "—")
             all_statuses = {k: v.get("status", "—") for k, v in det.items()}
             all_rate_skip = bool(all_statuses) and all(s == "RATE_SKIP" for s in all_statuses.values())
+            # "captcha" (keyed on the removed EMPTY_BLOCK verdict) renamed to "empty" — the
+            # guessed-verdict-removal milestone collapsed EMPTY_BLOCK into bare "EMPTY", and
+            # engine_details (status+ms only) carries no diagnosis to reconstruct which kind of
+            # empty this was; an honest narrower label beats a familiar wrong one.
             category = (
-                "captcha" if google_status == "EMPTY_BLOCK"
+                "empty" if google_status == "EMPTY"
                 else "zero_cascade" if all_rate_skip
                 else "normal"
             )
@@ -164,7 +168,7 @@ async def run_branch_probe(max_queries: int | None, smoke: bool) -> None:
             }
             query_records.append(record)
 
-            flag = {"captcha": "⚡", "zero_cascade": "🚫", "normal": ""}[category]
+            flag = {"empty": "⚡", "zero_cascade": "🚫", "normal": ""}[category]
             print(
                 f"[{qi:2}/{len(queries)}] {query[:48]!r:50} "
                 f"cat={category:<12} disc={disc:<24} ev={len(new_events)} {flag}",
@@ -362,7 +366,7 @@ def _canary_stats(records: list[dict]) -> dict[str, dict]:
             "max": round(max(data), 1),
         }
 
-    return {k: _s(by_cat.get(k, [])) for k in ("normal", "captcha", "zero_cascade")}
+    return {k: _s(by_cat.get(k, [])) for k in ("normal", "empty", "zero_cascade")}
 
 
 def _overall_verdict(records: list[dict]) -> str:
@@ -381,14 +385,14 @@ def _write_report(records: list[dict], cascade_ok: bool, zero_n: int) -> Path:
     path = REPORT_DIR / f"branch_probe_{ts_str}.md"
     verdict = _overall_verdict(records)
     cstats = _canary_stats(records)
-    captcha_n = sum(1 for r in records if r["category"] == "captcha")
+    empty_n = sum(1 for r in records if r["category"] == "empty")
 
     lines: list[str] = [
         f"# Branch Probe Report — {ts_str}",
         "",
         f"**Overall verdict:** {verdict}  ",
         f"**Cascade reproduced:** {cascade_ok} ({zero_n}/{len(records)} zero_cascade)  ",
-        f"**CAPTCHA queries:** {captcha_n}  ",
+        f"**Empty queries:** {empty_n}  ",
         f"**Total acquire events:** {len(_acq_events)}  ",
         "",
         "---",
@@ -473,7 +477,7 @@ def _write_report(records: list[dict], cascade_ok: bool, zero_n: int) -> Path:
         "| category | n_q | avg_backoff_eng | avg_tokencap_eng | avg_neither_eng | canary_p99_ms |",
         "|----------|-----|----------------:|-----------------:|----------------:|---------------|",
     ]
-    for cat in ("normal", "captcha", "zero_cascade"):
+    for cat in ("normal", "empty", "zero_cascade"):
         cat_rec = [r for r in records if r["category"] == cat]
         if not cat_rec:
             lines.append(f"| {cat} | 0 | — | — | — | — |")
@@ -502,7 +506,7 @@ def _write_report(records: list[dict], cascade_ok: bool, zero_n: int) -> Path:
         "| Category | n | p50 ms | p99 ms | max ms |",
         "|----------|---|--------|--------|--------|",
     ]
-    for cat in ("normal", "captcha", "zero_cascade"):
+    for cat in ("normal", "empty", "zero_cascade"):
         s = cstats[cat]
         lines.append(f"| {cat} | {s['n']} | {s['p50']} | {s['p99']} | {s['max']} |")
 
