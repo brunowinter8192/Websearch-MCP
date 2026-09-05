@@ -217,12 +217,15 @@ def _validate_resume_state(resume_state: dict) -> None:
 # crude same-page-netloc substring check — see DOCS.md Gotchas — never gets a chance to matter;
 # this filter is the sole scope authority), paced fetch config (see TRAVERSAL_MEAN_DELAY_S/
 # TRAVERSAL_MAX_RANGE_S/TRAVERSAL_CONCURRENCY — real anti-bot measurement drove these, not
-# crawl4ai's own speed-tuned defaults), no markdown generation (this milestone only harvests
-# URLs). An on_state_change callback keeps the LATEST captured strategy state, which after the
-# run holds whatever the frontier ("pending") still contained the moment the run stopped — URLs
-# link_discovery found and accepted but the page budget never got to fetch, which must not be
-# silently discarded (see discover_urls_workflow's own docstring). Returns (fetched_urls,
-# frontier_leftover_urls, stop_reason, pages_fetched, pages_failed).
+# crawl4ai's own speed-tuned defaults), prefetch=True (link_discovery below only ever reads
+# result.links — see DOCS.md Gotchas for the measured proof that crawl4ai's prefetch short-circuit
+# returns the identical link set and does not affect fetch-success/failure classification, so the
+# scraping strategy, markdown generation, content filtering and media extraction this module never
+# used are now genuinely skipped, not just uninspected). An on_state_change callback keeps the
+# LATEST captured strategy state, which after the run holds whatever the frontier ("pending") still
+# contained the moment the run stopped — URLs link_discovery found and accepted but the page budget
+# never got to fetch, which must not be silently discarded (see discover_urls_workflow's own
+# docstring). Returns (fetched_urls, frontier_leftover_urls, stop_reason, pages_fetched, pages_failed).
 async def _traverse(seed_url: str, seed_host: str, resume_state: dict,
                     max_depth: int, max_pages: int) -> tuple:
     captured = {}
@@ -242,7 +245,7 @@ async def _traverse(seed_url: str, seed_host: str, resume_state: dict,
         cache_mode=CacheMode.BYPASS, wait_until="domcontentloaded",
         deep_crawl_strategy=strategy, stream=False, verbose=False,
         mean_delay=TRAVERSAL_MEAN_DELAY_S, max_range=TRAVERSAL_MAX_RANGE_S,
-        semaphore_count=TRAVERSAL_CONCURRENCY,
+        semaphore_count=TRAVERSAL_CONCURRENCY, prefetch=True,
     )
     browser_config = BrowserConfig(headless=True, verbose=False)
 
