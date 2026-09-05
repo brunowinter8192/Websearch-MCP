@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Docs domain probe — appends '+documentation' to 12 broad tech queries across Google, DDG, Mojeek.
+"""Docs domain probe — appends '+documentation' to 12 broad tech queries across Google, DDG.
 
 Evaluates H1-H13 heuristics against the raw URL pool to inform --docs CLI flag design.
 Generates: heuristic coverage matrix, top-domain inspection with H-codes, miss-set analysis.
@@ -20,7 +20,6 @@ sys.path.insert(0, str(SCRIPT_DIR.parent.parent))
 
 from src.search.engines.google import GoogleEngine
 from src.search.engines.duckduckgo import DuckDuckGoEngine
-from src.search.engines.mojeek import MojeekEngine
 from src.search.browser import close_browser
 
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
@@ -47,13 +46,11 @@ SUFFIX = " documentation"
 ENGINE_ORDER = [
     ("google",     GoogleEngine),
     ("duckduckgo", DuckDuckGoEngine),
-    ("mojeek",     MojeekEngine),
 ]
 
 ENGINE_MAX = {
     "google":     100,
     "duckduckgo": 200,
-    "mojeek":     200,
 }
 
 # H1-H13: (code, description, match_fn(host_no_www, path) -> bool)
@@ -147,8 +144,8 @@ def _build_report(all_runs: dict, run_stats: dict, ts: str) -> list[str]:
     lines = [
         f"# Docs Domain Probe — {ts}",
         "",
-        f"**Scope:** {len(QUERIES)} queries × 3 engines × +documentation = {len(QUERIES) * 3} runs",
-        "**Engines:** google (max=100), duckduckgo (max=200), mojeek (max=200)",
+        f"**Scope:** {len(QUERIES)} queries × 2 engines × +documentation = {len(QUERIES) * 2} runs",
+        "**Engines:** google (max=100), duckduckgo (max=200)",
         "**Modifier:** free word `documentation` appended to each query (no operator)",
         "**Goal:** evaluate H1-H13 heuristics against real URL pool — informs `--docs` whitelist design",
         "**Heuristics:** H1 docs-subdomain · H2 readthedocs · H3 gitbook · H4 notion · H5 developer-subdomain",
@@ -212,17 +209,16 @@ def _section_global_domain_freq(all_runs: dict) -> list[str]:
 
     lines = ["## Global Domain Frequency Table", ""]
     lines += [
-        f"Domains with count ≥ {MIN_DOMAIN_COUNT} across all {len(QUERIES)} queries and 3 engines.",
+        f"Domains with count ≥ {MIN_DOMAIN_COUNT} across all {len(QUERIES)} queries and 2 engines.",
         "",
-        "| Domain | Total | google | duckduckgo | mojeek | # Queries |",
-        "|--------|------:|------:|-----------:|-------:|----------:|",
+        "| Domain | Total | google | duckduckgo | # Queries |",
+        "|--------|------:|------:|-----------:|----------:|",
     ]
     for d, total in above_threshold:
         g = eng_counters["google"][d]
         ddg = eng_counters["duckduckgo"][d]
-        mj = eng_counters["mojeek"][d]
         nq = len(query_presence[d])
-        lines.append(f"| {d} | {total} | {g} | {ddg} | {mj} | {nq} |")
+        lines.append(f"| {d} | {total} | {g} | {ddg} | {nq} |")
 
     lines += [
         "",
@@ -263,24 +259,23 @@ def _section_heuristic_coverage_matrix(all_runs: dict) -> list[str]:
 
     lines = ["## Heuristic Coverage Matrix", ""]
     lines += [
-        f"Total URL pool: **{total_urls}** URLs ({len(QUERIES)} queries × 3 engines).",
+        f"Total URL pool: **{total_urls}** URLs ({len(QUERIES)} queries × 2 engines).",
         "A URL may match multiple heuristics — counts are NOT mutually exclusive.",
         "",
-        "| Heuristic | Total | % pool | google | duckduckgo | mojeek |",
-        "|-----------|------:|-------:|-------:|-----------:|-------:|",
+        "| Heuristic | Total | % pool | google | duckduckgo |",
+        "|-----------|------:|-------:|-------:|-----------:|",
     ]
     for key in HEURISTIC_KEYS:
         t = h_totals[key]
         pct = round(100 * t / total_urls) if total_urls else 0
         g = h_eng[key]["google"]
         ddg = h_eng[key]["duckduckgo"]
-        mj = h_eng[key]["mojeek"]
-        lines.append(f"| {key} | {t} | {pct}% | {g} | {ddg} | {mj} |")
+        lines.append(f"| {key} | {t} | {pct}% | {g} | {ddg} |")
 
     pct_none = round(100 * none_total / total_urls) if total_urls else 0
     lines.append(
         f"| **matches NONE** | **{none_total}** | **{pct_none}%** "
-        f"| {none_eng['google']} | {none_eng['duckduckgo']} | {none_eng['mojeek']} |"
+        f"| {none_eng['google']} | {none_eng['duckduckgo']} |"
     )
     lines += [
         "",
@@ -368,16 +363,15 @@ def _section_miss_set_analysis(all_runs: dict) -> list[str]:
         f"Domains appearing ≥ {MISS_SET_MIN} times that match **none** of H1-H13.",
         "These are candidates for new heuristics or confirmed noise (non-docs).",
         "",
-        "| Domain | Total | google | duckduckgo | mojeek | Sample URL |",
-        "|--------|------:|-------:|-----------:|-------:|------------|",
+        "| Domain | Total | google | duckduckgo | Sample URL |",
+        "|--------|------:|-------:|-----------:|------------|",
     ]
     if miss_domains:
         for d, total in miss_domains:
             g = eng_miss["google"][d]
             ddg = eng_miss["duckduckgo"][d]
-            mj = eng_miss["mojeek"][d]
             sample = domain_sample.get(d, "")[:100].replace("|", "%7C")
-            lines.append(f"| {d} | {total} | {g} | {ddg} | {mj} | {sample} |")
+            lines.append(f"| {d} | {total} | {g} | {ddg} | {sample} |")
     else:
         lines.append("| — | — | — | — | — | (no miss-set domains at this threshold) |")
     lines.append("")

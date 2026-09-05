@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Books domain probe — appends '+book' to 12 broad queries across Google, DDG, Mojeek.
+"""Books domain probe — appends '+book' to 12 broad queries across Google, DDG.
 
 Collects raw URL pool to inform BOOK_WHITELIST/BLACKLIST design for the --books CLI flag.
 No classification applied — raw observation only.
@@ -51,7 +51,6 @@ ENGINE_ORDER = [
 ENGINE_MAX = {
     "google":     100,
     "duckduckgo": 200,
-    "mojeek":     200,
 }
 
 BROWSER_SLEEP_S = 1.0
@@ -126,8 +125,8 @@ def _build_report(all_runs: dict, run_stats: dict, ts: str) -> list[str]:
     lines = [
         f"# Books Domain Probe — {ts}",
         "",
-        f"**Scope:** {len(QUERIES)} queries × 3 engines × +book = {len(QUERIES) * 3} runs",
-        "**Engines:** google (max=100), duckduckgo (max=200), mojeek (max=200)",
+        f"**Scope:** {len(QUERIES)} queries × 2 engines × +book = {len(QUERIES) * 2} runs",
+        "**Engines:** google (max=100), duckduckgo (max=200)",
         "**Modifier:** free word `book` appended to each query (no operator)",
         "**Goal:** observe raw domain pool — no classification applied",
         "",
@@ -189,17 +188,16 @@ def _section_global_domain_freq(all_runs: dict) -> list[str]:
 
     lines = ["## Global Domain Frequency Table", ""]
     lines += [
-        f"Domains with count ≥ {MIN_DOMAIN_COUNT} across all {len(QUERIES)} queries and 3 engines.",
+        f"Domains with count ≥ {MIN_DOMAIN_COUNT} across all {len(QUERIES)} queries and 2 engines.",
         "",
-        "| Domain | Total | google | duckduckgo | mojeek | # Queries |",
-        "|--------|------:|------:|-----------:|-------:|----------:|",
+        "| Domain | Total | google | duckduckgo | # Queries |",
+        "|--------|------:|------:|-----------:|----------:|",
     ]
     for d, total in above_threshold:
         g = eng_counters["google"][d]
         ddg = eng_counters["duckduckgo"][d]
-        mj = eng_counters["mojeek"][d]
         nq = len(query_presence[d])
-        lines.append(f"| {d} | {total} | {g} | {ddg} | {mj} | {nq} |")
+        lines.append(f"| {d} | {total} | {g} | {ddg} | {nq} |")
 
     lines += [
         "",
