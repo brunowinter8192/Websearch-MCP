@@ -228,10 +228,15 @@ def _validate_resume_state(resume_state: dict) -> None:
 # returns the identical link set and does not affect fetch-success/failure classification, so the
 # scraping strategy, markdown generation, content filtering and media extraction this module never
 # used are now genuinely skipped, not just uninspected). An on_state_change callback keeps the
-# LATEST captured strategy state, which after the run holds whatever the frontier ("pending") still
-# contained the moment the run stopped — URLs link_discovery found and accepted but the page budget
-# never got to fetch, which must not be silently discarded (see discover_urls_workflow's own
-# docstring). Returns (fetched_urls, frontier_leftover_urls, stop_reason, pages_fetched, pages_failed).
+# LATEST captured strategy state — crawl4ai's own officially documented crash-recovery surface
+# (resume_state/on_state_change/export_state, since crawl4ai 0.8.0), not a private internal read.
+# That one captured dict now serves two purposes previously split across a callback and a private
+# attribute read: after the run it holds whatever the frontier ("pending") still contained the
+# moment the run stopped (URLs link_discovery found and accepted but the page budget never got to
+# fetch, which must not be silently discarded — see discover_urls_workflow's own docstring), AND
+# its own "pages_crawled" is what _determine_stop_reason reads (see DOCS.md Gotchas — no private
+# strategy attribute is read anywhere in this module). Returns (fetched_urls,
+# frontier_leftover_urls, stop_reason, pages_fetched, pages_failed).
 async def _traverse(seed_url: str, seed_host: str, resume_state: dict,
                     max_depth: int, max_pages: int) -> tuple:
     captured = {}
@@ -258,7 +263,7 @@ async def _traverse(seed_url: str, seed_host: str, resume_state: dict,
     async with AsyncWebCrawler(config=browser_config) as crawler:
         results = await crawler.arun(url=seed_url, config=config)
 
-    stop_reason = _determine_stop_reason(strategy)
+    stop_reason = _determine_stop_reason(captured.get("state"), max_pages)
     fetched = [r.url for r in results if r.success]
     pages_fetched = len(fetched)
     pages_failed = len(results) - pages_fetched
@@ -270,11 +275,16 @@ async def _traverse(seed_url: str, seed_host: str, resume_state: dict,
     return fetched, frontier_leftover, stop_reason, pages_fetched, pages_failed
 
 
-# "max_pages_reached" if the strategy's own page count met/exceeded its budget, else
-# "frontier_exhausted". Reads strategy._pages_crawled, a private crawl4ai attribute — see
-# DOCS.md Gotchas for why this is fine to use but worth flagging.
-def _determine_stop_reason(strategy: BFSDeepCrawlStrategy) -> str:
-    if strategy._pages_crawled >= strategy.max_pages:
+# "max_pages_reached" if the captured state's own pages_crawled count met/exceeded max_pages, else
+# "frontier_exhausted". state is the SAME dict discovery.py's own on_state_change callback already
+# captures (see _traverse) — crawl4ai's officially documented crash-recovery surface
+# (resume_state/on_state_change/export_state, since crawl4ai 0.8.0) carries pages_crawled in that
+# same state, so no private strategy attribute needs reading here anymore. state is None when no
+# URL was ever successfully processed (the callback never fired) — pages_crawled defaults to 0,
+# matching a fresh strategy's own starting value.
+def _determine_stop_reason(state: dict | None, max_pages: int) -> str:
+    pages_crawled = state.get("pages_crawled", 0) if state else 0
+    if pages_crawled >= max_pages:
         return "max_pages_reached"
     return "frontier_exhausted"
 
