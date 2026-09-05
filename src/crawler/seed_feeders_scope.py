@@ -14,12 +14,20 @@ _DEFAULT_PORTS = {"http": 80, "https": 443}
 # behind it. This is a provenance label only: no filtering or quality threshold is applied here
 # or by any feeder — a caller that wants to treat "navtree_flat" as lower-confidence than
 # "navtree_tree" makes that call itself, using this field, not by anything dropped upstream.
+# `version_keys` is populated ONLY by the navigation-tree feeder, when the site's own payload
+# carries a version list (see seed_feeders_navtree.py) — the same key list
+# seed_feeders_navtree.canonicalize_version_url already uses internally to union each version's
+# tree, surfaced here so discovery.py's traversal can recognize an explicit-version duplicate of
+# an already-known canonical page without reimplementing the navtree feeder's own detection.
+# None for every other feeder, and for a version-less site (the common case) — never populated by
+# a guess, only by what the navtree feeder itself already found on the page it fetched.
 @dataclass
 class FeederResult:
     urls: list
     ok: bool
     error: str | None = None
     source: str | None = None
+    version_keys: list | None = None
 
 
 # FUNCTIONS

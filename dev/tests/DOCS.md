@@ -162,7 +162,7 @@ document response status overriding crawl4ai's own (earliest-hop) `status_code`,
 ordinary-page case, the empty-chain fallback to crawl4ai's value, and non-document/non-main-frame
 responses being filtered out of the chain.
 
-### test_seed_feeders.py (784 LOC)
+### test_seed_feeders.py (788 LOC)
 **Purpose:** `src/crawler/seed_feeders*.py` — the `normalize_url`/`scope_and_dedup` merge-vs-
 keep-distinct boundary (default port, empty path, fragment, `www.`/apex, legacy `;params`
 segment all merged; query string, `http` vs `https`, non-root trailing slash, `;params` all kept
@@ -174,11 +174,13 @@ cycle-guard behavior; `extract_payloads` detection of both the `__NEXT_DATA__` b
 tier 1/tier 2 split — a synthetic React-element-shaped `{"href":..., "children": [[...]]}` fixture
 proves the tree-finder does NOT mistake rendered DOM for tree data (the false-positive shape
 found live on `ui.shadcn.com` before the shape check was tightened), a fragment/`_next/`-internal
-filter test for the tier 2 fallback; `_build_version_urls`/`_canonicalize_version_url` (including
+filter test for the tier 2 fallback; `_build_version_urls`/`canonicalize_version_url` (including
 the seed-is-a-non-default-version case that exposed a real `lang_prefix` derivation bug, and the
 missing-field/content-path-mismatch graceful-empty cases); `resolve_navigation_tree` end-to-end
 with a synthetic 2-version fixture proving the union recovers a page that exists in only one
-version while deduping the pages both versions share; and all three workflows end-to-end
+version while deduping the pages both versions share (asserting the returned `version_keys` too —
+the list `discovery.py`'s traversal now reads via `FeederResult.version_keys`); and all three
+workflows end-to-end
 (robots-declared-sitemap preference over the conventional fallback, the docs.github.com-shaped
 all-404 clean-empty case, an RSC-tree-shape page proving the navtree detector does not fall
 through on the App Router shape, an RSC-DOM-only page proving the tier 2 fallback engages, an
@@ -195,7 +197,7 @@ Router RSC-stream shape — replacing the one-off docs.github.com/theblock.co/ui
 nextjs.org runs process-docs/url_discovery/2026-08-28_robots_sitemap_seed_feeders.md and
 2026-08-28_navtree_seed_feeder.md recorded.
 
-### test_discovery.py (410 LOC)
+### test_discovery.py (525 LOC)
 **Purpose:** `src/crawler/discovery.py` — two layers. Pure-logic, no network: `_assemble_seeds`
 (literal `seed_url` always included, first-write-wins merge priority across the three feeders, a
 failed feeder's error landing in `failed_feeders` rather than being silently treated as an empty
@@ -205,26 +207,32 @@ result, `seed_url` normalization dedup against an equivalent feeder-found URL), 
 missing depths entry), `_determine_stop_reason` (takes the same captured on_state_change state dict
 `discovery.py` itself reads, or `None` for zero successful fetches, plus `max_pages` — no strategy
 object, no private attribute, including the real observed overshoot case, 586 vs. a requested
-500), `_merge_results` (a seed whose own fetch attempt succeeded vs. failed — both visible,
-attribution preserved either way — a genuinely new fetched URL tagged `"traversal"`, a
-frontier-leftover URL included and marked `fetched=False` rather than dropped, and first-write-wins
-if the three input groups ever overlap), and `_ExactHostFilter.apply` (same-host accept with
-`www.`/apex collapse, sibling-subdomain reject, child-subdomain reject, parent-domain reject, a
-malformed-URL reject that does not raise). Fixture-backed (real crawl4ai-driven traversal, only
-ever against `dev/url_discovery/_fixture_site.py`, one module-scoped server + ONE shared
-`discover_urls_workflow` run for the whole file, `discovery_result`, read by several small
+500), `_extract_version_keys` (the navtree feeder's own `FeederResult.version_keys`, or `None` for
+a version-less site/failed feeder/missing entry — never derived or guessed), `_resolve_canonical_alias`
+(an explicit-version duplicate of an already-known SEED, never of another traversal find; `None`
+when `version_keys` itself is `None`, when canonicalizing doesn't match a known seed, or for a URL
+with no matching version segment at all), `_merge_results` (a seed whose own fetch attempt
+succeeded vs. failed — both visible, attribution preserved either way — a genuinely new fetched URL
+tagged `"traversal"`, a frontier-leftover URL included and marked `fetched=False` rather than
+dropped, first-write-wins if the three input groups ever overlap, and — new — a version-duplicate
+of an already-known seed getting `canonical_url` set after a REAL fetch, `version_keys=None`
+proven byte-identical to omitting the argument entirely), and `_ExactHostFilter.apply` (same-host
+accept with `www.`/apex collapse, sibling-subdomain reject, child-subdomain reject, parent-domain
+reject, a malformed-URL reject that does not raise). Fixture-backed (real crawl4ai-driven
+traversal, only ever against `dev/url_discovery/_fixture_site.py`, one module-scoped server + ONE
+shared `discover_urls_workflow` run for the whole file, `discovery_result`, read by several small
 assertion-only tests rather than re-run per assertion): total URL count/per-source breakdown/
 `pages_fetched`/`pages_failed`/`stop_reason`/`failed_feeders` all checked against the fixture's own
 `ground_truth()`; the single `fetched=False` entry identified by URL, not just by count; the
 2-hop orphan chain confirmed reached via traversal; the already-shipped `"visited"`
 pre-population fix confirmed still holding (a link back to an already-delivered sitemap URL stays
-`source="sitemap"`, not re-tagged `"traversal"`); the still-open version-canonicalization gap
-confirmed as CURRENT, DELIBERATELY UNFIXED behavior (an explicit-version duplicate of an
-already-known canonical page counts as a genuinely new `"traversal"` URL — the before-number a
-later milestone's fix must change, not a regression to chase here); and a second, separate real run
-with a deliberately small `max_pages=1` against the same fixture, asserting the PROPERTY rather
-than a coincidence: every pre-traversal seed is injected at depth 0, so they are all fetched as
-ONE BFS level, and the real ceiling a small `max_pages` lands on is exactly
+`source="sitemap"`, not re-tagged `"traversal"`); the version-canonicalization gap now confirmed
+CLOSED (an explicit-version duplicate of an already-known canonical page gets `canonical_url` set
+after a real, genuine fetch — annotation, not prevention, per `src/crawler/DOCS.md`'s own argued
+tradeoff — the canonical entry itself untouched); and a second, separate real run with a
+deliberately small `max_pages=1` against the same fixture, asserting the PROPERTY rather than a
+coincidence: every pre-traversal seed is injected at depth 0, so they are all fetched as ONE BFS
+level, and the real ceiling a small `max_pages` lands on is exactly
 `ground_truth()["pre_traversal_seed_count"]` (never re-derived or hand-typed a second time, so a
 fixture change that adds/removes a seed cannot point this failure at the wrong cause) —
 `stop_reason="max_pages_reached"`, measured directly (twice, identical both times) at 15 real fetch

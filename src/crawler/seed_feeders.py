@@ -50,16 +50,20 @@ async def sitemap_feeder_workflow(seed_url: str) -> FeederResult:
 # Resolve seed_url's navigation tree (its frontend framework's own embedded page inventory) to a
 # flat, scoped, deduped seed list, unioned across every version the site exposes in the same
 # payload. `source` distinguishes a real recursive tree found by structural shape ("navtree_tree")
-# from a flat href scan with no tree evidence behind it ("navtree_flat") — see FeederResult. A
-# seed_url that cannot be fetched at all (unlike a version root, or robots.txt/a sitemap) is
-# ok=False, not an empty "navtree_flat" result — resolve_navigation_tree raises for that case,
-# caught by the same except below as an invalid seed_url.
+# from a flat href scan with no tree evidence behind it ("navtree_flat") — see FeederResult.
+# `version_keys` carries the site's own version-key list (None for a version-less site) so a
+# caller (discovery.py's traversal) can recognize an explicit-version duplicate of an already-known
+# canonical page without reimplementing this feeder's own detection. A seed_url that cannot be
+# fetched at all (unlike a version root, or robots.txt/a sitemap) is ok=False, not an empty
+# "navtree_flat" result — resolve_navigation_tree raises for that case, caught by the same except
+# below as an invalid seed_url.
 async def navtree_feeder_workflow(seed_url: str) -> FeederResult:
     try:
         seed_host = require_host(seed_url)
         async with httpx.AsyncClient() as client:
-            raw_urls, tier = await resolve_navigation_tree(client, seed_url)
-        return FeederResult(urls=scope_and_dedup(raw_urls, seed_host), ok=True, source=f"navtree_{tier}")
+            raw_urls, tier, version_keys = await resolve_navigation_tree(client, seed_url)
+        return FeederResult(urls=scope_and_dedup(raw_urls, seed_host), ok=True,
+                            source=f"navtree_{tier}", version_keys=version_keys)
     except Exception as exc:
         return FeederResult(urls=[], ok=False, error=str(exc))
 
