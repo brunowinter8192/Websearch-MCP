@@ -119,3 +119,4 @@ description:
 ## Step 4 — Report
 
 **Report that the cleanup is done, and go idle.**
+- the absolute path of `/tmp/<domain>/`, holding the cleaned `.md` files, as a clickable link

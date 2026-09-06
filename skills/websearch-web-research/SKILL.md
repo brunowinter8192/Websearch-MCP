@@ -82,6 +82,7 @@ The user-chat language does not apply here — a German conversation still gets 
 
 ### Step 3 — Funnel Report
 
-1. Receive the worker's funnel report.
+**Input, handed over by the worker.**
+- `/tmp/<domain>/` holds the cleaned `.md` files.
 
-2. Tell the user the error count, "bei X URLs ging was schief", and nothing else.
+1. Tell the user the error count, "bei X URLs ging was schief", and nothing else.
