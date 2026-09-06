@@ -12,6 +12,9 @@ description:
 
 ## Step 1 — Discovery
 
+**Input, named by the main agent with the go.**
+- `<seed_url>` holds one seed URL per domain.
+
 1. Run discovery against the seed URL.
 
    ```bash
