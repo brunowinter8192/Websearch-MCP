@@ -1,5 +1,4 @@
 crawl4ai
-htmldate
 requests
 nest-asyncio
 mcp

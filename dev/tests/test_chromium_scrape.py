@@ -180,6 +180,94 @@ async def test_try_scrape_returns_content_on_http_403(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# og_published_time — read off crawl4ai's own already-parsed result.metadata (an og:-prefixed meta
+# tag the page itself declares), never a third-party guess. Absent whenever the page declares
+# nothing, exactly like every other fact in this module.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_try_scrape_reads_og_published_time_from_result_metadata(monkeypatch):
+    """The page's OWN og:published_time meta tag, verbatim — crawl4ai already parses every
+    og:-prefixed <head> tag into result.metadata (extract_metadata_using_lxml), so this is a real
+    fact carried on the result this module already has in hand, not a new fetch or a guess."""
+    _patch_cdp_launch_mechanics(monkeypatch)
+
+    class _FakeCrawler:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def arun(self, url, config=None):
+            result = _FakeResult(raw_markdown="x" * 300)
+            result.metadata = {"og:title": "Example", "og:published_time": "2024-03-01T12:00:00+00:00"}
+            return result
+
+    monkeypatch.setattr(chromium_scrape, "AsyncWebCrawler", _FakeCrawler)
+
+    _, meta = await chromium_scrape.try_scrape("https://example.com")
+
+    assert meta["og_published_time"] == "2024-03-01T12:00:00+00:00"
+
+
+@pytest.mark.asyncio
+async def test_try_scrape_og_published_time_null_when_page_declares_none(monkeypatch):
+    """A page with real OpenGraph metadata but no published_time tag — null, not a guessed
+    fallback (e.g. never derived from a last-modified footer or any other page text)."""
+    _patch_cdp_launch_mechanics(monkeypatch)
+
+    class _FakeCrawler:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def arun(self, url, config=None):
+            result = _FakeResult(raw_markdown="x" * 300)
+            result.metadata = {"og:title": "Example"}
+            return result
+
+    monkeypatch.setattr(chromium_scrape, "AsyncWebCrawler", _FakeCrawler)
+
+    _, meta = await chromium_scrape.try_scrape("https://example.com")
+
+    assert meta["og_published_time"] is None
+
+
+@pytest.mark.asyncio
+async def test_try_scrape_og_published_time_null_when_result_has_no_metadata_attribute(monkeypatch):
+    """A result with no .metadata attribute at all must degrade to None, never raise."""
+    _patch_cdp_launch_mechanics(monkeypatch)
+
+    class _FakeCrawler:
+        def __init__(self, *a, **kw):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def arun(self, url, config=None):
+            return _FakeResult(raw_markdown="x" * 300)  # no .metadata set
+
+    monkeypatch.setattr(chromium_scrape, "AsyncWebCrawler", _FakeCrawler)
+
+    _, meta = await chromium_scrape.try_scrape("https://example.com")
+
+    assert meta["og_published_time"] is None
+
+
+# ---------------------------------------------------------------------------
 # The fit->raw fallback (MIN_CONTENT_THRESHOLD) is gone as of 2026-08-22 — content is ALWAYS
 # fit_markdown, even when short and raw_markdown is longer. An operational-log analysis (69
 # production chromium scrapes) found the fallback fired exactly once, on a degenerate page where
@@ -327,6 +415,62 @@ async def test_scrape_url_chromium_workflow_logs_landed_url(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# The log record no longer carries a computed outcome — acquisition_error is logged straight
+# through as its own fact instead (the same precedent pipe_scraper_records.py's own outcome
+# removal set), and og_published_time replaces the old guessed published_date/date field.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_scrape_url_chromium_workflow_log_record_has_no_outcome_field(monkeypatch):
+    captured = {}
+
+    async def _fake_try_scrape(url):
+        return "real content", _meta()
+
+    monkeypatch.setattr(chromium_scrape, "try_scrape", _fake_try_scrape)
+    monkeypatch.setattr(chromium_scrape, "write_sidecar", lambda *a, **kw: None)
+    monkeypatch.setattr(chromium_scrape, "log_scrape", lambda record: captured.update(record))
+
+    await chromium_scrape.scrape_url_chromium_workflow("https://example.com")
+
+    assert "outcome" not in captured
+
+
+@pytest.mark.asyncio
+async def test_scrape_url_chromium_workflow_logs_acquisition_error_as_its_own_fact(monkeypatch):
+    captured = {}
+
+    async def _fake_try_scrape(url):
+        return "", _meta(acquisition_error="budget_exhausted", status_code=None)
+
+    monkeypatch.setattr(chromium_scrape, "try_scrape", _fake_try_scrape)
+    monkeypatch.setattr(chromium_scrape, "write_sidecar", lambda *a, **kw: None)
+    monkeypatch.setattr(chromium_scrape, "log_scrape", lambda record: captured.update(record))
+
+    await chromium_scrape.scrape_url_chromium_workflow("https://example.com")
+
+    assert captured["acquisition_error"] == "budget_exhausted"
+
+
+@pytest.mark.asyncio
+async def test_scrape_url_chromium_workflow_logs_og_published_time(monkeypatch):
+    captured = {}
+
+    async def _fake_try_scrape(url):
+        return "real content", _meta(og_published_time="2024-03-01T12:00:00+00:00")
+
+    monkeypatch.setattr(chromium_scrape, "try_scrape", _fake_try_scrape)
+    monkeypatch.setattr(chromium_scrape, "write_sidecar", lambda *a, **kw: None)
+    monkeypatch.setattr(chromium_scrape, "log_scrape", lambda record: captured.update(record))
+
+    await chromium_scrape.scrape_url_chromium_workflow("https://example.com")
+
+    assert captured["og_published_time"] == "2024-03-01T12:00:00+00:00"
+    assert "published_date" not in captured
+    assert "date" not in captured
+
+
+# ---------------------------------------------------------------------------
 # try_scrape enforces the budget constant as an outer guard
 # ---------------------------------------------------------------------------
 
@@ -434,6 +578,15 @@ def test_extract_config_stamp_no_longer_carries_min_content_threshold():
     assert not hasattr(chromium_scrape, "MIN_CONTENT_THRESHOLD")
 
 
+def test_htmldate_removed_entirely():
+    """The guessed-date mechanism (htmldate, extract_date, HTMLDATE_TIMEOUT_S) is gone, not just
+    unused — the declared date now comes from crawl4ai's own already-parsed result.metadata,
+    at zero extra acquisition time."""
+    assert not hasattr(chromium_scrape, "extract_date")
+    assert not hasattr(chromium_scrape, "HTMLDATE_TIMEOUT_S")
+    assert not hasattr(chromium_scrape, "find_date")
+
+
 def test_extract_config_stamp_no_longer_carries_excluded_selector_hash():
     """The hand-maintained COOKIE_CONSENT_SELECTOR list was removed — crawl4ai's own
     remove_consent_popups=True (a vendor-maintained clicker, verified a strict superset) carries
@@ -495,7 +648,7 @@ async def test_try_scrape_does_not_call_is_garbage_content(monkeypatch):
 def _meta(**overrides):
     base = {
         "acquisition_error": None, "status_code": 200, "content_type": "text/html",
-        "raw_markdown_bytes": 100, "date": None,
+        "raw_markdown_bytes": 100, "og_published_time": None,
         "crawl4ai_success": True, "crawl4ai_error_message": None,
         "crawl4ai_attempts": 1, "crawl4ai_resolved_by": "direct",
         "crawl4ai_fallback_fetch_used": False, "landed_url": None,
@@ -570,6 +723,23 @@ def test_format_scrape_output_renders_landed_url_line_when_absent():
     text = chromium_scrape._format_scrape_output(
         "https://x.test/a", "", _meta(landed_url=None, acquisition_error="browser_missing"), None)
     assert "Landed URL (the URL the browser actually returned content from): None" in text
+
+
+def test_format_scrape_output_renders_og_published_time_when_present():
+    """The page's own declared date renders verbatim, labeled as its own claim, not a guess."""
+    text = chromium_scrape._format_scrape_output(
+        "https://x.test", "the real page content", _meta(), "2024-03-01T12:00:00+00:00")
+    assert "og:published_time" in text
+    assert "2024-03-01T12:00:00+00:00" in text
+    assert "the page's OWN declared value" in text
+
+
+def test_format_scrape_output_renders_og_published_time_line_unconditionally_when_absent():
+    """Same unconditional-fact treatment as landed_url/HTTP status — the line itself always
+    renders, even when the page declared nothing, rather than being suppressed."""
+    text = chromium_scrape._format_scrape_output(
+        "https://x.test", "the real page content", _meta(), None)
+    assert "og:published_time" in text
 
 
 def test_format_scrape_output_crawl4ai_diagnosis_labeled_as_observation_not_verdict():

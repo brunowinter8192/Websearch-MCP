@@ -143,13 +143,24 @@ def fire_one_pair(url: str, subcommand: str, engine: str) -> dict:
     wall_ms = round((time.perf_counter() - t0) * 1000)
 
     log_record = find_fresh_log_record(url, engine, call_start)
-    outcome = log_record["outcome"] if log_record else f"no_log_record ({harness_status})"
+    outcome = _derive_outcome(log_record) if log_record else f"no_log_record ({harness_status})"
 
     return {
         "url": url, "engine": engine, "outcome": outcome,
         "harness_status": harness_status, "cli_returncode": returncode,
         "wall_ms": wall_ms, "ts": call_start.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z",
     }
+
+
+# This script's own local "did the pair fetch content" label — the production log no longer
+# computes an outcome verdict (see src/scraper/DOCS.md's Gotchas: acquisition_error is now logged
+# as its own fact instead), so this backfill tool derives the same three-way label it always
+# reported, off the two facts that already replace it: a named acquisition_error, or "ok"/"empty"
+# from whether any bytes actually came back.
+def _derive_outcome(log_record: dict) -> str:
+    if log_record.get("acquisition_error"):
+        return log_record["acquisition_error"]
+    return "ok" if log_record.get("bytes_returned") else "empty"
 
 
 # The freshest production-log record for url+engine with ts >= since — the CLI's own just-written

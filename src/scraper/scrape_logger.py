@@ -28,8 +28,12 @@ def _url_slug(url: str) -> str:
     return slug.strip('-')[:80]
 
 
-# Write sidecar .md to <log_dir>/scrape_content/; return relative path or None on empty/error
-def write_sidecar(url: str, ts: str, content: str, outcome: str, mode: str, engine: str) -> str | None:
+# Write sidecar .md to <log_dir>/scrape_content/; return relative path or None on empty/error.
+# No "outcome" line in the header — write_sidecar only ever runs when content is truthy (the guard
+# right below), so a computed ok/empty verdict would read "ok" on literally every sidecar ever
+# written, carrying zero information (see src/scraper/DOCS.md's Gotchas). bytes/mode/engine are the
+# real, always-varying facts about what got written.
+def write_sidecar(url: str, ts: str, content: str, mode: str, engine: str) -> str | None:
     if not content:
         return None
     env = os.environ.get("WEBSEARCH_SCRAPE_LOG_PATH")
@@ -39,7 +43,6 @@ def write_sidecar(url: str, ts: str, content: str, outcome: str, mode: str, engi
     header = (
         f"<!-- url: {url} -->\n"
         f"<!-- ts: {ts} -->\n"
-        f"<!-- outcome: {outcome} -->\n"
         f"<!-- bytes: {len(content.encode('utf-8'))} -->\n"
         f"<!-- mode: {mode} -->\n"
         f"<!-- engine: {engine} -->\n"
