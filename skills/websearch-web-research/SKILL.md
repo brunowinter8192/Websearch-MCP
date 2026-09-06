@@ -37,9 +37,7 @@ The user-chat language does not apply here — a German conversation still gets 
 
 ### Step 1 — Source
 
-1. Ask the user for the target collection, and never pick it yourself.
-   > "Target collection: `<project>-reference`. OUTPUT_DIR: `~/Documents/ai/Meta/ClaudeCode/cli/rag-cli/data/documents/<project>-reference/`. Confirm or override?"
-   - `<current_project>-reference` is the default on offer, and it may be another project's reference collection.
+1. Ask the user for the target collection and propose `<current_project>-reference`.
 
 2. Drill down to the seed URL via `search_web` → `search_engine_drilldown`.
 
