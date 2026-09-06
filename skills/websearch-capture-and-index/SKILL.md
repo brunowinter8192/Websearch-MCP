@@ -76,12 +76,12 @@ Premise: leaving noise in beats cutting content out. When a span is arguable, ke
 
 Work one defect class at a time, start to finish, before naming the next one.
 
-### 1. Sample
+### Stage 1 — Sample
 
 Pick one `.md` from `/tmp/<domain>/` and read it end to end with the Read tool, every line.
 Name the defect classes you see in it, each with the anchor that identifies it.
 
-### 2. One script per class
+### Stage 2 — One script per class
 
 `/tmp/clean_<class>_<domain>.py`, ~20-30 LOC, `python3`, dry-run by default and `--apply` as its
 own separate run.
@@ -98,9 +98,9 @@ The script writes two things:
 <the removed text, verbatim>
 ```
 
-Run it dry first. The `.md` files stay untouched until step 3 clears the class.
+Run it dry first. The `.md` files stay untouched until stage 3 clears the class.
 
-### 3. Read what you cut, then apply
+### Stage 3 — Read what you cut, then apply
 
 Read `/tmp/cut_<class>_<domain>.md` with the Read tool, `offset` stepped across the file, until you
 have seen spans from the start, the middle and the end. A span you cannot place as noise stays:
@@ -109,13 +109,13 @@ narrow the anchor, run dry again, and read again.
 When every span reads as noise, copy the whole `/tmp/<domain>/` to `/tmp/<domain>_PRE_<class>_BACKUP/`,
 then run `--apply`.
 
-### 4. Verify, then take the next class
+### Stage 4 — Verify, then take the next class
 
 Re-scan the class over `/tmp/<domain>/` and expect zero remaining hits.
 Read 10-15 lines from the middle of two cleaned files.
 Confirm every file still carries its `<!-- source: URL -->` line.
 
-Then go to step 1 for the next class.
+Then go to stage 1 for the next class.
 
 ### Report
 
