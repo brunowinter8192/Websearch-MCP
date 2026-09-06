@@ -118,6 +118,6 @@ The user-chat language does not apply here — a German conversation still gets 
 
 6. Go idle once that command has been run, and never poll it.
 
-7. Read `/tmp/<collection>_index.log` in full.
+7. Read `/tmp/<collection>_index.log` in full when the run has finished.
 
 8. Tell the user the error count, "bei X URLs ging was schief", and nothing else.
