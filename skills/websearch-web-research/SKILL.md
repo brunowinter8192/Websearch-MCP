@@ -80,9 +80,41 @@ The user-chat language does not apply here — a German conversation still gets 
 - The worker scrapes and hands you another txt of URLs, the ones it found on the scraped pages. Decide which of them get scraped, and treat any you keep exactly like the initial URLs in Step 2.
 - Once nothing gets scraped anymore, the worker cleans the scraped content.
 
-### Step 3 — Funnel Report
+### Step 3 — Index
 
 **Input, handed over by the worker.**
 - `/tmp/<domain>/` holds the cleaned `.md` files.
 
-1. Tell the user the error count, "bei X URLs ging was schief", and nothing else.
+1. Copy them into the collection directory.
+
+   ```bash
+   cp /tmp/<domain>/*.md ~/Documents/ai/Meta/ClaudeCode/cli/rag-cli/data/documents/<collection>/
+   ```
+
+2. Sample the copied files and confirm they carry no chrome.
+
+3. Diff the domain's URLs in the collection against the full discovery list.
+
+   ```bash
+   D=~/Documents/ai/Meta/ClaudeCode/cli/rag-cli/data/documents/<collection>
+   grep -h -m1 '<!-- source:' $D/*.md | sed 's|.*source: ||;s| -->||' \
+     | grep '^https://<domain>/' | sort > /tmp/<domain>_indexed_urls.txt
+   comm -23 /tmp/<domain>_indexed_urls.txt <(sort /tmp/<domain>_urls.txt)
+   ```
+
+4. Show the user every URL the diff printed, and delete on their word.
+
+   ```bash
+   grep -l 'source: <url> -->' $D/*.md
+   rag-cli delete --collection <collection> --document <file>
+   ```
+
+5. Index the collection.
+
+   ```bash
+   rag-cli index --collection <collection>
+   ```
+
+6. Read the index log in full.
+
+7. Tell the user the error count, "bei X URLs ging was schief", and nothing else.
