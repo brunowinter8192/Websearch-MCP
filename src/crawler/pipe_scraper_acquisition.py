@@ -4,7 +4,7 @@ import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit, urlunsplit
 
 from crawl4ai import AsyncWebCrawler, CrawlerRunConfig
 from curl_cffi.requests import AsyncSession
@@ -15,10 +15,24 @@ from src.crawler.pipe_scraper_constants import FALLBACK_FETCH_TIMEOUT_S
 from src.crawler.pipe_scraper_pacing import _ensure_domain_state, _gate_domain
 # From src/crawler/pipe_scraper_records.py: JSONL record assemblers (chromium + camoufox engines)
 from src.crawler.pipe_scraper_records import _log_pipe_record, _log_pipe_camoufox_record
+# From src/crawler/seed_feeders_scope.py: the same www./apex-collapsing host-scope comparison the
+# feeders (and formerly discovery.py's now-removed traversal) use — reused here to restrict onward
+# links to the host being scraped
+from src.crawler.seed_feeders_scope import host_key
 # From src/scraper/chromium_scrape.py: crawl4ai diagnosis extraction, reused as-is (generic, not path-specific)
 from src.scraper.chromium_scrape import extract_crawl4ai_diagnosis
 # From src/scraper/camoufox_scrape.py: the camoufox engine's own acquisition primitive
 from src.scraper.camoufox_scrape import try_scrape_camoufox
+
+# File extensions that are never a page worth surfacing as an onward-scrape candidate. Evidence-
+# based, not exhaustive: a real 50-page run's own noise included exactly one non-page asset (a
+# .gif under /docs/images/) among 57 otherwise-unknown links — this list covers that class
+# (static media/style/script/font/document assets) so the same shape of noise doesn't need
+# re-discovering by hand a second time.
+_NON_PAGE_EXTENSIONS = (
+    ".gif", ".jpg", ".jpeg", ".png", ".webp", ".svg", ".ico", ".css", ".js",
+    ".woff", ".woff2", ".ttf", ".eot", ".pdf", ".zip", ".mp4", ".mp3",
+)
 
 # FUNCTIONS
 
@@ -73,6 +87,56 @@ def _landed_url_from_result(result, diagnosis: dict) -> str | None:
         return None
     return getattr(result, "redirected_url", None)
 
+# Collapse a URL to the identity onward-link collection cares about: scheme/host lowercased, query
+# string and fragment DROPPED entirely. Deliberately NOT seed_feeders_scope.normalize_url, which
+# keeps the query string on purpose — that module's worst case for merging two URLs is a seed that
+# is never fetched at all, so it protects the query string as a possibly-distinct resource. This
+# file's worst case inverts: it is a supplementary, non-authoritative candidate list for a
+# follow-up scrape round, never the sole record of a page's existence, and a real 50-page run
+# showed the query string is exactly where the noise lives — 50 of 54 confirmed-worthless "new"
+# links were the SAME /login page, one per scraped source page, each carrying a different
+# returnTo= query string a plain string-dedup could not collapse. Returns None for a URL with no
+# host at all (a bare `mailto:`/`javascript:` href, or an unparseable one).
+def _onward_link_identity(url: str) -> str | None:
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        return None
+    if not parsed.hostname:
+        return None
+    return urlunsplit((parsed.scheme.lower(), parsed.netloc.lower(), parsed.path or "/", "", ""))
+
+# Every on-page link crawl4ai found on this page (both its own "internal" and "external" buckets —
+# that split is crawl4ai's own classification, already distrusted for scope once in this project,
+# in discovery.py's now-removed traversal, for the same reason it is not trusted here: union both
+# buckets and apply this project's own host_key comparison instead), restricted to the host of the
+# page that carried them, normalized to their onward-link identity (see _onward_link_identity),
+# non-page assets dropped, deduped within the page. hrefs arrive already resolved to absolute URLs
+# by crawl4ai's own link extraction (the real, non-prefetch scraping path this module uses —
+# verified by reading content_scraping_strategy.py, not assumed).
+def _extract_onward_links(result, page_host: str) -> list[str]:
+    seed_key = host_key(page_host)
+    raw_links = getattr(result, "links", None) or {}
+    hrefs = [
+        item.get("href") for bucket in ("internal", "external")
+        for item in (raw_links.get(bucket) or []) if item.get("href")
+    ]
+    seen = set()
+    onward = []
+    for href in hrefs:
+        identity = _onward_link_identity(href)
+        if identity is None:
+            continue
+        if host_key(urlsplit(identity).hostname or "") != seed_key:
+            continue
+        if identity.lower().endswith(_NON_PAGE_EXTENSIONS):
+            continue
+        if identity in seen:
+            continue
+        seen.add(identity)
+        onward.append(identity)
+    return onward
+
 # Scrape one URL via the CHROMIUM engine, with per-domain pacing + fallback rescue on a hard exception
 async def _scrape_one(
     crawler: AsyncWebCrawler,
@@ -112,10 +176,12 @@ async def _scrape_one(
 
     diagnosis = extract_crawl4ai_diagnosis(result)
     landed_url = _landed_url_from_result(result, diagnosis)
+    links = _extract_onward_links(result, urlparse(url).hostname or domain)
     _log_pipe_record(run_ctx, ts, url, domain, status, byte_count, wall_ms, diagnosis,
                       landed_url=landed_url)
 
-    return {'url': url, 'wall_ms': wall_ms, 'bytes': byte_count, 'status_code': status}
+    return {'url': url, 'wall_ms': wall_ms, 'bytes': byte_count, 'status_code': status,
+            'links': links}
 
 # Scrape one URL via the CAMOUFOX engine, with the same per-domain pacing gate as _scrape_one
 async def _scrape_one_camoufox(
