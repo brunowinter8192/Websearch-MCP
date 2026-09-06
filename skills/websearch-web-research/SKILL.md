@@ -37,14 +37,17 @@ The user-chat language does not apply here — a German conversation still gets 
 
 ### Step 1 — Source
 
-Drill down to the seed URL via `search_web` → `search_engine_drilldown`, then spawn the worker and hand it that seed URL.
+1. Drill down to the seed URL via `search_web` → `search_engine_drilldown`.
+
+2. Spawn the worker and hand it that seed URL.
 
 ### Step 2 — Collection
 
-Confirm the target collection with the user (MANDATORY ASK — never pick it yourself):
-> "Target collection: `<project>-reference`. OUTPUT_DIR: `~/Documents/ai/Meta/ClaudeCode/cli/rag-cli/data/documents/<project>-reference/`. Confirm or override?"
+1. Ask the user for the target collection, and never pick it yourself.
+   > "Target collection: `<project>-reference`. OUTPUT_DIR: `~/Documents/ai/Meta/ClaudeCode/cli/rag-cli/data/documents/<project>-reference/`. Confirm or override?"
 
-Default is `<current_project>-reference`, but it may be another project's reference collection.
+2. Offer `<current_project>-reference` as the default.
+   - It may be another project's reference collection.
 
 ### Step 3 — Spawn
 
@@ -74,4 +77,6 @@ worker-cli spawn capture-<collection_lower> /tmp/spawn-<name>.md <current_projec
 
 ### Step 5 — Funnel Report
 
-Receive the worker's funnel report. Tell the user the error count — "bei X URLs ging was schief" — nothing else.
+1. Receive the worker's funnel report.
+
+2. Tell the user the error count, "bei X URLs ging was schief", and nothing else.
