@@ -91,8 +91,8 @@ The user-chat language does not apply here — a German conversation still gets 
    cp /tmp/<domain>/*.md ~/Documents/ai/Meta/ClaudeCode/cli/rag-cli/data/documents/<collection>/
    ```
 
-2. Sample the copied files and confirm they carry no chrome.
-   - Report anything you find and stop.
+2. Sample the copied files and confirm the noise the worker cut is gone.
+   - Report leftover noise and stop.
 
 3. Diff the domain's URLs in the collection against the full discovery list.
 
