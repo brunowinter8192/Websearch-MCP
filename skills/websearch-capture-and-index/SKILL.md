@@ -5,9 +5,6 @@ description:
 
 # Capture-and-Index — Skill
 
-**The pipe is Discovery → STOP (cull) → Scrape → Cleanup.**
-- Indexing belongs to the main agent and never to you.
-
 **Several domains run step by step across ALL of them, never domain by domain.**
 - Discover all, take ONE Step-1 stop covering all, scrape all, clean all.
 
@@ -15,30 +12,20 @@ description:
 
 ## Step 1 — Discovery
 
-**Deliverable: `/tmp/<domain>_urls.txt`, one URL per line.**
-
 ```bash
 cd /Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/cli/websearch
 ./venv/bin/python cli.py discover_urls "<seed_url>" --url-file /tmp/<domain>_urls.txt
 ```
 
 🛑 **STOP and report:**
-- the absolute path of the URL list, as a clickable link
-- the total count
-- a per-section breakdown, URLs grouped by first path segment with counts, e.g. `rest/actions: 41 · rest/repos: 28 · …`
+- the absolute path of `/tmp/<domain>_urls.txt`, one URL per line, as a clickable link
 
 **Go idle.**
 
 ## Step 2 — Scrape
 
-**Inputs, both named by the main agent with the go.**
+**Input, named by the main agent with the go.**
 - `<culled_url_file>` holds the URLs to scrape.
-- `<discovery_url_file>` holds the full discovery list, the domain's known inventory.
-
-**Deliverables.**
-- `/tmp/<domain>/` holds one `.md` per scraped URL.
-- `/tmp/<domain>_new_links.txt` holds links found on the scraped pages that the discovery list did not hold.
-- `/tmp/<domain>_known_links.txt` holds links found that it did hold.
 
 ```bash
 cd /Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/cli/websearch
@@ -47,7 +34,8 @@ cd /Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/cli/websearch
     --output-dir /tmp/<domain>/ > /tmp/<domain>_scrape.log 2>&1
 ```
 
-**Read `/tmp/<domain>_scrape.log` once for the summary line.**
+**Go idle once that command has been run.**
+- It auto-backgrounds, and `/tmp/<domain>_scrape.log` carries its summary line when it returns.
 
 **Split the link file pipe_scraper wrote.**
 
@@ -56,13 +44,11 @@ comm -13 <(sort <discovery_url_file>) <(sort /tmp/<domain>_links.txt) > /tmp/<do
 comm -12 <(sort <discovery_url_file>) <(sort /tmp/<domain>_links.txt) > /tmp/<domain>_known_links.txt
 ```
 
-**Write the failed URLs, one per line, to `/tmp/<domain>_error_urls.txt`.**
-
 🛑 **STOP and report:**
 - scraped OK, errors, duration
 - the absolute path of `/tmp/<domain>/`, as a clickable link
-- the line count of `_new_links.txt` and its absolute path, as a clickable link
-- the line count of `_known_links.txt` and its absolute path, as a clickable link
+- the absolute path of `/tmp/<domain>_new_links.txt`, as a clickable link
+- the failed URLs, one per line, written to `/tmp/<domain>_error_urls.txt`, as a clickable link
 
 **Go idle.**
 - The main agent reads the files and decides between another scrape round and Step 3.
