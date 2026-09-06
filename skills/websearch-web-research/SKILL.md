@@ -41,35 +41,27 @@ The user-chat language does not apply here — a German conversation still gets 
 
 2. Drill down to the seed URL via `search_web` → `search_engine_drilldown`.
 
-3. Spawn the worker and hand it that seed URL.
+3. Spawn the worker.
 
-### Step 2 — Spawn
+   ```bash
+   worker-cli spawn capture-<collection_lower> /tmp/spawn-<name>.md <current_project_root> sonnet
+   ```
 
-Spawn the worker. It activates the `websearch-capture-and-index` skill and runs the pipe: Discovery → URL Selection → **STOP (cull review, your gate)** → Scrape → Cleanup → Index. You provide the seed, collection, output dir.
+   Its prompt activates the capture skill and carries the seed URL:
 
-Worker prompt (`/tmp/spawn-<name>.md`):
+   ```markdown
+   You are a WORKER.
+   FIRST: activate the websearch-capture-and-index skill via Skill(skill="websearch-capture-and-index").
+   SEED_URL: <seed url>
+   ```
 
-```markdown
-You are a WORKER.
-FIRST: activate the websearch-capture-and-index skill via Skill(skill="websearch-capture-and-index").
-Inputs:
-- SEED_URL: <root domain URL>
-- COLLECTION: <name>
-- OUTPUT_DIR: ~/Documents/ai/Meta/ClaudeCode/cli/rag-cli/data/documents/<name>/
-STOP at your skill's Step 3 (cull review) — report the URL-list path + per-section breakdown and WAIT for my cull decision before scraping. Then report the funnel when done. No commit needed (output is data files).
-```
-
-```bash
-worker-cli spawn capture-<collection_lower> /tmp/spawn-<name>.md <current_project_root> sonnet
-```
-
-### Step 3 — Cull Review
+### Step 2 — Cull Review
 
 1. Shrink the list by pattern: keep one language, drop app routes and API reference. No judgment, pure matching.
 2. Read every remaining line in full, with the Read tool.
 3. Write the kept URLs back into the `/tmp` list file yourself, then give the worker the go. It scrapes that file.
 
-### Step 4 — Funnel Report
+### Step 3 — Funnel Report
 
 1. Receive the worker's funnel report.
 
