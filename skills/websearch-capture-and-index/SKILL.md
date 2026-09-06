@@ -98,13 +98,16 @@ The script writes two things:
 <the removed text, verbatim>
 ```
 
-Before the first `--apply`, copy the whole `/tmp/<domain>/` to `/tmp/<domain>_PRE_<class>_BACKUP/`.
+Run it dry first. The `.md` files stay untouched until step 3 clears the class.
 
-### 3. Read what you cut
+### 3. Read what you cut, then apply
 
 Read `/tmp/cut_<class>_<domain>.md` with the Read tool, `offset` stepped across the file, until you
 have seen spans from the start, the middle and the end. A span you cannot place as noise stays:
-narrow the anchor and run the class again.
+narrow the anchor, run dry again, and read again.
+
+When every span reads as noise, copy the whole `/tmp/<domain>/` to `/tmp/<domain>_PRE_<class>_BACKUP/`,
+then run `--apply`.
 
 ### 4. Verify, then take the next class
 
