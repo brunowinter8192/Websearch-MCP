@@ -41,18 +41,18 @@ The user-chat language does not apply here — a German conversation still gets 
 
 2. Drill down to the seed URL via `search_web` → `search_engine_drilldown`.
 
-3. Spawn the worker.
-
-   ```bash
-   worker-cli spawn capture-<collection_lower> /tmp/spawn-<name>.md <current_project_root> sonnet
-   ```
-
-   Its prompt activates the capture skill and carries the seed URL:
+3. Write the worker prompt to `/tmp/spawn-capture-<domain>.md`.
 
    ```markdown
    You are a WORKER.
    FIRST: activate the websearch-capture-and-index skill via Skill(skill="websearch-capture-and-index").
    SEED_URL: <seed url>
+   ```
+
+4. Spawn the worker.
+
+   ```bash
+   worker-cli spawn capture-<domain> /tmp/spawn-capture-<domain>.md <current_project_root> sonnet
    ```
 
 **Insight**
@@ -63,8 +63,11 @@ The user-chat language does not apply here — a German conversation still gets 
 **Input, handed over by the worker.**
 - `/tmp/<domain>_urls.txt` holds the full discovery list, one URL per line.
 
-1. Shrink the list by pattern: keep one language, drop app routes and API reference. No judgment, pure matching.
+1. Shrink the list by pattern until the rest is readable in one pass. No judgment, pure matching.
+   - On `platform.claude.com` that was: keep one language, drop the console routes, drop the API reference. 3571 lines became 242.
+
 2. Read every remaining line in full, with the Read tool.
+
 3. Write the kept URLs to `/tmp/<domain>_urls_culled.txt` yourself, and leave `/tmp/<domain>_urls.txt` untouched.
 
 4. Confirm every kept URL appears in `/tmp/<domain>_urls.txt`.
@@ -88,7 +91,8 @@ The user-chat language does not apply here — a German conversation still gets 
 1. Copy them into the collection directory.
 
    ```bash
-   cp /tmp/<domain>/*.md ~/Documents/ai/Meta/ClaudeCode/cli/rag-cli/data/documents/<collection>/
+   D=~/Documents/ai/Meta/ClaudeCode/cli/rag-cli/data/documents/<collection>
+   mkdir -p $D && cp /tmp/<domain>/*.md $D/
    ```
 
 2. Sample the copied files and confirm the noise the worker cut is gone.
@@ -97,7 +101,6 @@ The user-chat language does not apply here — a German conversation still gets 
 3. Diff the domain's URLs in the collection against the full discovery list.
 
    ```bash
-   D=~/Documents/ai/Meta/ClaudeCode/cli/rag-cli/data/documents/<collection>
    grep -h -m1 '<!-- source:' $D/*.md | sed 's|.*source: ||;s| -->||' \
      | grep '^https://<domain>/' | sort > /tmp/<domain>_indexed_urls.txt
    comm -23 /tmp/<domain>_indexed_urls.txt <(sort /tmp/<domain>_urls.txt)
@@ -120,4 +123,4 @@ The user-chat language does not apply here — a German conversation still gets 
 
 7. Read `/tmp/<collection>_index.log` in full when the run has finished.
 
-8. Tell the user the error count, "bei X URLs ging was schief", and nothing else.
+8. Tell the user the error count the worker reported with its scrape, "bei X URLs ging was schief", and nothing else.
