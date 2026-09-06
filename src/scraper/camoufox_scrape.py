@@ -50,12 +50,12 @@ async def scrape_url_camoufox_workflow(url: str, block_images: bool = False) -> 
     content, meta = await try_scrape_camoufox(url, block_images=block_images)
     total_wall = round((time.perf_counter() - t_total) * 1000)
 
-    outcome = meta.get("acquisition_error") or ("ok" if content else "empty")
     mode = "raw_html" if meta.get("content_is_raw_html") else "markdown"
-    content_path = write_sidecar(url, ts, content, outcome, mode, "camoufox")
+    content_path = write_sidecar(url, ts, content, mode, "camoufox")
     log_scrape({
-        "ts": ts, "url": url, "domain": domain, "mode": mode, "outcome": outcome,
+        "ts": ts, "url": url, "domain": domain, "mode": mode,
         "engine": "camoufox",
+        "acquisition_error": meta.get("acquisition_error"),
         "timings_ms": {"total_wall": total_wall},
         "http_status": meta.get("status_code"),
         "bytes_returned": len(content.encode("utf-8")) if content else 0,
@@ -67,7 +67,8 @@ async def scrape_url_camoufox_workflow(url: str, block_images: bool = False) -> 
         "document_status_chain": meta.get("document_status_chain"),
         "config_hash": meta.get("config_hash"), "config": meta.get("config"),
     })
-    logger.info("Camoufox scrape complete: %s (%d chars, outcome=%s)", url, len(content), outcome)
+    logger.info("Camoufox scrape complete: %s (%d chars, acquisition_error=%s)",
+                url, len(content), meta.get("acquisition_error"))
     return [TextContent(type="text", text=_format_camoufox_output(url, content, meta))]
 
 

@@ -582,8 +582,26 @@ async def test_scrape_url_camoufox_workflow_logs_engine_discriminator(monkeypatc
 
     assert captured["engine"] == "camoufox"
     assert captured["url"] == "https://x.test/a"
-    assert captured["outcome"] == "ok"
     assert captured["mode"] == "markdown"
+    assert "outcome" not in captured
+
+
+@pytest.mark.asyncio
+async def test_scrape_url_camoufox_workflow_logs_acquisition_error_as_its_own_fact(monkeypatch):
+    """No computed outcome anymore — acquisition_error (try_scrape_camoufox's own fact field:
+    "budget_exhausted"/"browser_missing"/"exception", or None) is logged straight through as its
+    own field, the same precedent pipe_scraper_records.py's _log_pipe_camoufox_record set."""
+    captured = {}
+
+    async def _fake_try_scrape_camoufox(url, block_images=False):
+        return "", _meta(acquisition_error="budget_exhausted", status_code=None, landed_url=None)
+    monkeypatch.setattr(camoufox_scrape, "try_scrape_camoufox", _fake_try_scrape_camoufox)
+    monkeypatch.setattr(camoufox_scrape, "write_sidecar", lambda *a, **kw: None)
+    monkeypatch.setattr(camoufox_scrape, "log_scrape", lambda record: captured.update(record))
+
+    await camoufox_scrape.scrape_url_camoufox_workflow("https://x.test/a")
+
+    assert captured["acquisition_error"] == "budget_exhausted"
 
 
 @pytest.mark.asyncio

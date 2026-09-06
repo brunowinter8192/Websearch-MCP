@@ -18,7 +18,6 @@ from crawl4ai.async_crawler_strategy import AsyncPlaywrightCrawlerStrategy
 from crawl4ai.browser_manager import ManagedBrowser
 from crawl4ai.content_filter_strategy import PruningContentFilter
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
-from htmldate import find_date
 import psutil
 from patchright.async_api import async_playwright
 
@@ -31,18 +30,6 @@ from src import death_pipe
 
 logger = logging.getLogger(__name__)
 
-# htmldate's find_date has no per-call timeout param, and its slow-path dependency dateparser
-# exposes none either — an external wrapper guard is therefore NECESSARY, not optional (there is no
-# library-level bound to defer to). Height: dateparser's own worst documented realistic pathology is
-# ~3s (scrapinghub/dateparser#457, a since-fixed locale-accumulation bug; normal calls are ms-range),
-# and htmldate bounds its own work internally (settings.py: MAX_POSSIBLE_CANDIDATES=1000, segment
-# length 6-52 chars, CACHE_SIZE=8192). 3.0 sits at that documented pathology edge, well above normal
-# sub-second completion, bounding a true hang rather than a legitimately slow extraction. Accepted
-# trade-off: the date is an OPTIONAL field (extract_date degrades to None on any timeout/exception),
-# so a genuinely slow 3-5s extraction now loses the date rather than extending the budget for it —
-# the operational log showed find_date normally completing fast (67/68 ad-hoc scrapes got a date,
-# none near the old 5.0s cap).
-HTMLDATE_TIMEOUT_S = 3.0
 # Our own bounded DevToolsActivePort wait (R6: self-owned, deterministic — a real deadline-checked
 # loop, not an unbounded event wait). Value proven in dev/browser_posture/05_cdp_headed_probe.py.
 CDP_PORT_WAIT_TIMEOUT_S = 10.0
@@ -63,10 +50,13 @@ FOCUS_STEAL_POLL_INTERVAL_S = 0.25
 # mechanism/constant that governed the old launch()-based path's cold start, still applies here:
 # crawl4ai passes no explicit timeout to connect_over_cdp either, confirmed via patchright's
 # _impl/_browser_type.py: "connectOverCDP", TimeoutSettings.launch_timeout, params) + 30.0 (nav,
-# page_timeout) + 5.0 (render wait, delay_before_return_html) + 1.3 (consent handling) + 3.0 (date
-# extraction, HTMLDATE_TIMEOUT_S) = 245.8. The DevToolsActivePort wait does NOT replace the 180s
-# cold-start ceiling as first assumed — it's an addition in front of it, not a substitute.
-TOTAL_SCRAPE_BUDGET_S = 245.8
+# page_timeout) + 5.0 (render wait, delay_before_return_html) + 1.3 (consent handling) = 242.8. The
+# DevToolsActivePort wait does NOT replace the 180s cold-start ceiling as first assumed — it's an
+# addition in front of it, not a substitute. (Lowered from 245.8: the former +3.0 htmldate-extraction
+# summand, HTMLDATE_TIMEOUT_S, was removed along with htmldate itself — see this module's own
+# Gotchas/DOCS.md — since the declared-date fact now comes from crawl4ai's own already-parsed
+# result.metadata, at zero extra acquisition time.)
+TOTAL_SCRAPE_BUDGET_S = 242.8
 # The single-value posture stamp for extract_config_stamp's "launch_mode" field — kept as a
 # constant (not a param) since the escape hatch removal (process-docs/browser_posture/) leaves only
 # one acquisition path; still recorded in the log as a truthful discriminator for browser_config.
@@ -100,19 +90,19 @@ async def scrape_url_chromium_workflow(url: str) -> list[TextContent]:
     total_wall = round((time.perf_counter() - t_total) * 1000)
     config = meta.get("config") or {"config_incomplete": True}
     config_hash = hash_config(config)
-    published_date = meta.get("date")
+    og_published_time = meta.get("og_published_time")
 
-    outcome = meta.get("acquisition_error") or ("ok" if content else "empty")
-    content_path = write_sidecar(url, ts, content, outcome, "filtered", "chromium")
+    content_path = write_sidecar(url, ts, content, "filtered", "chromium")
     log_scrape({
-        "ts": ts, "url": url, "domain": domain, "mode": "filtered", "outcome": outcome,
+        "ts": ts, "url": url, "domain": domain, "mode": "filtered",
         "engine": "chromium",
+        "acquisition_error": meta.get("acquisition_error"),
         "timings_ms": {"total_wall": total_wall},
         "http_status": meta.get("status_code"), "content_type": meta.get("content_type"),
         "bytes_returned": len(content.encode("utf-8")) if content else 0,
         "bytes_raw_markdown": meta.get("raw_markdown_bytes", 0),
         "content_path": content_path,
-        "published_date": published_date,
+        "og_published_time": og_published_time,
         "landed_url": meta.get("landed_url"),
         "crawl4ai_success": meta.get("crawl4ai_success"),
         "crawl4ai_error_message": meta.get("crawl4ai_error_message"),
@@ -122,8 +112,9 @@ async def scrape_url_chromium_workflow(url: str) -> list[TextContent]:
         "document_status_chain": meta.get("document_status_chain"),
         "config_hash": config_hash, "config": config,
     })
-    logger.info("Scrape complete: %s (%d chars, outcome=%s)", url, len(content), outcome)
-    return [TextContent(type="text", text=_format_scrape_output(url, content, meta, published_date))]
+    logger.info("Scrape complete: %s (%d chars, acquisition_error=%s)",
+                url, len(content), meta.get("acquisition_error"))
+    return [TextContent(type="text", text=_format_scrape_output(url, content, meta, og_published_time))]
 
 
 # FUNCTIONS
@@ -154,7 +145,7 @@ async def _acquire_scrape(
     if not result.markdown:
         return "", meta
     meta["raw_markdown_bytes"] = len((result.markdown.raw_markdown or "").encode("utf-8"))
-    meta["date"] = await extract_date(result.html or "", url)
+    meta["og_published_time"] = (getattr(result, "metadata", None) or {}).get("og:published_time")
     content = result.markdown.fit_markdown or ""
     return content, meta
 
@@ -185,7 +176,7 @@ async def try_scrape(url: str) -> tuple[str, dict]:
     budget_s = TOTAL_SCRAPE_BUDGET_S
     _empty_meta: dict = {
         "acquisition_error": None, "status_code": None, "content_type": None,
-        "raw_markdown_bytes": 0, "date": None,
+        "raw_markdown_bytes": 0, "og_published_time": None,
         "crawl4ai_success": None, "crawl4ai_error_message": None,
         "crawl4ai_attempts": None, "crawl4ai_resolved_by": None,
         "crawl4ai_fallback_fetch_used": None, "landed_url": None,
@@ -551,20 +542,6 @@ def extract_crawl4ai_diagnosis(result) -> dict:
     }
 
 
-# Original publication date (day precision) from raw HTML via htmldate, bounded by a hard timeout
-async def extract_date(html: str, url: str) -> str | None:
-    if not html:
-        return None
-    try:
-        return await asyncio.wait_for(
-            asyncio.to_thread(find_date, html, extensive_search=True, original_date=True, url=url),
-            timeout=HTMLDATE_TIMEOUT_S,
-        )
-    except Exception as e:
-        logger.debug("htmldate extraction failed for %s: %s", url, e)
-        return None
-
-
 # Detect browser-launch/executable-missing failure (environment defect) vs. an ordinary per-URL error
 def is_browser_launch_error(exc: Exception) -> bool:
     msg = str(exc).lower()
@@ -617,10 +594,8 @@ def is_garbage_content(content: str) -> str | None:
 
 
 # Render acquisition facts + full content into one fixed-shape text block
-def _format_scrape_output(url: str, content: str, meta: dict, published_date: str | None) -> str:
+def _format_scrape_output(url: str, content: str, meta: dict, og_published_time: str | None) -> str:
     lines = [f"# Content from: {url}", ""]
-    if published_date:
-        lines.append(f"Published: {published_date}")
     lines += [
         "## Acquisition facts",
         f"- HTTP status: {meta.get('status_code')}",
@@ -628,6 +603,8 @@ def _format_scrape_output(url: str, content: str, meta: dict, published_date: st
         f"capture; a fact, not a verdict — never read as challenge-solved/blocked): "
         f"{meta.get('document_status_chain')}",
         f"- Landed URL (the URL the browser actually returned content from): {meta.get('landed_url')}",
+        f"- og:published_time (the page's OWN declared value, verbatim from its <head> meta tag — "
+        f"null when the page declares none; never a third-party guess): {og_published_time}",
         f"- Bytes (raw markdown from crawl4ai): {meta.get('raw_markdown_bytes', 0)}",
         f"- Bytes (content below, after PruningContentFilter): "
         f"{len(content.encode('utf-8')) if content else 0}",

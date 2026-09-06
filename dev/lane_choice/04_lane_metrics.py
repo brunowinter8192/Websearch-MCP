@@ -6,8 +6,9 @@ block-level PROSE test on top of CONTENT: CONTENT, at or under a corpus-derived 
 containing a sentence-ending mark — added because a single very long markdown line (embedded JSON/
 CSS/markup) can pass the CONTENT tree with a huge word count that no real prose block has. Builds
 its own pair list from the production `scrape_log.jsonl` (every URL where both lanes have a
-freshest `outcome: ok` record with a `content_path`), no external file dependency. Reports numbers
-only — no verdict on which lane is "better".
+freshest record with no `acquisition_error` and real `bytes_returned`, plus a `content_path` —
+the log no longer computes an "ok" verdict itself, see src/scraper/DOCS.md's Gotchas), no external
+file dependency. Reports numbers only — no verdict on which lane is "better".
 """
 # INFRASTRUCTURE
 import json
@@ -91,7 +92,13 @@ def lane_metrics_workflow() -> None:
 # FUNCTIONS
 
 # The freshest ok+content_path record per (url, engine) in the production log — the log
-# accumulates across sessions, so a later scrape supersedes an earlier one of the same pair
+# accumulates across sessions, so a later scrape supersedes an earlier one of the same pair.
+# "ok" is no longer a field the log computes (see src/scraper/DOCS.md's Gotchas): a record newer
+# than that removal has no "outcome" key at all, so the old `!= "ok"` check would silently exclude
+# every one of them. Reconstructed here off the two facts that replaced it — no acquisition_error,
+# and real bytes actually came back — a historical pre-removal record with a genuine
+# `"outcome": "ok"` also has `acquisition_error` absent (falsy via .get) and a real byte count, so
+# this reads identically on old and new records alike.
 def _latest_ok_records_by_url_engine(log_path: Path) -> dict[tuple[str, str], dict]:
     latest: dict[tuple[str, str], dict] = {}
     with open(log_path, encoding="utf-8") as f:
@@ -100,7 +107,9 @@ def _latest_ok_records_by_url_engine(log_path: Path) -> dict[tuple[str, str], di
             if not line:
                 continue
             record = json.loads(line)
-            if record.get("outcome") != "ok" or not record.get("content_path"):
+            if record.get("acquisition_error") or not record.get("bytes_returned"):
+                continue
+            if not record.get("content_path"):
                 continue
             key = (record["url"], record.get("engine"))
             if key not in latest or record["ts"] > latest[key]["ts"]:

@@ -44,8 +44,10 @@ order, one real `cli.py scrape_url_camoufox`/`scrape_url_chromium` call directly
 `websearch` PATH wrapper), each URL its own fresh browser, back-to-back, launch span recorded per
 URL → the same frontmost-app instrument polls continuously across the whole sequence → overall +
 per-URL verdict printed to the terminal + full sample series to md/.
-`04_lane_metrics.py`: freshest-ok (url, engine) pairs built from the production `scrape_log.jsonl`
-→ every chromium file's blocks read once, pooled into a corpus-wide word-count distribution → a
+`04_lane_metrics.py`: freshest (url, engine) pairs with no `acquisition_error` and real
+`bytes_returned` (see Gotchas — the log no longer computes an "ok" verdict of its own) built from
+the production `scrape_log.jsonl` → every chromium file's blocks read once, pooled into a
+corpus-wide word-count distribution → a
 PROSE length cap derived from that distribution (p99) → per URL, per lane, block classification
 (Algorithm 2 tree + heading rescue) + the PROSE test → per-lane metrics → per-URL lines + one
 all-pairs table + aggregate win/disagreement/cap-exclusion counts + the chromium-zero-CONTENT /
@@ -53,7 +55,7 @@ camoufox-PROSE-rescue breakdown, written to md/.
 
 ## Modules
 
-### 01_backfill_pairs.py (274 LOC)
+### 01_backfill_pairs.py (285 LOC)
 
 **Purpose:** Orchestration only — fires the production `websearch scrape_url_chromium`/
 `scrape_url_camoufox` CLI per distinct URL, resumable via its own state file; never writes scrape
@@ -111,7 +113,7 @@ verdict, full sample series).
 **Calls out:** this worktree's own `venv/bin/python cli.py` (subprocess, real production entry
 point, one call per URL); macOS `osascript`/System Events (via the imported `02_` function).
 
-### 04_lane_metrics.py (511 LOC)
+### 04_lane_metrics.py (520 LOC)
 
 **Purpose:** Classifies every block (non-empty, non-full-comment-line) of each paired chromium/
 camoufox scrape_content `.md` file as CONTENT or BOILERPLATE — Kohlschuetter/Fankhauser/Nejdl
@@ -189,11 +191,16 @@ four scripts, timestamped, never overwritten.
   20-URL file (still referenced by `process-docs/lane_choice/2026-08-27_metric_vs_judgment_no_edge.md`
   as the source of one specific historical report, `04_lane_metrics_report_20260827T171744Z.md`,
   kept on disk for that reason — do not delete it). `collect_pairs_from_scrape_log()` takes the
-  FRESHEST `outcome: ok` + `content_path` record per `(url, engine)` — the log accumulates across
-  sessions (some URLs have both a 2026-08-13 general-use record and a later 2026-08-25/27
-  paired-backfill record for the same engine) — and pairs every URL with a freshest record on BOTH
-  lanes. The pair count is therefore NOT fixed at 111; it tracks whatever the production log
-  currently contains.
+  FRESHEST record with no `acquisition_error` and real `bytes_returned`, plus a `content_path`,
+  per `(url, engine)` — the production log's own `"outcome"` field was REMOVED (see
+  `src/scraper/DOCS.md`'s Gotchas: `acquisition_error` is logged as its own fact instead of being
+  collapsed into a computed `ok`/`empty` verdict); `_latest_ok_records_by_url_engine` reconstructs
+  the identical "ok" meaning off those two facts, which reads the same way on both a pre-removal
+  record (real `"outcome": "ok"`, `acquisition_error` absent, real bytes) and a post-removal one (no
+  `"outcome"` key at all). The log accumulates across sessions (some URLs have both a 2026-08-13
+  general-use record and a later 2026-08-25/27 paired-backfill record for the same engine) — and
+  pairs every URL with a freshest record on BOTH lanes. The pair count is therefore NOT fixed at
+  111; it tracks whatever the production log currently contains.
 - **The PROSE cap (`PROSE_PERCENTILE = 99`) is recomputed from the corpus on every run, never a
   hardcoded word count.** `compute_prose_cap` pools `num_words` across every block of every
   chromium file in the CURRENT pair set and takes the 99th percentile
