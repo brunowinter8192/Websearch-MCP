@@ -37,10 +37,7 @@ The user-chat language does not apply here — a German conversation still gets 
 
 ### Step 1 — Source
 
-Identify the seed domain URL via the search pipe: `search_web` → `search_engine_drilldown` → the domain(s) worth capturing are in those URLs.
-
-**One capture job may span MULTIPLE domains — that is fully supported, not an exception.**
-Hand the worker several seed domains (or a mixed, pre-curated URL list across domains) in a single job. The `websearch-capture-and-index` skill processes them step-by-step across ALL domains — discover all → select all → one cull stop → scrape all → clean all → index once at the end — never domain-by-domain.
+Drill down to the seed URL via `search_web` → `search_engine_drilldown`, then spawn the worker and hand it that seed URL.
 
 ### Step 2 — Collection
 
