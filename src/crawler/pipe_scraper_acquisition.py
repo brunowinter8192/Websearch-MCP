@@ -9,8 +9,8 @@ from urllib.parse import urlparse
 from crawl4ai import AsyncWebCrawler, CrawlerRunConfig
 from curl_cffi.requests import AsyncSession
 
-# From src/crawler/pipe_scraper_constants.py: shared pacing/timeout/threshold values
-from src.crawler.pipe_scraper_constants import FALLBACK_FETCH_TIMEOUT_S, EMPTY_THRESHOLD_BYTES
+# From src/crawler/pipe_scraper_constants.py: shared pacing/timeout values
+from src.crawler.pipe_scraper_constants import FALLBACK_FETCH_TIMEOUT_S
 # From src/crawler/pipe_scraper_pacing.py: per-domain Scrapy pacing gate
 from src.crawler.pipe_scraper_pacing import _ensure_domain_state, _gate_domain
 # From src/crawler/pipe_scraper_records.py: JSONL record assemblers (chromium + camoufox engines)
@@ -48,14 +48,14 @@ async def _fallback_fetch(url: str) -> str | None:
 # Path (b): pipe_scraper's own fallback rescue, called from _scrape_one's except block on a hard browser exception
 async def _own_fallback_rescue(
     crawler: AsyncWebCrawler, url: str, run_cfg: CrawlerRunConfig, output_dir: Path,
-) -> tuple[str, int | None, int, bool, bool, str | None]:
+) -> tuple[int | None, int, bool, bool, str | None]:
     response = await _curl_cffi_get(url)
     landed_url = (response.url or None) if response is not None else None
     if response is None or response.status_code != 200:
-        return 'error', None, 0, True, False, landed_url
+        return None, 0, True, False, landed_url
     html = response.text
     if not html:
-        return 'error', None, 0, True, False, landed_url
+        return None, 0, True, False, landed_url
     try:
         fb_result = await crawler.arun(url=f"raw:{html}", config=run_cfg)
         raw_md = (fb_result.markdown.raw_markdown if fb_result.markdown else '') or ''
@@ -65,8 +65,7 @@ async def _own_fallback_rescue(
     if raw_md:
         fname = _url_to_filename(url)
         (output_dir / fname).write_text(f"<!-- source: {url} -->\n\n{raw_md}", encoding='utf-8')
-    outcome = 'ok' if byte_count >= EMPTY_THRESHOLD_BYTES else 'empty'
-    return outcome, 200, byte_count, True, True, landed_url
+    return 200, byte_count, True, True, landed_url
 
 # Read landed_url off a successful result — null on crawl4ai's own fallback route (path a)
 def _landed_url_from_result(result, diagnosis: dict) -> str | None:
@@ -94,28 +93,18 @@ async def _scrape_one(
         try:
             result = await crawler.arun(url=url, config=run_cfg)
         except Exception:
-            outcome, status, byte_count, fb_used, fb_resolved, landed_url = await _own_fallback_rescue(
+            status, byte_count, fb_used, fb_resolved, landed_url = await _own_fallback_rescue(
                 crawler, url, run_cfg, output_dir)
             wall_ms = int((time.time() - t0) * 1000)
-            _log_pipe_record(run_ctx, ts, url, domain, outcome, status, byte_count, wall_ms, {},
+            _log_pipe_record(run_ctx, ts, url, domain, status, byte_count, wall_ms, {},
                               pipe_fallback_used=fb_used, pipe_fallback_resolved=fb_resolved,
                               landed_url=landed_url)
-            return {'url': url, 'wall_ms': wall_ms, 'bytes': byte_count,
-                    'status_code': status, 'outcome': outcome}
+            return {'url': url, 'wall_ms': wall_ms, 'bytes': byte_count, 'status_code': status}
         wall_ms = int((time.time() - t0) * 1000)
 
     raw_md = (result.markdown.raw_markdown if result.markdown else '') or ''
     status = getattr(result, 'status_code', None)
     byte_count = len(raw_md.encode('utf-8'))
-
-    if status == 429:
-        outcome = 'waf_429'
-    elif status and status >= 400:
-        outcome = 'http_error'
-    elif byte_count < EMPTY_THRESHOLD_BYTES:
-        outcome = 'empty'
-    else:
-        outcome = 'ok'
 
     if raw_md:
         fname = _url_to_filename(url)
@@ -123,11 +112,10 @@ async def _scrape_one(
 
     diagnosis = extract_crawl4ai_diagnosis(result)
     landed_url = _landed_url_from_result(result, diagnosis)
-    _log_pipe_record(run_ctx, ts, url, domain, outcome, status, byte_count, wall_ms, diagnosis,
+    _log_pipe_record(run_ctx, ts, url, domain, status, byte_count, wall_ms, diagnosis,
                       landed_url=landed_url)
 
-    return {'url': url, 'wall_ms': wall_ms, 'bytes': byte_count,
-            'status_code': status, 'outcome': outcome}
+    return {'url': url, 'wall_ms': wall_ms, 'bytes': byte_count, 'status_code': status}
 
 # Scrape one URL via the CAMOUFOX engine, with the same per-domain pacing gate as _scrape_one
 async def _scrape_one_camoufox(
@@ -151,22 +139,10 @@ async def _scrape_one_camoufox(
     status = meta.get('status_code')
     byte_count = len(content.encode('utf-8')) if content else 0
 
-    if meta.get('acquisition_error'):
-        outcome = 'error'
-    elif status == 429:
-        outcome = 'waf_429'
-    elif status and status >= 400:
-        outcome = 'http_error'
-    elif byte_count < EMPTY_THRESHOLD_BYTES:
-        outcome = 'empty'
-    else:
-        outcome = 'ok'
-
     if content:
         fname = _url_to_filename(url)
         (output_dir / fname).write_text(f"<!-- source: {url} -->\n\n{content}", encoding='utf-8')
 
-    _log_pipe_camoufox_record(run_ctx, ts, url, domain, outcome, status, byte_count, wall_ms, meta)
+    _log_pipe_camoufox_record(run_ctx, ts, url, domain, status, byte_count, wall_ms, meta)
 
-    return {'url': url, 'wall_ms': wall_ms, 'bytes': byte_count,
-            'status_code': status, 'outcome': outcome}
+    return {'url': url, 'wall_ms': wall_ms, 'bytes': byte_count, 'status_code': status}

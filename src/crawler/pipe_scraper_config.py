@@ -2,8 +2,8 @@
 from crawl4ai import BrowserConfig, CrawlerRunConfig, CacheMode
 from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
 
-# From src/crawler/pipe_scraper_constants.py: shared pacing/timeout/threshold values
-from src.crawler.pipe_scraper_constants import PAGE_TIMEOUT_MS, DELAY_BEFORE_RETURN_HTML, EMPTY_THRESHOLD_BYTES
+# From src/crawler/pipe_scraper_constants.py: shared pacing/timeout values
+from src.crawler.pipe_scraper_constants import PAGE_TIMEOUT_MS, DELAY_BEFORE_RETURN_HTML
 # From src/crawler/pipe_scraper_acquisition.py: crawl4ai's own fallback_fetch_function wiring target
 from src.crawler.pipe_scraper_acquisition import _fallback_fetch
 
@@ -52,5 +52,4 @@ def _extract_pipe_config_stamp(
         "fallback_armed": run_cfg.fallback_fetch_function is not None,
         "download_delay_s": download_delay,
         "concurrency_per_domain": concurrency_per_domain,
-        "empty_threshold_bytes": EMPTY_THRESHOLD_BYTES,
     }

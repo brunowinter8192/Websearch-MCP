@@ -47,7 +47,6 @@ def test_extract_pipe_config_stamp_reads_real_objects():
     assert stamp["cache_mode"] == "bypass"
     assert stamp["download_delay_s"] == 2.0
     assert stamp["concurrency_per_domain"] == 3
-    assert stamp["empty_threshold_bytes"] == pipe_scraper_constants.EMPTY_THRESHOLD_BYTES
 
 
 def test_extract_pipe_config_stamp_reads_anti_bot_fields_off_real_objects():
@@ -131,14 +130,6 @@ async def test_build_configs_produces_live_stealth_adapter():
     assert isinstance(strategy.browser_manager._stealth_adapter._stealth, Stealth)
 
 
-def test_extract_pipe_config_stamp_carries_empty_threshold_off_the_constant():
-    """empty_threshold_bytes is read off the module constant, not a re-declared literal."""
-    browser_cfg = pipe_scraper_config.BrowserConfig(headless=True, verbose=False)
-    run_cfg = pipe_scraper_config.CrawlerRunConfig()
-    stamp = pipe_scraper_config._extract_pipe_config_stamp(browser_cfg, run_cfg, download_delay=1.0,
-                                                             concurrency_per_domain=8)
-    assert stamp["empty_threshold_bytes"] == pipe_scraper_constants.EMPTY_THRESHOLD_BYTES
-
 
 # ---------------------------------------------------------------------------
 # log_pipe_scrape: fail-soft + real write
@@ -150,14 +141,14 @@ def test_log_pipe_scrape_writes_jsonl_record(tmp_path, monkeypatch):
     monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
 
     log_pipe_scrape({"ts": _now_ts(), "run_id": "abc123", "url": "https://x.test",
-                      "domain": "x.test", "outcome": "ok", "http_status": 200, "bytes": 500,
+                      "domain": "x.test", "http_status": 200, "bytes": 500,
                       "wall_ms": 100, "config_hash": "deadbeef00", "config": {"headless": True}})
 
     lines = log_file.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 1
     record = json.loads(lines[0])
     assert record["run_id"] == "abc123"
-    assert record["outcome"] == "ok"
+    assert record["http_status"] == 200
 
 
 def test_log_pipe_scrape_appends(tmp_path, monkeypatch):
@@ -167,7 +158,7 @@ def test_log_pipe_scrape_appends(tmp_path, monkeypatch):
 
     for i in range(3):
         log_pipe_scrape({"ts": _now_ts(), "run_id": "r", "url": f"https://x.test/{i}", "domain": "x.test",
-                          "outcome": "ok", "http_status": 200, "bytes": 1, "wall_ms": 1,
+                          "http_status": 200, "bytes": 1, "wall_ms": 1,
                           "config_hash": "h", "config": {}})
 
     assert len(log_file.read_text(encoding="utf-8").splitlines()) == 3
@@ -179,7 +170,7 @@ def test_log_pipe_scrape_fail_soft(monkeypatch, caplog):
 
     with caplog.at_level("WARNING", logger="src.crawler.pipe_scrape_logger"):
         log_pipe_scrape({"ts": _now_ts(), "run_id": "r", "url": "https://x.test", "domain": "x.test",
-                          "outcome": "ok", "http_status": 200, "bytes": 1, "wall_ms": 1,
+                          "http_status": 200, "bytes": 1, "wall_ms": 1,
                           "config_hash": "h", "config": {}})
     # No exception raised (call above completing is the primary assertion) + a warning was logged
     assert any("pipe_scrape_log write failed" in m for m in caplog.messages)
@@ -239,8 +230,8 @@ async def test_scrape_all_logs_shared_run_id_across_urls(tmp_path, monkeypatch):
     assert len(run_ids) == 1
 
     by_url = {r["url"]: r for r in records}
-    assert by_url["https://x.test/a"]["outcome"] == "ok"
-    assert by_url["https://x.test/fail"]["outcome"] == "error"
+    assert by_url["https://x.test/a"]["http_status"] == 200
+    assert by_url["https://x.test/fail"]["http_status"] is None
     assert by_url["https://x.test/fail"]["crawl4ai_success"] is None
     assert by_url["https://x.test/a"]["crawl4ai_success"] is True
 
@@ -414,9 +405,7 @@ class _FakeHardFailureCrawler:
     async def arun(self, url, config=None):
         if url.startswith("raw:"):
             return _FakeResult(raw_markdown="rescued content via pipe_scraper's own curl_cffi "
-                                             "fallback, deliberately padded well past the "
-                                             "100-byte empty threshold so this classifies as ok "
-                                             "rather than empty in the assertions below")
+                                             "fallback, real non-trivial content")
         raise Exception("simulated hard browser failure (e.g. navigation timeout)")
 
 
@@ -440,9 +429,7 @@ class _FakeUrlsplitRescueCrawler:
         if url.startswith("raw:"):
             from urllib.parse import urlsplit
             urlsplit(url)
-            return _FakeResult(raw_markdown="rescued content deliberately padded well past the "
-                                             "100-byte empty threshold used in these assertions "
-                                             "so this classifies as ok rather than empty")
+            return _FakeResult(raw_markdown="rescued content, real non-trivial content")
         raise Exception("simulated hard browser failure (e.g. navigation timeout)")
 
 
@@ -461,7 +448,7 @@ async def test_own_fallback_rescue_fires_from_scrape_one_except_block(tmp_path, 
     async def _fake_curl_get(url):
         return _FakeCurlResponse(
             200,
-            "<html><body>curl_cffi rescued this page — real content, long enough to pass the empty threshold</body></html>",
+            "<html><body>curl_cffi rescued this page — real content</body></html>",
             url=url,
         )
     monkeypatch.setattr(pipe_scraper_acquisition, "_curl_cffi_get", _fake_curl_get)
@@ -471,7 +458,6 @@ async def test_own_fallback_rescue_fires_from_scrape_one_except_block(tmp_path, 
     results = await pipe_scraper._scrape_all(["https://x.test/a"], output_dir,
                                               download_delay=0.01, concurrency_per_domain=8)
 
-    assert results[0]["outcome"] == "ok"
     assert results[0]["status_code"] == 200
     assert (output_dir / pipe_scraper_acquisition._url_to_filename("https://x.test/a")).exists()
 
@@ -480,7 +466,6 @@ async def test_own_fallback_rescue_fires_from_scrape_one_except_block(tmp_path, 
     r = records[0]
     assert r["pipe_fallback_used"] is True
     assert r["pipe_fallback_resolved"] is True
-    assert r["outcome"] == "ok"
     assert r["http_status"] == 200
     # No real crawl4ai diagnosis exists for a browser call that raised before producing a result —
     # these must stay None, not be filled in from the unrelated raw: conversion call's own stats
@@ -503,7 +488,7 @@ async def test_own_fallback_rescue_survives_bracket_before_first_slash(tmp_path,
     monkeypatch.setattr(pipe_scraper, "AsyncWebCrawler", _FakeUrlsplitRescueCrawler)
 
     html = ("<html><head><script>var a = [1,2,3];</script></head>"
-            "<body>curl_cffi rescued this page, long enough to pass the empty threshold"
+            "<body>curl_cffi rescued this page"
             "</body></html>")
 
     async def _fake_curl_get(url):
@@ -515,16 +500,15 @@ async def test_own_fallback_rescue_survives_bracket_before_first_slash(tmp_path,
     results = await pipe_scraper._scrape_all(["https://x.test/a"], output_dir,
                                               download_delay=0.01, concurrency_per_domain=8)
 
-    assert results[0]["outcome"] == "ok"
     assert results[0]["status_code"] == 200
 
 
 @pytest.mark.asyncio
 async def test_own_fallback_rescue_all_failed_when_curl_also_fails(tmp_path, monkeypatch):
-    """Third state: browser raised AND pipe_scraper's own fallback also failed. outcome stays
-    'error', http_status stays null (never a faked 200), pipe_fallback_used=True/resolved=False
-    distinguishes this from 'browser succeeded, path b never entered'. landed_url stays null —
-    the curl_cffi fetch never completed at all, so no url was ever observed."""
+    """Third state: browser raised AND pipe_scraper's own fallback also failed. http_status stays
+    null (never a faked 200), pipe_fallback_used=True/resolved=False distinguishes this from
+    'browser succeeded, path b never entered'. landed_url stays null — the curl_cffi fetch never
+    completed at all, so no url was ever observed."""
     log_file = tmp_path / "pipe_scrape_log.jsonl"
     monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
     monkeypatch.setattr(pipe_scraper, "AsyncWebCrawler", _FakeHardFailureCrawler)
@@ -538,8 +522,8 @@ async def test_own_fallback_rescue_all_failed_when_curl_also_fails(tmp_path, mon
     results = await pipe_scraper._scrape_all(["https://x.test/a"], output_dir,
                                               download_delay=0.01, concurrency_per_domain=8)
 
-    assert results[0]["outcome"] == "error"
     assert results[0]["status_code"] is None
+    assert results[0]["bytes"] == 0
 
     records = [json.loads(l) for l in log_file.read_text(encoding="utf-8").splitlines()]
     r = records[0]
@@ -814,7 +798,7 @@ async def test_scrape_all_camoufox_engine_dispatches_to_try_scrape_camoufox(tmp_
     called = []
     async def _fake_try_scrape_camoufox(url, block_images=False):
         called.append((url, block_images))
-        return "# real markdown, deliberately padded well past the 100-byte empty threshold" * 2, _camoufox_meta()
+        return "# real markdown, non-trivial content" * 2, _camoufox_meta()
     monkeypatch.setattr(pipe_scraper_acquisition, "try_scrape_camoufox", _fake_try_scrape_camoufox)
 
     output_dir = tmp_path / "out"
@@ -825,7 +809,7 @@ async def test_scrape_all_camoufox_engine_dispatches_to_try_scrape_camoufox(tmp_
     )
 
     assert called == [("https://x.test/a", True)]
-    assert results[0]["outcome"] == "ok"
+    assert results[0]["status_code"] == 200
     assert (output_dir / pipe_scraper_acquisition._url_to_filename("https://x.test/a")).exists()
 
 
@@ -840,7 +824,7 @@ async def test_scrape_all_camoufox_default_block_images_is_false(tmp_path, monke
     called = []
     async def _fake_try_scrape_camoufox(url, block_images=False):
         called.append((url, block_images))
-        return "# real markdown, deliberately padded well past the 100-byte empty threshold" * 2, _camoufox_meta()
+        return "# real markdown, non-trivial content" * 2, _camoufox_meta()
     monkeypatch.setattr(pipe_scraper_acquisition, "try_scrape_camoufox", _fake_try_scrape_camoufox)
 
     output_dir = tmp_path / "out"
@@ -882,8 +866,9 @@ async def test_scrape_all_camoufox_engine_resolves_own_concurrency_default(tmp_p
 @pytest.mark.asyncio
 async def test_scrape_all_camoufox_record_shape_engine_specific_fields(tmp_path, monkeypatch):
     """The camoufox-engine record carries engine="camoufox", landed_url,
-    markdown_conversion_error, content_is_raw_html — and does NOT carry the chromium-only
-    crawl4ai_*/pipe_fallback_* fields at all (absent, not null/false)."""
+    markdown_conversion_error, content_is_raw_html, acquisition_error (try_scrape_camoufox's own
+    fact field, logged directly — None here since this meta doesn't set it) — and does NOT carry
+    the chromium-only crawl4ai_*/pipe_fallback_* fields at all (absent, not null/false)."""
     log_file = tmp_path / "pipe_scrape_log.jsonl"
     monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
 
@@ -905,6 +890,7 @@ async def test_scrape_all_camoufox_record_shape_engine_specific_fields(tmp_path,
     assert r["landed_url"] == "https://landed.test/a"
     assert r["markdown_conversion_error"] == "Invalid IPv6 URL"
     assert r["content_is_raw_html"] is True
+    assert r["acquisition_error"] is None
     for chromium_only_key in ("crawl4ai_success", "crawl4ai_error_message", "crawl4ai_attempts",
                               "crawl4ai_resolved_by", "crawl4ai_fallback_fetch_used",
                               "pipe_fallback_used", "pipe_fallback_resolved"):
@@ -914,7 +900,8 @@ async def test_scrape_all_camoufox_record_shape_engine_specific_fields(tmp_path,
 @pytest.mark.asyncio
 async def test_scrape_all_chromium_record_shape_camoufox_fields_absent(tmp_path, monkeypatch):
     """The chromium-engine record does NOT carry the camoufox-only markdown_conversion_error/
-    content_is_raw_html fields at all (absent, not null/false) — symmetric with the test above."""
+    content_is_raw_html/acquisition_error fields at all (absent, not null/false) — symmetric with
+    the test above."""
     log_file = tmp_path / "pipe_scrape_log.jsonl"
     monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
     monkeypatch.setattr(pipe_scraper, "AsyncWebCrawler", _FakeCrawler)
@@ -927,16 +914,16 @@ async def test_scrape_all_chromium_record_shape_camoufox_fields_absent(tmp_path,
     records = [json.loads(l) for l in log_file.read_text(encoding="utf-8").splitlines()]
     r = records[0]
     assert r["engine"] == "chromium"
-    for camoufox_only_key in ("markdown_conversion_error", "content_is_raw_html"):
+    for camoufox_only_key in ("markdown_conversion_error", "content_is_raw_html", "acquisition_error"):
         assert camoufox_only_key not in r
 
 
 @pytest.mark.asyncio
-async def test_scrape_all_camoufox_acquisition_error_maps_to_error_outcome(tmp_path, monkeypatch):
-    """A hard acquisition failure (budget_exhausted/browser_missing/exception) must map to
-    outcome="error" — the same meaning "error" has on the chromium engine (total acquisition
-    failure) — not fall through to "empty" (which would misreport it as "browser succeeded, page
-    had nothing")."""
+async def test_scrape_all_camoufox_acquisition_error_is_logged_as_its_own_fact(tmp_path, monkeypatch):
+    """A hard acquisition failure (budget_exhausted/browser_missing/exception) is logged verbatim
+    as its own fact, not collapsed into a computed verdict — try_scrape_camoufox already knows
+    exactly which of the three it was; that specific value is what lands in the record, alongside
+    the plain status_code=None/bytes=0 facts a total acquisition failure naturally produces."""
     log_file = tmp_path / "pipe_scrape_log.jsonl"
     monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
 
@@ -950,22 +937,26 @@ async def test_scrape_all_camoufox_acquisition_error_maps_to_error_outcome(tmp_p
     results = await pipe_scraper._scrape_all(["https://x.test/a"], output_dir, download_delay=0.01,
                                               concurrency_per_domain=1, engine="camoufox")
 
-    assert results[0]["outcome"] == "error"
+    assert results[0]["status_code"] is None
+    assert results[0]["bytes"] == 0
+
+    records = [json.loads(l) for l in log_file.read_text(encoding="utf-8").splitlines()]
+    assert records[0]["acquisition_error"] == "browser_missing"
 
 
 @pytest.mark.asyncio
-async def test_scrape_all_camoufox_resolved_challenge_status_yields_ok(tmp_path, monkeypatch):
+async def test_scrape_all_camoufox_resolved_challenge_status_flows_through_as_recorded_fact(tmp_path, monkeypatch):
     """M2: try_scrape_camoufox now reports the LAST main-frame document response's status, not a
     stale challenge-page status. A meta shaped like a resolved Cloudflare challenge (status_code=200
     from the corrected acquisition primitive, document_status_chain=[403, 302, 200] as the fact
-    trail) must flow through _scrape_one_camoufox's own status>=400 check as outcome="ok" — no
-    special-casing of the chain anywhere in this module, it only ever reads meta['status_code']. The
-    JSONL record also carries the chain field."""
+    trail) must flow through as the recorded http_status=200 — no special-casing of the chain
+    anywhere in this module, it only ever reads meta['status_code'] and passes it straight to the
+    log. The JSONL record also carries the chain field."""
     log_file = tmp_path / "pipe_scrape_log.jsonl"
     monkeypatch.setenv("WEBSEARCH_PIPE_SCRAPE_LOG_PATH", str(log_file))
 
     async def _fake_try_scrape_camoufox(url, block_images=False):
-        return ("# real page content, well past the empty threshold" * 3,
+        return ("# real page content" * 3,
                 _camoufox_meta(status_code=200, document_status_chain=[403, 302, 200]))
     monkeypatch.setattr(pipe_scraper_acquisition, "try_scrape_camoufox", _fake_try_scrape_camoufox)
 
@@ -974,6 +965,7 @@ async def test_scrape_all_camoufox_resolved_challenge_status_yields_ok(tmp_path,
     results = await pipe_scraper._scrape_all(["https://x.test/a"], output_dir, download_delay=0.01,
                                               concurrency_per_domain=1, engine="camoufox")
 
-    assert results[0]["outcome"] == "ok"
+    assert results[0]["status_code"] == 200
     records = [json.loads(l) for l in log_file.read_text(encoding="utf-8").splitlines()]
+    assert records[0]["http_status"] == 200
     assert records[0]["document_status_chain"] == [403, 302, 200]

@@ -217,19 +217,25 @@ distinguish once no page is fetched by discovery itself).
 beyond `src.crawler.discovery`/`src.crawler.seed_feeders_scope`, no network in the pure-logic
 section.
 
-### test_pipe_scraper.py (979 LOC)
+### test_pipe_scraper.py (971 LOC)
 **Purpose:** `src/crawler/pipe_scraper*.py` — config stamp extraction off real
 BrowserConfig/CrawlerRunConfig, live crawl4ai `AsyncPlaywrightCrawlerStrategy`/`StealthAdapter`
 wiring guard, `pipe_scrape_logger.log_pipe_scrape` fail-soft JSONL, `_scrape_all` (run_id sharing,
 request-start `ts` timing regression, config hash), `is_blocked` real branch distinction,
 `pipe_scraper_acquisition._fallback_fetch`/`_own_fallback_rescue` (via the real `_scrape_one`
 except path), `landed_url` correctness across all three engines/routes, camoufox-engine dispatch
-switch (default/concurrency/block_images/record shape/error mapping). As of 2026-09-03, a
-resolved-challenge `try_scrape_camoufox` meta shape (`status_code=200`,
-`document_status_chain=[403,302,200]`) proven end to end through `_scrape_one_camoufox` as
-`outcome="ok"`, with the chain field landing in the JSONL record — no code change needed in the
-camoufox engine itself, only this proof (see `src/scraper/DOCS.md`'s Gotchas for the acquisition-
-primitive fix this proves).
+switch (default/concurrency/block_images/record shape). No test asserts on an `outcome` field
+anywhere in this file anymore — it was removed from `pipe_scraper*.py` along with the field itself
+(see `src/crawler/DOCS.md`'s Gotchas); every assertion that used to read `outcome` now reads the
+underlying fact (`http_status`, `bytes`) directly. As of 2026-09-03, a resolved-challenge
+`try_scrape_camoufox` meta shape (`status_code=200`, `document_status_chain=[403,302,200]`) is
+proven end to end through `_scrape_one_camoufox` as a plain `http_status=200` in the JSONL record,
+with the chain field alongside it — no code change needed in the camoufox engine itself, only this
+proof (see `src/scraper/DOCS.md`'s Gotchas for the acquisition-primitive fix this proves). The
+camoufox engine's `acquisition_error` fact (`try_scrape_camoufox`'s own
+`"budget_exhausted"`/`"browser_missing"`/`"exception"`) is asserted directly in the JSONL record
+(`test_scrape_all_camoufox_acquisition_error_is_logged_as_its_own_fact`), replacing the removed
+`outcome="error"` mapping test.
 
 ## Gotchas
 Any file under this directory that resolves its own path to locate the repo root (subprocess

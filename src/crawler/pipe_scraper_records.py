@@ -4,16 +4,16 @@ from src.crawler.pipe_scrape_logger import log_pipe_scrape
 
 # FUNCTIONS
 
-# Assemble and write one JSONL record for a single URL's CHROMIUM-engine outcome, fail-soft via log_pipe_scrape
+# Assemble and write one JSONL record for a single URL's CHROMIUM-engine fetch, fail-soft via log_pipe_scrape
 def _log_pipe_record(
-    run_ctx: dict, ts: str, url: str, domain: str, outcome: str,
+    run_ctx: dict, ts: str, url: str, domain: str,
     status: int | None, byte_count: int, wall_ms: int, diagnosis: dict,
     pipe_fallback_used: bool = False, pipe_fallback_resolved: bool = False,
     landed_url: str | None = None,
 ) -> None:
     log_pipe_scrape({
         "ts": ts, "run_id": run_ctx["run_id"], "url": url, "domain": domain,
-        "outcome": outcome, "http_status": status, "bytes": byte_count, "wall_ms": wall_ms,
+        "http_status": status, "bytes": byte_count, "wall_ms": wall_ms,
         "engine": "chromium",
         "crawl4ai_success": diagnosis.get("crawl4ai_success"),
         "crawl4ai_error_message": diagnosis.get("crawl4ai_error_message"),
@@ -25,15 +25,21 @@ def _log_pipe_record(
         "config_hash": run_ctx["config_hash"], "config": run_ctx["config"],
     })
 
-# Assemble and write one JSONL record for a single URL's CAMOUFOX-engine outcome — sibling to _log_pipe_record, not shared
+# Assemble and write one JSONL record for a single URL's CAMOUFOX-engine fetch — sibling to
+# _log_pipe_record, not shared. acquisition_error is try_scrape_camoufox's own fact field
+# ("budget_exhausted"/"browser_missing"/"exception", or None) — logged directly, not collapsed
+# into a computed outcome; it is the only fact this engine's fetch can produce that the chromium
+# engine has no equivalent for (a hard chromium exception is instead visible via
+# pipe_fallback_used/pipe_fallback_resolved, both chromium-only fields).
 def _log_pipe_camoufox_record(
-    run_ctx: dict, ts: str, url: str, domain: str, outcome: str,
+    run_ctx: dict, ts: str, url: str, domain: str,
     status: int | None, byte_count: int, wall_ms: int, meta: dict,
 ) -> None:
     log_pipe_scrape({
         "ts": ts, "run_id": run_ctx["run_id"], "url": url, "domain": domain,
-        "outcome": outcome, "http_status": status, "bytes": byte_count, "wall_ms": wall_ms,
+        "http_status": status, "bytes": byte_count, "wall_ms": wall_ms,
         "engine": "camoufox",
+        "acquisition_error": meta.get("acquisition_error"),
         "landed_url": meta.get("landed_url"),
         "markdown_conversion_error": meta.get("markdown_conversion_error"),
         "content_is_raw_html": meta.get("content_is_raw_html", False),
