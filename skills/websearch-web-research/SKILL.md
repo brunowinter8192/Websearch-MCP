@@ -75,6 +75,9 @@ The user-chat language does not apply here — a German conversation still gets 
 
 5. Give the worker the go and name `/tmp/<domain>_urls_culled.txt` as the file to scrape.
 
+**Insight**
+- The worker scrapes and hands you another txt of URLs, the ones it found on the scraped pages. Decide which of them get scraped, and treat any you keep exactly like the initial URLs in Step 2.
+
 ### Step 3 — Funnel Report
 
 1. Receive the worker's funnel report.
