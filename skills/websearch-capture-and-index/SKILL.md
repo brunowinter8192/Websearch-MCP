@@ -63,13 +63,14 @@ Write the failed URLs, one per line, to `/tmp/<domain>_error_urls.txt`.
 - scraped OK, errors, duration
 - the absolute path of `/tmp/<domain>/`, as a clickable link
 - the line count of `_new_links.txt` and its absolute path, as a clickable link
-- the URLs in `_new_links.txt` inline, up to 50 of them
-- the line count of `_known_links.txt`
+- the line count of `_known_links.txt` and its absolute path, as a clickable link
 
-Go idle.
+Go idle. The main agent reads the files and decides: another scrape round, or Step 3.
 
 
 ## Step 3 — Cleanup
+
+Starts when the main agent says to go to Step 3, and at no other moment.
 
 Premise: leaving noise in beats cutting content out. When a span is arguable, keep it.
 
@@ -112,12 +113,6 @@ Read 10-15 lines from the middle of two cleaned files.
 Confirm every file still carries its `<!-- source: URL -->` line.
 
 Then go to step 1 for the next class.
-
-### Protected
-
-A line is kept regardless of any class anchor when it contains, case-insensitive:
-`error`, `fatal`, `traceback`, `exception`, `failed`, `warning`.
-Assert this over `/tmp/cut_*_<domain>.md` after every run and report the count checked.
 
 ### Report
 
