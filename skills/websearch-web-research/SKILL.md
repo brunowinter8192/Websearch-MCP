@@ -74,9 +74,11 @@ The user-chat language does not apply here — a German conversation still gets 
    ```
 
 5. Give the worker the go and name `/tmp/<domain>_urls_culled.txt` as the file to scrape.
+   - Or tell the worker that nothing gets scraped anymore.
 
 **Insight**
 - The worker scrapes and hands you another txt of URLs, the ones it found on the scraped pages. Decide which of them get scraped, and treat any you keep exactly like the initial URLs in Step 2.
+- Once nothing gets scraped anymore, the worker cleans the scraped content.
 
 ### Step 3 — Funnel Report
 
