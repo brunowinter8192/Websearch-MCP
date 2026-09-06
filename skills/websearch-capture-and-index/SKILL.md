@@ -5,8 +5,8 @@ description:
 
 # Capture-and-Index — Skill
 
-**Several domains run step by step across ALL of them, never domain by domain.**
-- Discover all, take ONE Step-1 stop covering all, scrape all, clean all.
+**Several domains run one by one.**
+- Take one domain through Step 1 to Step 4, then start over at Step 1 with the next.
 
 **Scrape failures are reported, never acted on mid-capture.**
 
