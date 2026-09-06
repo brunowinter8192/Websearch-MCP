@@ -55,6 +55,9 @@ The user-chat language does not apply here — a German conversation still gets 
    SEED_URL: <seed url>
    ```
 
+**Insight**
+- The worker runs discovery, reports the path of the full URL list, and goes idle.
+
 ### Step 2 — Cull Review
 
 1. Shrink the list by pattern: keep one language, drop app routes and API reference. No judgment, pure matching.
