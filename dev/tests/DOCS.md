@@ -7,8 +7,9 @@ library-upgrade guards (live calls into installed `crawl4ai`), and production-fa
 repros. Almost entirely no network/browser dependency: I/O boundaries (HTTP clients, browser
 automation, subprocess) are mocked per-test; production logic itself is exercised for real. The one
 deliberate exception is `test_discovery.py`/`test_seed_feeders.py`'s fixture-backed sections, which
-run real network + a real crawl4ai browser traversal, but ONLY ever against the local
-`dev/url_discovery/_fixture_site.py` server, never a live host or a third-party network call — see
+run real network (plain HTTP only — neither file constructs a `crawl4ai` browser), but ONLY ever
+against the local `dev/url_discovery/_fixture_site.py` server, never a live host or a third-party
+network call — see
 `process-docs/url_discovery/2026-08-28_validation_against_live_sites_was_the_wrong_unit.md` for why
 a live host stopped being an acceptable test dependency. Touch this directory when adding/removing
 test coverage for the modules above; do not touch when only production behavior changes without an
@@ -197,50 +198,24 @@ Router RSC-stream shape — replacing the one-off docs.github.com/theblock.co/ui
 nextjs.org runs process-docs/url_discovery/2026-08-28_robots_sitemap_seed_feeders.md and
 2026-08-28_navtree_seed_feeder.md recorded.
 
-### test_discovery.py (525 LOC)
-**Purpose:** `src/crawler/discovery.py` — two layers. Pure-logic, no network: `_assemble_seeds`
-(literal `seed_url` always included, first-write-wins merge priority across the three feeders, a
-failed feeder's error landing in `failed_feeders` rather than being silently treated as an empty
-result, `seed_url` normalization dedup against an equivalent feeder-found URL), `_default_max_pages`
-(the floor vs. the per-seed term), `_build_resume_state` (every seed's depth stamped explicitly at
-0, `"visited"` pre-populated), `_validate_resume_state` (every malformed shape M0 documented plus a
-missing depths entry), `_determine_stop_reason` (takes the same captured on_state_change state dict
-`discovery.py` itself reads, or `None` for zero successful fetches, plus `max_pages` — no strategy
-object, no private attribute, including the real observed overshoot case, 586 vs. a requested
-500), `_extract_version_keys` (the navtree feeder's own `FeederResult.version_keys`, or `None` for
-a version-less site/failed feeder/missing entry — never derived or guessed), `_resolve_canonical_alias`
-(an explicit-version duplicate of an already-known SEED, never of another traversal find; `None`
-when `version_keys` itself is `None`, when canonicalizing doesn't match a known seed, or for a URL
-with no matching version segment at all), `_merge_results` (a seed whose own fetch attempt
-succeeded vs. failed — both visible, attribution preserved either way — a genuinely new fetched URL
-tagged `"traversal"`, a frontier-leftover URL included and marked `fetched=False` rather than
-dropped, first-write-wins if the three input groups ever overlap, and — new — a version-duplicate
-of an already-known seed getting `canonical_url` set after a REAL fetch, `version_keys=None`
-proven byte-identical to omitting the argument entirely), and `_ExactHostFilter.apply` (same-host
-accept with `www.`/apex collapse, sibling-subdomain reject, child-subdomain reject, parent-domain
-reject, a malformed-URL reject that does not raise). Fixture-backed (real crawl4ai-driven
-traversal, only ever against `dev/url_discovery/_fixture_site.py`, one module-scoped server + ONE
-shared `discover_urls_workflow` run for the whole file, `discovery_result`, read by several small
-assertion-only tests rather than re-run per assertion): total URL count/per-source breakdown/
-`pages_fetched`/`pages_failed`/`stop_reason`/`failed_feeders` all checked against the fixture's own
-`ground_truth()`; the single `fetched=False` entry identified by URL, not just by count; the
-2-hop orphan chain confirmed reached via traversal; the already-shipped `"visited"`
-pre-population fix confirmed still holding (a link back to an already-delivered sitemap URL stays
-`source="sitemap"`, not re-tagged `"traversal"`); the version-canonicalization gap now confirmed
-CLOSED (an explicit-version duplicate of an already-known canonical page gets `canonical_url` set
-after a real, genuine fetch — annotation, not prevention, per `src/crawler/DOCS.md`'s own argued
-tradeoff — the canonical entry itself untouched); and a second, separate real run with a
-deliberately small `max_pages=1` against the same fixture, asserting the PROPERTY rather than a
-coincidence: every pre-traversal seed is injected at depth 0, so they are all fetched as ONE BFS
-level, and the real ceiling a small `max_pages` lands on is exactly
-`ground_truth()["pre_traversal_seed_count"]` (never re-derived or hand-typed a second time, so a
-fixture change that adds/removes a seed cannot point this failure at the wrong cause) —
-`stop_reason="max_pages_reached"`, measured directly (twice, identical both times) at 15 real fetch
-attempts today. The BFS-level-granularity claim, now checked against real code instead of only
-`_determine_stop_reason`'s own arithmetic stub.
+### test_discovery.py (138 LOC)
+**Purpose:** `src/crawler/discovery.py` — the feeder-merge discovery entry point (a browser-driven
+link-graph traversal used to run after the feeders; it was removed as a duplicate fetch of every
+page in the run — see `src/crawler/DOCS.md`'s Gotchas — and every test that exercised it was
+deleted with it, not weakened). Pure-logic, no network: `_assemble_seeds` (literal `seed_url`
+always included, first-write-wins merge priority across the three feeders, a failed feeder's error
+landing in `failed_feeders` rather than being silently treated as an empty result, `seed_url`
+normalization dedup against an equivalent feeder-found URL), and `discover_urls_workflow`'s one
+network-free path (an invalid `seed_url` produces `ok=False`, not an empty result). Fixture-backed
+(real network, only ever against `dev/url_discovery/_fixture_site.py`, one module-scoped server +
+ONE shared `discover_urls_workflow` run for the whole file, `discovery_result`, read by several
+small assertion-only tests rather than re-run per assertion): total URL count and per-source
+breakdown checked against the fixture's own `ground_truth()`; every `DiscoveredURL` confirmed to
+carry only `url`/`source` (no `fetched`/`canonical_url` — there is nothing left for either to
+distinguish once no page is fetched by discovery itself).
 **Calls out:** `dev.url_discovery._fixture_site` (fixture-backed section only) — otherwise none
-beyond `src.crawler.discovery`/`src.crawler.seed_feeders_scope`, no network, no crawl4ai
-construction in the pure-logic section.
+beyond `src.crawler.discovery`/`src.crawler.seed_feeders_scope`, no network in the pure-logic
+section.
 
 ### test_pipe_scraper.py (979 LOC)
 **Purpose:** `src/crawler/pipe_scraper*.py` — config stamp extraction off real
