@@ -5,62 +5,35 @@ description:
 
 # Capture-and-Index — Skill
 
-Pipeline: Discovery → URL Selection → STOP (Opus cull) → Scrape → Cleanup → Index.
+Pipeline: Discovery → STOP (cull) → Scrape → Cleanup → Index.
 
 **Multiple domains = step-by-step across ALL of them, never domain-by-domain.**
-Discover all → select all → ONE Step-3 stop covering all → scrape all → clean all → index once at the end. `rag-cli index` operates on the whole collection directory — indexing after domain 1 sweeps up domain 2's raw, uncleaned files as garbage. Index is the LAST action and runs exactly once.
+Discover all → ONE Step-1 stop covering all → scrape all → clean all → index once at the end. Index is the LAST action and runs exactly once.
 
 **Scrape failures are reported in the Completion Report, never acted on mid-capture.**
 
 ## Step 1 — Discovery
 
-Deliverable: `/tmp/<domain>_discovered_urls.txt` — one URL per line, maximum coverage of the target domain/section. Discovery scripts go to `/tmp`.
+Deliverable: `/tmp/<domain>_urls.txt` — one URL per line.
 
-First (~30s): fetch the seed page HTML (plain HTTP, no browser). Check `/sitemap.xml` and `/sitemaps/sitemap-0.xml`, and grep for `<script id="__NEXT_DATA__">`. `robots.txt` is NOT consulted. Then pick a path:
-
-### Path A — `__NEXT_DATA__` extraction (Next.js SSR, preferred)
-
-No browser needed. Parse the `__NEXT_DATA__` JSON blob from the seed page; walk fields with `childPages`/`items`/`navigation` keys paired with `href`/`url` strings — that is the nav tree (key path is site-specific, discover by inspection). Collect the primary nav's URLs, then for EACH entry in an `allVersions`-style version list: fetch that version's root, extract its nav, normalize version-prefixed URLs to canonical form (`/de/enterprise-cloud@latest/rest/X` → `/de/rest/X`), union in. Always include the OLDEST version. Write the normalized union.
-
-**Sitemap-coverage trap:** if the site also has a sitemap, spot-check ≥5 known pages against it before trusting it as an alternative.
-
-### Path B — Sitemap (sitemap exists and spot-check confirms coverage)
-
-Fetch and parse the sitemap; filter to target section URLs; write the list.
-
-### Path C — Playwright BFS (fallback)
-
-Write a /tmp BFS script using `crawler.arun()` per frontier URL; extract `result.links.internal` from the rendered DOM.
-
-```python
-wait_until = "domcontentloaded"
-delay_before_return_html = 3.0   # the one genuine time↔completeness dial
-page_timeout = 15000             # load ceiling; does NOT add to delay
-concurrency = 1                  # WAF-safe default
+```bash
+cd /Users/brunowinter2000/Documents/ai/Meta/ClaudeCode/cli/websearch
+./venv/bin/python cli.py discover_urls "<seed_url>" --url-file /tmp/<domain>_urls.txt
 ```
 
-429 policy: back off 5s once; second consecutive 429 batch → stop, report `stop_reason="429_persistent"`. No retry loops. `stop_reason="frontier_exhausted"` = all link-reachable pages found.
+🛑 STOP and report:
 
-## Step 2 — URL Selection (pre-scrape)
-
-The cull happens on the URL LIST, before any scraping. Inspect the list, drop obvious noise (changelog/archive/legal/asset paths, known-dead sections) via a `/tmp` script that rewrites the file. Record dropped patterns + why for the Completion Report. No page content exists yet — this is purely list-level pattern selection.
-
-## Step 3 — Opus Cull Review (MANDATORY STOP)
-
-The list still contains valid-but-possibly-irrelevant pages. Do NOT edit the list for relevance — STOP and report to Opus:
-
-- the URL-list path and total count
+- the absolute path of the URL list, as a clickable link
+- the total count
 - a **per-section breakdown**: URLs grouped by first path segment, with counts — e.g. `rest/actions: 41 · rest/repos: 28 · …`
 
-Then WAIT. Opus edits the file itself. On go, re-read the file and proceed — do NOT modify the list yourself.
+Go idle.
 
-**Pre-scrape line-count gate (MANDATORY).** In a Bash call of its OWN — never chained onto the scrape command (chaining defeats auto-backgrounding) — `wc -l` the URL file and compare against the count Opus gave with the go. Mismatch → STOP and report; do not scrape.
-
-## Step 4 — Scrape
+## Step 2 — Scrape
 
 Scrape every URL in the filtered list **raw and maximal** — no content filter, no truncation.
 
-**OUTPUT_DIR is a staging directory under `/tmp`, never the collection directory.** Scrape and Cleanup both work in `/tmp/<COLLECTION>_staging/`; the files move into `data/documents/<COLLECTION>/` in Step 6, right before the index call.
+**OUTPUT_DIR is a staging directory under `/tmp`, never the collection directory.** Scrape and Cleanup both work in `/tmp/<COLLECTION>_staging/`; the files move into `data/documents/<COLLECTION>/` in Step 4, right before the index call.
 
 ```bash
 COLLECTION=<collection>
@@ -72,14 +45,11 @@ cd "$WEBSEARCH" && ./venv/bin/python -m src.crawler.pipe_scraper \
     --output-dir $OUTPUT_DIR > /tmp/<domain>_scrape.log 2>&1
 ```
 
-**Engine choice (`--engine {chromium,camoufox}`, default chromium).**
-Per-RUN choice. Camoufox passes WAFs chromium doesn't, but launches a fresh browser per URL at concurrency 1 — MUCH slower at volume. Use it only when the run was spawned with that instruction; a heavy anti-bot error pattern goes into the Completion Report, a re-run on the other engine only on Opus's say-so. A camoufox record may carry raw HTML instead of markdown (`content_is_raw_html` in the pipe log) — such files flow through Cleanup like any other.
-
-> You own Scrape → Cleanup → Index end-to-end — never hand back to Opus mid-pipeline. When the run returns, read `/tmp/<domain>_scrape.log` ONCE for the summary line, then continue on your own.
+> You own Scrape → Cleanup → Index end-to-end — never hand back to the main agent mid-pipeline. When the run returns, read `/tmp/<domain>_scrape.log` ONCE for the summary line, then continue on your own.
 
 The scraper prints one console line (success count, error count, duration) and writes a per-URL report to `/tmp/<domain>_scrape_report.md` — failures live there, not on the console. When errors > 0, write the failed URLs (one per line) to `/tmp/<domain>_error_urls.txt` — the Completion Report links this file.
 
-## Step 5 — Cleanup
+## Step 3 — Cleanup
 
 Diagnose first. Don't write cleanup regex before classifying shape.
 
@@ -100,11 +70,10 @@ js/bot wall    : "enable javascript", "javascript is required", "verify you are 
 
 ### Per-class detection + action
 
-- **A — block/interstitial page** (signature hit AND small): SURFACE ONLY. Print source URL, byte size, first ~15 lines, and READ them. Real block page → delete, recording URL + reason. False positive (a page that legitimately discusses cookies, CAPTCHAs or bot walls — common in vendor/API docs) → keep. Candidate set in the dozens → STOP and report to Opus.
+- **A — block/interstitial page** (signature hit AND small): SURFACE ONLY. Print source URL, byte size, first ~15 lines, and READ them. Real block page → delete, recording URL + reason. False positive (a page that legitimately discusses cookies, CAPTCHAs or bot walls — common in vendor/API docs) → keep. Candidate set in the dozens → STOP and report.
 - **B — thin page** (HTTP 200, tiny byte size): SURFACE ONLY. Print byte size + the full content of the small files, and READ. Stub / redirect landing / pure nav → delete with reason; legitimately short page → keep.
 - **C — chrome + footer** (the five shapes below): RECOVERABLE → strip. Invariants: the `<!-- source: URL -->` comment survives; body content outside the stripped span is unchanged.
-- **D — index/aggregator page** (mostly link list, no prose): SURFACE ONLY, never delete. Flag it in the report; indexing it is Opus's call.
-- **E — raw HTML instead of markdown** (`content_is_raw_html` in the pipe log): CONDITIONAL → report the URLs and WAIT. A re-run on the other engine is Opus's decision, not yours.
+- **D — index/aggregator page** (mostly link list, no prose): SURFACE ONLY, never delete. Flag it in the report; indexing it is the main agent's call.
 
 **Content window (every md).** Pull 1–2 body lines (len > 70, starts alpha, > 10 spaces, high alpha-ratio) from the middle third and READ them. Coherent → pass. Garbled → surface as class A, do not clean.
 
@@ -139,7 +108,7 @@ Safety rules (CRITICAL):
 
 Edge cases: no `# ` heading (redirect pages) → keep content between source comment and logo line. Nearly empty after cleanup (<5 lines) → still output, don't delete. `user_None.md`/`user_{}.md` = crawled error pages, minimal content expected.
 
-## Step 6 — Index (final)
+## Step 4 — Index (final)
 
 One call, once per run, AFTER all domains are scraped and cleaned — `rag-cli index` indexes the ENTIRE collection directory, incrementally (hash-based skip).
 
@@ -162,7 +131,7 @@ When the run returns, read the log ONCE for the summary line (`Done: N files ind
 
 ## Completion Report
 
-Output back to Opus when done — the funnel:
+Output when done — the funnel:
 
 ```
 URLs discovered:                    N
@@ -170,7 +139,7 @@ URLs dropped (pre-scrape, pattern): K    — which patterns + why
 URLs scraped:                       N − K
 Scrape:                             M ok, E errors   ·   duration: T
 Files deleted (your judgment):      D    — source URL + reason per file; omit the line when D = 0
-Flagged, not deleted:               F    — class D index pages, class E raw-HTML records
+Flagged, not deleted:               F    — class D index pages
 Final md indexed:                   <count>
 Collection:                         <COLLECTION>
 Error URLs:                         /tmp/<domain>_error_urls.txt   (one URL per line; omit the line when E = 0)
