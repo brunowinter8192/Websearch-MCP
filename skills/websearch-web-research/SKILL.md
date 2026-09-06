@@ -35,6 +35,9 @@ The user-chat language does not apply here — a German conversation still gets 
 
 ## Permanent Capture Workflow
 
+**Errors the worker reports do not stop the flow.**
+- Carry it through to the end, unless an error is severe enough to make continuing impossible.
+
 ### Step 1 — Source
 
 1. Ask the user for the target collection and propose `<current_project>-reference`.
@@ -123,4 +126,5 @@ The user-chat language does not apply here — a German conversation still gets 
 
 7. Read `/tmp/<collection>_index.log` in full when the run has finished.
 
-8. Tell the user the error count the worker reported with its scrape, "bei X URLs ging was schief", and nothing else.
+8. Tell the user every error, and nothing else.
+   - The indexing errors from the log, plus everything the worker reported and everything you ran into yourself.

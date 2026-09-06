@@ -8,7 +8,7 @@ description:
 **Several domains run one by one.**
 - Take one domain through Step 1 to Step 4, then start over at Step 1 with the next.
 
-**Scrape failures are reported, never acted on mid-capture.**
+**Errors are reported in Step 4, never acted on mid-capture.**
 
 ## Step 1 — Discovery
 
@@ -52,10 +52,8 @@ description:
    ```
 
 4. 🛑 STOP and report:
-   - scraped OK, errors, duration
    - the absolute path of `/tmp/<domain>/`, as a clickable link
    - the absolute path of `/tmp/<domain>_new_links.txt`, as a clickable link
-   - the failed URLs, one per line, written to `/tmp/<domain>_error_urls.txt`, as a clickable link
 
 5. Go idle.
    - The main agent reads the files and decides between another scrape round and Step 3.
@@ -68,6 +66,9 @@ description:
 - A span that is arguable stays.
 
 **One defect class at a time, start to finish, before the next one is named.**
+
+**A file that looks like the scrape went wrong is carried into the Step 4 report.**
+- Cleaning is where that shows, so note it as you go and keep cleaning.
 
 ### Stage 1 — Sample
 
@@ -120,3 +121,4 @@ description:
 
 **Report that the cleanup is done, and go idle.**
 - the absolute path of `/tmp/<domain>/`, holding the cleaned `.md` files, as a clickable link
+- every error of any kind you ran into, across all four steps
