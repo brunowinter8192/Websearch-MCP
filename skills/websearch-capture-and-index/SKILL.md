@@ -47,8 +47,8 @@ description:
 3. Split the link file pipe_scraper wrote.
 
    ```bash
-   comm -13 <(sort <discovery_url_file>) <(sort /tmp/<domain>_links.txt) > /tmp/<domain>_new_links.txt
-   comm -12 <(sort <discovery_url_file>) <(sort /tmp/<domain>_links.txt) > /tmp/<domain>_known_links.txt
+   comm -13 <(sort /tmp/<domain>_urls.txt) <(sort /tmp/<domain>_scrape_links.txt) > /tmp/<domain>_new_links.txt
+   comm -12 <(sort /tmp/<domain>_urls.txt) <(sort /tmp/<domain>_scrape_links.txt) > /tmp/<domain>_known_links.txt
    ```
 
 4. 🛑 STOP and report:
