@@ -1,9 +1,9 @@
 """Deterministic local fixture site for verifying src/crawler/discovery.py's three seed feeders
-(robots.txt, sitemap, navtree) and its link-graph traversal — the instrument
-process-docs/url_discovery/2026-08-28_validation_against_live_sites_was_the_wrong_unit.md argues
-for: ground truth stated in code (ground_truth(), below) rather than a number someone once
-measured on a live host, so a discrepancy is either a real bug or a real fixture change, never an
-unresolvable "did the site drift" question.
+(robots.txt, sitemap, navtree) — the instrument process-docs/url_discovery/
+2026-08-28_validation_against_live_sites_was_the_wrong_unit.md argues for: ground truth stated in
+code (ground_truth(), below) rather than a number someone once measured on a live host, so a
+discrepancy is either a real bug or a real fixture change, never an unresolvable "did the site
+drift" question.
 
 Every page/robots.txt/sitemap this module serves is GENERATED from the same source lists
 ground_truth() reads its own numbers from (NAVTREE_CANONICAL_PAGES, SITEMAP_BLOG_PAGES, ...) — the
@@ -20,28 +20,14 @@ Site shape (seed_url = seed_url(port), i.e. /docs/guide):
   an index -> two leaf <urlset> documents) — exercises resolve_sitemap_urls's recursion, not just
   one level of it.
 - robots.txt: 2 Disallow + 1 Allow path, all collected as seeds regardless (the seed_feeders_robots
-  decision this fixture must let happen, not prevent) — one of the three
-  (ROBOTS_EMPTY_404_PATHS) is a genuine empty-body 404, the one case that DOES read as a real
-  crawl4ai fetch failure (see the Gotcha below on why an ordinary 404 does not).
-- Orphans: reachable by link alone, absent from every feeder's own output.
-- Two additional traversal-only pages test behaviors already on record in src/crawler/DOCS.md's
-  own Gotchas, not covered by a plain orphan: REVISIT_TEST_PAGE links to a URL a feeder ALREADY
-  delivered (tests _build_resume_state's "visited" pre-population — the already-known URL must
-  stay attributed to its feeder, not be re-tagged "traversal" or double-counted).
-  VERSION_DUP_TEST_PAGE links to an explicit-version duplicate of an already-delivered canonical
-  navtree page (tests the CLOSED item: discovery.py's traversal now runs a discovered link through
-  seed_feeders_navtree.canonicalize_version_url via the version keys FeederResult.version_keys
-  surfaces, so this duplicate is recognized as an alias of the canonical page — DiscoveredURL.
-  canonical_url is set on it, its own source/fetched stay whatever its own real fetch observed,
-  and the canonical page's own entry is never touched).
+  decision this fixture must let happen, not prevent).
 
-Failure modes are switched via /_control/* GET requests, never random, always resettable — see
-_STATE. Thin-body-200 is a simple on/off toggle. 429 is a genuine SLIDING WINDOW ("at most `limit`
-requests within the trailing `window` seconds", /_control/rate_limit?limit=M&window=T) rather than
-an absolute counter that trips once and never recovers — a window is what lets a caller that spaces
-its own requests stay under it indefinitely, and lets a bursty one recover once it slows down,
-which is the property real per-domain pacing needs to be checked against (process-docs/
-url_discovery/2026-09-05_pacing_measurement.md).
+discover_urls_workflow itself never fetches a page — only the three feeders (robots.txt, a
+sitemap, the seed page + its version roots) ever hit this server for a real discovery run, so
+ground_truth() states exactly what those three feeders produce, nothing link-graph-derived. The
+failure-mode switches below (/_control/*) predate that removal and remain for whichever future
+caller (the scrape step, per src/crawler/DOCS.md) needs a fetch-failure/rate-limit target; no
+current test exercises them.
 """
 # INFRASTRUCTURE
 import http.server
@@ -89,18 +75,6 @@ ROBOTS_DISALLOW_PATHS = ("/internal/admin", "/internal/staging-notes")
 ROBOTS_ALLOW_PATHS = ("/internal/public-notice",)
 ROBOTS_REAL_PATHS = ("/internal/admin", "/internal/public-notice")
 ROBOTS_EMPTY_404_PATHS = ("/internal/staging-notes",)  # genuine empty-body 404 -> real fetch failure
-
-# --- Orphans: link-only, absent from every feeder's own output ---
-ORPHAN_CHAIN = ("/orphan/changelog", "/orphan/changelog/2024")
-
-# --- "visited" pre-population case: links to an ALREADY-DELIVERED feeder URL ---
-REVISIT_TEST_PAGE = "/docs/guide/related-links"
-REVISIT_TEST_TARGET = SITEMAP_BLOG_PAGES[0]
-
-# --- version-canonicalization-gap case (deliberately unfixed, see module docstring) ---
-VERSION_DUP_TEST_PAGE = "/docs/guide/see-versions"
-VERSION_DUP_TARGET = "/docs/v1/guide/intro"
-VERSION_DUP_CANONICAL = NAVTREE_CANONICAL_PAGES[1]  # "/docs/guide/intro" — the already-known page
 
 THIN_BODY_HTML = '<html><body><div id="app"></div></body></html>'  # ~50 bytes: 0 visible chars,
 # 0 content elements -> 2 structural anti-bot signals, same shape as the real 168-byte case
@@ -257,8 +231,7 @@ def _build_routes(base_url: str) -> dict:
 
     current_tree = _sidebar_tree(NAVTREE_CANONICAL_PAGES)
     add(SEED_PATH, "text/html; charset=utf-8", _next_data_page_html(
-        current_tree, title="Guide (current)", with_version_meta=True,
-        extra_links=(ORPHAN_CHAIN[0], REVISIT_TEST_PAGE, VERSION_DUP_TEST_PAGE)))
+        current_tree, title="Guide (current)", with_version_meta=True))
     for path in NAVTREE_CANONICAL_PAGES[1:]:
         add(path, "text/html; charset=utf-8", _leaf_page_html(title=f"Guide: {path}"))
     for path in NAVTREE_V1_ONLY_PAGES:
@@ -271,17 +244,6 @@ def _build_routes(base_url: str) -> dict:
                 + tuple(_version_path(p, "v1") for p in NAVTREE_V1_ONLY_PAGES))
     add(_version_path(SEED_PATH, "v1"), "text/html; charset=utf-8", _next_data_page_html(
         _sidebar_tree(v1_hrefs), title="Guide (v1)"))
-
-    add(VERSION_DUP_TARGET, "text/html; charset=utf-8",
-        _leaf_page_html(title="Guide: intro (v1 explicit-version duplicate)"))
-
-    add(ORPHAN_CHAIN[0], "text/html; charset=utf-8",
-        _leaf_page_html(title="Changelog (orphan)", links=(ORPHAN_CHAIN[1],)))
-    add(ORPHAN_CHAIN[1], "text/html; charset=utf-8", _leaf_page_html(title="Changelog 2024 (orphan)"))
-    add(REVISIT_TEST_PAGE, "text/html; charset=utf-8",
-        _leaf_page_html(title="Related links", links=(REVISIT_TEST_TARGET,)))
-    add(VERSION_DUP_TEST_PAGE, "text/html; charset=utf-8",
-        _leaf_page_html(title="See other versions", links=(VERSION_DUP_TARGET,)))
 
     for path in SITEMAP_BLOG_PAGES + SITEMAP_LEGAL_PAGES:
         add(path, "text/html; charset=utf-8", _leaf_page_html(title=f"Blog/legal: {path}"))
@@ -303,11 +265,11 @@ def _build_routes(base_url: str) -> dict:
     return routes
 
 
-# The pre-traversal seed set discover_urls_workflow's own _assemble_seeds would build: literal
-# seed first, then robots/sitemap/navtree in that fixed order, first-write-wins — mirrors
-# discovery.py's own merge priority so a URL present in two lists (the navtree root == the
-# literal seed) is counted once, under "seed", exactly like the real docs.github.com run on record.
-def _pre_traversal_seeds() -> list:
+# The exact seed set discover_urls_workflow's own _assemble_seeds builds: literal seed first, then
+# robots/sitemap/navtree in that fixed order, first-write-wins — mirrors discovery.py's own merge
+# priority so a URL present in two lists (the navtree root == the literal seed) is counted once,
+# under "seed".
+def _expected_seeds() -> list:
     order = []
     seen = set()
 
@@ -325,31 +287,18 @@ def _pre_traversal_seeds() -> list:
 
 
 # The fixture's stated ground truth, computed from the same source lists that generate the served
-# pages — never hand-typed. total_urls/pages_fetched/pages_failed are what a real
-# discover_urls_workflow(seed_url(port)) run is expected to report, against a freshly-reset server.
+# pages — never hand-typed. total_urls/by_source are what a real discover_urls_workflow(seed_url
+# (port)) run is expected to report; discover_urls_workflow never fetches a page itself, so there
+# is no fetched/failed/stop_reason concept left to state here.
 def ground_truth() -> dict:
-    seeds = _pre_traversal_seeds()
+    seeds = _expected_seeds()
     by_source = {}
     for _, tag in seeds:
         by_source[tag] = by_source.get(tag, 0) + 1
-    traversal_only = ORPHAN_CHAIN + (REVISIT_TEST_PAGE, VERSION_DUP_TEST_PAGE, VERSION_DUP_TARGET)
-    by_source["traversal"] = len(traversal_only)
-    total_urls = len(seeds) + len(traversal_only)
-    pages_failed = len(ROBOTS_EMPTY_404_PATHS)
     return {
         "seed_path": SEED_PATH,
-        "total_urls": total_urls,
+        "total_urls": len(seeds),
         "by_source": by_source,
-        "pages_fetched_expected": total_urls - pages_failed,
-        "pages_failed_expected": pages_failed,
-        "expected_stop_reason": "frontier_exhausted",
-        # Every pre-traversal seed is injected into resume_state's "pending" at depth 0 (see
-        # discovery.py's _build_resume_state), so they are all fetched as ONE single BFS level —
-        # this is the real ceiling a small max_pages override lands on, since max_pages is checked
-        # only BETWEEN levels (src/crawler/DOCS.md's Gotchas). Any caller measuring the
-        # BFS-level-granularity overshoot property against this fixture reads it from here, not
-        # from a count re-derived (or worse, hand-typed) a second time elsewhere.
-        "pre_traversal_seed_count": len(seeds),
         "navtree": {
             "total": len(set(NAVTREE_CANONICAL_PAGES) | set(NAVTREE_V1_ONLY_PAGES)),
             "canonical": len(NAVTREE_CANONICAL_PAGES),
@@ -357,32 +306,7 @@ def ground_truth() -> dict:
             "version_exclusive_pages": list(NAVTREE_V1_ONLY_PAGES),
         },
         "sitemap": {"listed": len(SITEMAP_BLOG_PAGES) + len(SITEMAP_LEGAL_PAGES)},
-        "robots": {
-            "listed": len(ROBOTS_DISALLOW_PATHS) + len(ROBOTS_ALLOW_PATHS),
-            "real": len(ROBOTS_REAL_PATHS),
-            "unfetchable": len(ROBOTS_EMPTY_404_PATHS),
-            "unfetchable_paths": list(ROBOTS_EMPTY_404_PATHS),
-        },
-        "orphans": {"count": len(ORPHAN_CHAIN), "pages": list(ORPHAN_CHAIN)},
-        "revisit_test": {
-            "page": REVISIT_TEST_PAGE, "already_known_target": REVISIT_TEST_TARGET,
-            "expected": "target stays attributed to its own feeder, not re-tagged traversal, not double-fetched",
-        },
-        "version_duplicate_test": {
-            "page": VERSION_DUP_TEST_PAGE, "duplicate_target": VERSION_DUP_TARGET,
-            "canonical_original": VERSION_DUP_CANONICAL,
-            "expected_behavior":
-                "duplicate_target is still its own DiscoveredURL entry (total_urls/by_source do "
-                "NOT change — it was already counted before this fix, only its shape changes now), "
-                "source='traversal', fetched=True (a real fetch still happens — this closes the "
-                "canonicalization gap, it does not prevent the fetch), and canonical_url equals "
-                "canonical_original's own URL. canonical_original's own entry is untouched: "
-                "source='navtree_tree', canonical_url=None.",
-        },
-        "rsc_demo": {
-            "root": RSC_DEMO_ROOT, "children": list(RSC_DEMO_CHILDREN),
-            "note": "isolated island, never linked, NOT included in total_urls",
-        },
+        "robots": {"listed": len(ROBOTS_DISALLOW_PATHS) + len(ROBOTS_ALLOW_PATHS)},
     }
 
 

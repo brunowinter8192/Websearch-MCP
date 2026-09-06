@@ -1,14 +1,16 @@
 # dev/url_discovery/
 
 ## Role
-Two independent tools for the link-graph-traversal redesign of the capture pipeline's
-URL-discovery step (`src/crawler/discovery.py` + its three seed feeders): (1) execution-verified
-probes of `crawl4ai`'s deep-crawling internals against a REAL site (`01_resume_state_probe.py`) —
-touch this when a new assumption about frontier pre-seeding/filter/scorer/resume-state shape needs
-to be checked by running it, not by re-reading the vendored source; (2) a deterministic LOCAL
-fixture site (`_fixture_site.py`/`02_fixture_site_server.py`) whose page inventory is a fact stated
-in code, replacing a live host as the thing `discover_urls_workflow`'s feeders/traversal get
-checked against — see
+Two independent tools built for the capture pipeline's URL-discovery step
+(`src/crawler/discovery.py` + its three seed feeders): (1) execution-verified probes of
+`crawl4ai`'s deep-crawling internals against a REAL site (`01_resume_state_probe.py`) — this
+predates, and is independent of, `discovery.py`'s current shape (`discovery.py` no longer runs any
+`crawl4ai` traversal — see its own DOCS.md Gotchas for the removal); it remains as a dormant probe
+for whoever next needs to re-verify `BFSDeepCrawlStrategy`'s `resume_state` mechanics (e.g. if
+link-following is rebuilt on top of it elsewhere, such as the scrape step); (2) a deterministic
+LOCAL fixture site (`_fixture_site.py`/`02_fixture_site_server.py`) whose page inventory is a fact
+stated in code, replacing a live host as the thing `discover_urls_workflow`'s three feeders (and
+their own merge into one seed set) get checked against — see
 `process-docs/url_discovery/2026-08-28_validation_against_live_sites_was_the_wrong_unit.md` for why
 live-site verification stopped being trustworthy. Not the place for the seed-feeder implementations
 themselves or a discovery CLI — those belong under `src/` once a design is confirmed.
@@ -25,7 +27,7 @@ needs a deterministic discovery target: `start_fixture_server()`/`stop_fixture_s
 `01_resume_state_probe.py`: fixed set of real `books.toscrape.com` URLs → four small
 `BFSDeepCrawlStrategy` runs against one shared `AsyncWebCrawler` → one timestamped report under
 `md/`. `_fixture_site.py`/`02_fixture_site_server.py`: source lists of page paths (navtree
-versions, sitemap entries, robots paths, orphans) → generated HTML/XML routes served by a
+versions, sitemap entries, robots paths) → generated HTML/XML routes served by a
 `ThreadingHTTPServer` → a caller (a real `discover_urls_workflow` run, or a feeder called directly)
 gets checked against `ground_truth()`, computed from those same source lists.
 
@@ -46,19 +48,19 @@ after a `crawl4ai` version bump).
 
 ---
 
-### _fixture_site.py (487 LOC)
+### _fixture_site.py (415 LOC)
 
 **Purpose:** Deterministic local HTTP fixture for `src/crawler/discovery.py`'s three seed feeders
-and its BFS traversal — a documentation site with a nested `<sitemapindex>`, a `robots.txt`
-carrying `Allow`/`Disallow`/`Sitemap`, a 3-version `__NEXT_DATA__` navtree (2 pages exclusive to
-the oldest version), an isolated RSC (`self.__next_f.push`) demo page, link-only orphan pages, and
-two switchable failure modes: thin-body-200 (on/off), and a genuine SLIDING-WINDOW 429
+and their merge into one seed set — a documentation site with a nested `<sitemapindex>`, a
+`robots.txt` carrying `Allow`/`Disallow`/`Sitemap`, a 3-version `__NEXT_DATA__` navtree (2 pages
+exclusive to the oldest version), an isolated RSC (`self.__next_f.push`) demo page, and two
+switchable failure modes: thin-body-200 (on/off), and a genuine SLIDING-WINDOW 429
 (`/_control/rate_limit?limit=M&window=T` — "at most M requests in the trailing T seconds",
-recoverable once a caller slows down, not an absolute counter that trips once and never recovers).
-`ground_truth()` states total/orphan/
-version-exclusive/sitemap-listed/robots-listed counts (plus `pre_traversal_seed_count`, the size of
-the single BFS level every pre-traversal seed is injected into — the real ceiling a small
-`max_pages` override lands on), computed from the same source lists that generate the served pages.
+recoverable once a caller slows down, not an absolute counter that trips once and never recovers) —
+neither failure mode is currently exercised by any test, since `discover_urls_workflow` no longer
+fetches a page itself; both remain for whichever future caller (e.g. the scrape step) needs a
+fetch-failure/rate-limit target. `ground_truth()` states total/navtree/sitemap-listed/robots-listed
+counts, computed from the same source lists that generate the served pages.
 **Reads:** nothing on disk — ground truth is stated as source lists in this file itself.
 **Writes:** nothing (in-memory HTTP responses only).
 **Called by:** `02_fixture_site_server.py` (standalone use); any future dev script/test needing a
@@ -99,15 +101,14 @@ module-level — see the Gotcha below on the one-instance-per-process consequenc
   the same process overwrites the first's routes/state (the first server keeps serving on its own
   port, but against the second's route table). Tests/scripts that need genuine isolation should run
   in separate processes, not just separate threads.
-- **A plain HTTP 404 with a real (non-empty) body does NOT read as a failed fetch to crawl4ai —
-  confirmed by reading `async_webcrawler.py`/`antibot_detector.py` directly, not assumed.**
-  `crawl_result.success = bool(html)` is set before any anti-bot check runs; only `status_code==429`
-  (unconditional), `403`/`503` (content-checked), or a genuinely thin/malformed body (the Tier-3
-  structural check, independent of status code) force `success=False`. This is why
-  `ROBOTS_EMPTY_404_PATHS` (`/internal/staging-notes`) is a genuine EMPTY-body 404, not an ordinary
-  one with a small default error page — an ordinary 404 page would still be `fetched=True` in a
-  real `discover_urls_workflow` run, which would silently defeat the one case this fixture needs to
-  demonstrate a robots-declared seed's own re-fetch genuinely failing.
+- **`ROBOTS_EMPTY_404_PATHS` (`/internal/staging-notes`) is a genuine EMPTY-body 404, distinct from
+  an ordinary 404 with a small error page — a distinction that mattered when `discover_urls_workflow`
+  itself still re-fetched every seed (a plain HTTP 404 with a real body does NOT read as a failed
+  fetch to `crawl4ai`; `crawl_result.success = bool(html)` is set before any anti-bot check runs —
+  confirmed by reading `async_webcrawler.py`/`antibot_detector.py` directly). `discover_urls_workflow`
+  no longer fetches any discovered URL itself, so this distinction is currently inert there — the
+  robots feeder only ever parses `robots.txt` text, never fetches the paths it lists. Kept for
+  whichever future caller (the scrape step) fetches these paths for real.
 - **`THIN_BODY_HTML`'s exact shape (`<div id="app"></div>`, no `p`/`h1`/etc.) is deliberate, not
   arbitrary minification.** `antibot_detector._structural_integrity_check` needs 2+ signals to
   block a page this small (`<5000` bytes): 0 visible chars after stripping tags (`minimal_text`)
@@ -121,27 +122,15 @@ module-level — see the Gotcha below on the one-instance-per-process consequenc
   main site's `__NEXT_DATA__` shape. Wiring `/rsc-demo` into the main graph would change
   `total_urls` and conflate two independent purposes (shape-detection demo vs. the site's own
   ground truth) — do not link it in.
-- **`VERSION_DUP_TEST_PAGE`'s link to `VERSION_DUP_TARGET` (`/docs/v1/guide/intro`) now closes the
-  version-canonicalization gap `src/crawler/DOCS.md`'s Gotchas used to record as open.**
-  `discovery.py`'s traversal recognizes this URL, after genuinely fetching it, as an
-  explicit-version duplicate of the already-known canonical `/docs/guide/intro` —
-  `DiscoveredURL.canonical_url` is set on the duplicate's own entry, which still appears in the
-  result with its own real `source`/`fetched` status (the fetch still happens; this closes the
-  MISCLASSIFICATION gap, not the fetch cost — see `src/crawler/DOCS.md`'s Gotchas for the
-  annotation-vs-prevention tradeoff argued there). The canonical entry itself is never touched.
-  `ground_truth()`'s `version_duplicate_test.expected_behavior` states this explicitly.
-  `total_urls`/`by_source` do NOT change from this fix — the duplicate was already counted as its
-  own entry before, only its shape changes now.
-- **`REVISIT_TEST_PAGE`'s link to `REVISIT_TEST_TARGET` (`/blog/post-1`, already delivered by the
-  sitemap feeder) is the opposite case: already-fixed, already-shipped behavior.**
-  `_build_resume_state`'s `"visited"` pre-population (see `src/crawler/DOCS.md`'s Gotchas) means
-  this rediscovery should NOT be re-fetched and should NOT be re-tagged `"traversal"` — a real
-  `discover_urls_workflow` run against this fixture confirmed `/blog/post-1` stays
-  `source="sitemap"`, fetched exactly once. Kept as a simple root-relative path with no query
-  string deliberately — the DOCS.md Gotcha on this fix notes the "visited" comparison uses TWO
-  different URL normalizers (this project's own vs. crawl4ai's `normalize_url_for_deep_crawl`) that
-  are only guaranteed to coincide for simple paths; this fixture's own test case is exactly that
-  simple case, not a stress test of the normalization-mismatch edge itself.
+- **`ORPHAN_CHAIN`/`REVISIT_TEST_PAGE`/`VERSION_DUP_TEST_PAGE` (link-only pages, a rediscovered
+  already-known sitemap URL, and an explicit-version duplicate link) were REMOVED from this
+  fixture, not left inert.** All three existed solely to exercise `discovery.py`'s former
+  browser-driven link-graph traversal (BFS reach beyond depth 1, the `"visited"` pre-population
+  fix, and version-duplicate alias recognition respectively) — with that traversal removed (see
+  `src/crawler/DOCS.md`'s Gotchas), none of the three has a consumer left, so they were deleted
+  along with the tests that exercised them rather than kept "just in case". `NAVTREE_V1_ONLY_PAGES`
+  is a different, still-live case: it tests the navtree feeder's OWN version union, not the
+  traversal, and stays.
 - Each of the four `01_resume_state_probe.py` experiments cancels its `BFSDeepCrawlStrategy` from inside its own
   `on_state_change` callback right after the single seed URL's first BFS level is processed —
   the discovered next-level URLs are inspected via the captured state dict, never actually

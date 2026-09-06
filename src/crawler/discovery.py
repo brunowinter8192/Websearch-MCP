@@ -2,60 +2,13 @@
 import asyncio
 import time
 from dataclasses import dataclass, field
-from urllib.parse import urlsplit
-
-from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig, CacheMode
-from crawl4ai.deep_crawling import BFSDeepCrawlStrategy, FilterChain
-from crawl4ai.deep_crawling.filters import URLFilter
 
 # From src/crawler/seed_feeders.py: the three seed feeders sharing the FeederResult contract
 from src.crawler.seed_feeders import robots_feeder_workflow, sitemap_feeder_workflow, navtree_feeder_workflow
-# From src/crawler/seed_feeders_scope.py: shared host validation/collapse, reused for consistency
-# with what the feeders already consider in-scope
-from src.crawler.seed_feeders_scope import normalize_url, host_key, require_host
-# From src/crawler/seed_feeders_navtree.py: the SAME version-segment canonicalization rule the
-# navtree feeder's own version union already applies internally — imported, not reimplemented, so
-# a traversal-discovered explicit-version duplicate of an already-known canonical page is
-# recognized by the identical rule (see _resolve_canonical_alias below)
-from src.crawler.seed_feeders_navtree import canonicalize_version_url
-
-# max_depth is deliberately generous, not a safety device — max_pages alone guarantees
-# termination (see discover_urls_workflow), so depth only bounds REACH, never WORK. A real
-# documentation site's link-diameter is almost always far below this (verified: books.toscrape.com
-# reached depth 2 out of 10 available before its run stopped on budget, not depth).
-DEFAULT_MAX_DEPTH = 10
-# A chosen starting floor, not a measured optimum for any particular site — sized against the
-# one number this project has on record (bare link-following measured 248 pages on
-# docs.github.com/de/rest), not against seed count. A caller learns whether 500 was ever binding
-# from DiscoveryResult.stop_reason, not from this constant being "the right number" — see
-# process-docs/url_discovery/ for the full reasoning and the real run that produced 586 vs. this
-# floor of 500 on books.toscrape.com.
-MIN_MAX_PAGES = 500
-# Linear in seed count, not compounding with depth — only matters once seed count is large enough
-# to need more budget just to visit every seed once; stays bounded regardless of how generous
-# max_depth is, since max_pages is the sole termination lever (see DEFAULT_MAX_DEPTH above).
-MAX_PAGES_PER_SEED = 2
-
-# Per-domain pacing for the traversal fetch itself, applied via CrawlerRunConfig's own
-# mean_delay/max_range/semaphore_count (crawl4ai's arun_many resolves its default dispatcher's
-# concurrency and RateLimiter delay straight off these three fields when no dispatcher is passed
-# explicitly — confirmed by reading async_webcrawler.py directly, not assumed). crawl4ai's own
-# defaults (mean_delay=0.1s, max_range=0.3s, semaphore_count=5) are tuned for speed, not for a
-# real anti-bot-protected site under this project's own hundreds-of-seeds-in-one-BFS-level traffic
-# pattern. MEAN_DELAY_S/MAX_RANGE_S are unchanged from this project's own measured chromium pacing
-# (`pipe_scraper_constants.DOWNLOAD_DELAY`/`process-docs/pipe_scraper_hardening/2026-08-04_stealth_concurrency_probe.md`)
-# — the measurement below confirmed they were never the problem. TRAVERSAL_CONCURRENCY was
-# corrected from 8 to 1 by that same measurement: crawl4ai's own RateLimiter.wait_if_needed
-# (async_dispatcher.py) has no lock around its read-sleep-write sequence, so concurrent tasks can
-# read the SAME stale last_request_time before any of them writes it and wake up together — a real,
-# measured burst of 7-8 near-simultaneous requests at semaphore_count=8, not the claimed ~1 req/s
-# per domain. pipe_scraper's own DOWNLOAD_DELAY/CONCURRENCY_PER_DOMAIN=8 were measured for a
-# DIFFERENT, lock-serialized gate (`pipe_scraper_pacing.py`'s `_gate_domain`) that cannot race this
-# way — the value did not transfer to this mechanism. See DOCS.md Gotchas and
-# process-docs/url_discovery/2026-09-05_pacing_measurement.md for the full before/after numbers.
-TRAVERSAL_MEAN_DELAY_S = 1.0
-TRAVERSAL_MAX_RANGE_S = 0.5
-TRAVERSAL_CONCURRENCY = 1
+# From src/crawler/seed_feeders_scope.py: normalize_url (so seed_url dedups against an equivalent
+# feeder-found URL the same way feeder output already dedups against itself) and require_host
+# (seed_url validation, the same precondition every feeder already uses).
+from src.crawler.seed_feeders_scope import normalize_url, require_host
 
 _FEEDER_WORKFLOWS = (
     ("robots", robots_feeder_workflow),
@@ -64,106 +17,59 @@ _FEEDER_WORKFLOWS = (
 )
 
 
-# One discovered URL, what first produced it, and whether it was actually confirmed by a real
-# fetch. source: "seed" (the literal seed_url), a feeder's own `FeederResult.source`
-# ("robots"/"sitemap"/"navtree_tree"/"navtree_flat"), or "traversal" (a link discovered mid-crawl
-# that no feeder and no seed already carried). fetched=False covers TWO real cases, both visible
-# on the result rather than silently dropped: a URL whose own fetch attempt failed (anti-bot
-# block, 429, ...) and a URL the frontier held but the page budget ran out before it was ever
-# attempted at all (see discover_urls_workflow's own docstring). canonical_url is set ONLY when
-# this URL was recognized, after being genuinely fetched, as an explicit-version duplicate of an
-# already-known canonical page (see _resolve_canonical_alias) — the duplicate keeps its own real
-# fetched status and its own entry (a caller whose goal is a complete URL list still sees it; it is
-# never silently dropped or merged into the canonical entry, which is never touched by this at
-# all). None for every other entry, including the canonical page itself.
+# One discovered URL and what produced it. source is "seed" (the literal seed_url) or a feeder's
+# own FeederResult.source ("robots"/"sitemap"/"navtree_tree"/"navtree_flat"). No fetch is ever
+# attempted by this module — a page is only ever fetched once, by the scrape step that follows
+# discovery (see discover_urls_workflow's own docstring) — so there is nothing here for a
+# fetched/failed flag to distinguish.
 @dataclass
 class DiscoveredURL:
     url: str
     source: str
-    fetched: bool = True
-    canonical_url: str | None = None
 
 
 # Result of one discovery run. ok=True even when one or two feeders failed (see
 # discover_urls_workflow's own docstring) — failed_feeders makes that visible rather than letting
 # the run proceed as if a failed feeder had simply found nothing. ok=False only when seed_url
-# itself could not be used at all. stop_reason distinguishes an exhausted frontier from an
-# exhausted page budget; it is None when ok=False, since no traversal ever ran. pages_fetched/
-# pages_failed count every real fetch ATTEMPT the traversal made (success vs. failure) — the
-# aggregate visibility a caller needs to tell "304 URLs, all confirmed" from "304 URLs, most of
-# them never actually loaded" apart, which a bare URL count cannot do on its own.
+# itself could not be used at all.
 @dataclass
 class DiscoveryResult:
     urls: list = field(default_factory=list)
     ok: bool = True
-    stop_reason: str | None = None
     wall_s: float = 0.0
     failed_feeders: dict = field(default_factory=dict)
-    pages_fetched: int = 0
-    pages_failed: int = 0
     error: str | None = None
-
-
-# Exact-hostname scope filter for traversal-discovered links — collapses www./apex via the same
-# host_key feeders already use, otherwise EXACT match only (no subdomain leniency). Deliberately
-# NOT crawl4ai's own DomainFilter, whose _is_subdomain treats a child subdomain as in-scope by
-# design — the wrong semantics for "the seed host and only the seed host" (see DOCS.md Gotchas).
-class _ExactHostFilter(URLFilter):
-    __slots__ = ("_seed_key",)
-
-    def __init__(self, seed_host: str):
-        super().__init__(name="ExactHostFilter")
-        self._seed_key = host_key(seed_host)
-
-    def apply(self, url: str) -> bool:
-        try:
-            host = urlsplit(url).hostname or ""
-        except ValueError:
-            return False
-        return host_key(host) == self._seed_key
 
 
 # ORCHESTRATOR
 
-# Discover a site's URL set: seed the traversal frontier from all three feeders plus the literal
-# seed_url itself, then traverse. `max_depth`/`max_pages` default to DEFAULT_MAX_DEPTH/a
-# seed-count-scaled floor of MIN_MAX_PAGES (see those constants) when omitted.
+# Discover a site's URL set: run robots.txt/sitemap/navtree over plain HTTP and merge their output
+# with the literal seed_url. No page is ever fetched in a browser here — a prior version of this
+# module additionally opened a headless browser and re-fetched every one of these URLs purely to
+# read the links on each page, looking for pages no feeder had listed. That traversal was removed:
+# link-following belongs to the scrape step, which already loads each page for its content anyway,
+# so a separate link-only pass was a duplicate fetch of every page in the run (measured on a real
+# site: the feeders returned 3571 URLs in ~2s; the traversal over those same 3571 URLs was still
+# running after 12 minutes, projected well over an hour — see process-docs/url_discovery/ for the
+# full history of the traversal this replaces).
 #
 # A feeder returning ok=False contributes nothing SILENTLY — its name and error land in
-# `failed_feeders`, always visible on the result, and the run still proceeds on whatever seeds
-# the other feeders (plus the literal seed_url, which is injected unconditionally) did produce.
-# The run itself is only ok=False when seed_url cannot be used at all (unparseable/hostless) —
-# the same precondition class every feeder already uses; a degraded-but-nonzero seed set is a
-# successful, if partial, run, not a failed one.
-async def discover_urls_workflow(seed_url: str, max_depth: int | None = None,
-                                 max_pages: int | None = None) -> DiscoveryResult:
+# `failed_feeders`, always visible on the result, and the run still proceeds on whatever seeds the
+# other feeders (plus the literal seed_url, which is injected unconditionally) did produce. The run
+# itself is only ok=False when seed_url cannot be used at all (unparseable/hostless) — the same
+# precondition class every feeder already uses; a degraded-but-nonzero seed set is a successful, if
+# partial, run, not a failed one.
+async def discover_urls_workflow(seed_url: str) -> DiscoveryResult:
     t0 = time.time()
     try:
-        seed_host = require_host(seed_url)
+        require_host(seed_url)
     except Exception as exc:
         return DiscoveryResult(ok=False, error=str(exc), wall_s=time.time() - t0)
 
     feeder_results = await _run_feeders(seed_url)
     seeds, failed_feeders = _assemble_seeds(seed_url, feeder_results)
-    version_keys = _extract_version_keys(feeder_results)
-
-    resolved_max_depth = max_depth if max_depth is not None else DEFAULT_MAX_DEPTH
-    resolved_max_pages = max_pages if max_pages is not None else _default_max_pages(len(seeds))
-
-    resume_state = _build_resume_state(seeds)
-    _validate_resume_state(resume_state)
-
-    try:
-        fetched, frontier_leftover, stop_reason, pages_fetched, pages_failed = await _traverse(
-            seed_url, seed_host, resume_state, resolved_max_depth, resolved_max_pages)
-    except Exception as exc:
-        return DiscoveryResult(ok=False, error=str(exc), failed_feeders=failed_feeders,
-                               wall_s=time.time() - t0)
-
-    urls = _merge_results(seeds, fetched, frontier_leftover, version_keys)
-    return DiscoveryResult(urls=urls, ok=True, stop_reason=stop_reason, wall_s=time.time() - t0,
-                           failed_feeders=failed_feeders, pages_fetched=pages_fetched,
-                           pages_failed=pages_failed)
+    urls = [DiscoveredURL(url=url, source=source) for url, source in seeds.items()]
+    return DiscoveryResult(urls=urls, ok=True, wall_s=time.time() - t0, failed_feeders=failed_feeders)
 
 
 # FUNCTIONS
@@ -173,15 +79,6 @@ async def _run_feeders(seed_url: str) -> dict:
     results = await asyncio.gather(*[workflow(seed_url) for _, workflow in _FEEDER_WORKFLOWS])
     return {name: result for (name, _), result in zip(_FEEDER_WORKFLOWS, results)}
 
-
-# The navtree feeder's own version-key list (see FeederResult), or None for a version-less site
-# (the common case, costing nothing extra) or a failed navtree feeder. Never derived or guessed —
-# only ever the exact list the navtree feeder itself already found on the page it fetched.
-def _extract_version_keys(feeder_results: dict) -> list | None:
-    navtree_result = feeder_results.get("navtree")
-    if navtree_result and navtree_result.ok:
-        return navtree_result.version_keys
-    return None
 
 # Merge feeder output into one {url: source} seed set, first-write-wins (seed_url itself first,
 # then robots/sitemap/navtree in that order), plus {feeder_name: error} for every ok=False feeder.
@@ -198,162 +95,3 @@ def _assemble_seeds(seed_url: str, feeder_results: dict) -> tuple:
             if url not in seeds:
                 seeds[url] = result.source
     return seeds, failed_feeders
-
-
-# seeds + a fixed, seed-count-independent expansion budget — see MIN_MAX_PAGES/MAX_PAGES_PER_SEED.
-def _default_max_pages(num_seeds: int) -> int:
-    return max(MIN_MAX_PAGES, num_seeds * MAX_PAGES_PER_SEED)
-
-
-# Build the resume_state BFSDeepCrawlStrategy needs, with EVERY seed's depth stamped explicitly
-# at 0 rather than left to the strategy's own default (which does the same thing silently — see
-# process-docs/url_discovery/2026-08-28_resume_state_preseed_probe.md Result 3 — this makes that
-# choice visible in the data instead of relying on undocumented default behavior). "visited" is
-# pre-populated with every known seed too — without it, link_discovery's own dedup (which checks
-# ONLY the "visited" set, never the seeds/pending list) does not recognize an already-known seed
-# rediscovered as a link FROM another page, spends part of the page budget "discovering" URLs the
-# run already had, and undercounts genuine traversal-only contribution (see DOCS.md Gotchas for
-# the real run that surfaced this and the caveat on normalization mismatch this fix does not
-# fully close).
-def _build_resume_state(seeds: dict) -> dict:
-    return {
-        "pending": [{"url": url, "parent_url": None} for url in seeds],
-        "depths": {url: 0 for url in seeds},
-        "visited": list(seeds.keys()),
-    }
-
-
-# Fail fast on the two silent-failure shapes M0 found (an empty dict, a wrong/missing "pending"
-# key) plus malformed entries — raises ValueError, never silently hands a broken resume_state to
-# the strategy, which would otherwise fall back to a plain single-start_url crawl or a silent
-# empty one with no exception either way.
-def _validate_resume_state(resume_state: dict) -> None:
-    if not resume_state or "pending" not in resume_state:
-        raise ValueError("resume_state missing a non-empty 'pending' key")
-    pending = resume_state["pending"]
-    if not isinstance(pending, list) or not pending:
-        raise ValueError("resume_state['pending'] must be a non-empty list")
-    depths = resume_state.get("depths", {})
-    for item in pending:
-        if not isinstance(item, dict) or "url" not in item or "parent_url" not in item:
-            raise ValueError(f"malformed pending entry: {item!r}")
-        if item["url"] not in depths:
-            raise ValueError(f"pending URL missing an explicit depths entry: {item['url']!r}")
-
-
-# Run the traversal itself: exact-host scope filter (include_external=True so crawl4ai's own
-# crude same-page-netloc substring check — see DOCS.md Gotchas — never gets a chance to matter;
-# this filter is the sole scope authority), paced fetch config (see TRAVERSAL_MEAN_DELAY_S/
-# TRAVERSAL_MAX_RANGE_S/TRAVERSAL_CONCURRENCY — real anti-bot measurement drove these, not
-# crawl4ai's own speed-tuned defaults), prefetch=True (link_discovery below only ever reads
-# result.links — see DOCS.md Gotchas for the measured proof that crawl4ai's prefetch short-circuit
-# returns the identical link set and does not affect fetch-success/failure classification, so the
-# scraping strategy, markdown generation, content filtering and media extraction this module never
-# used are now genuinely skipped, not just uninspected). An on_state_change callback keeps the
-# LATEST captured strategy state — crawl4ai's own officially documented crash-recovery surface
-# (resume_state/on_state_change/export_state, since crawl4ai 0.8.0), not a private internal read.
-# That one captured dict now serves two purposes previously split across a callback and a private
-# attribute read: after the run it holds whatever the frontier ("pending") still contained the
-# moment the run stopped (URLs link_discovery found and accepted but the page budget never got to
-# fetch, which must not be silently discarded — see discover_urls_workflow's own docstring), AND
-# its own "pages_crawled" is what _determine_stop_reason reads (see DOCS.md Gotchas — no private
-# strategy attribute is read anywhere in this module). Returns (fetched_urls,
-# frontier_leftover_urls, stop_reason, pages_fetched, pages_failed).
-async def _traverse(seed_url: str, seed_host: str, resume_state: dict,
-                    max_depth: int, max_pages: int) -> tuple:
-    captured = {}
-
-    async def _capture_state(state: dict) -> None:
-        captured["state"] = state
-
-    strategy = BFSDeepCrawlStrategy(
-        max_depth=max_depth,
-        max_pages=max_pages,
-        filter_chain=FilterChain([_ExactHostFilter(seed_host)]),
-        include_external=True,
-        resume_state=resume_state,
-        on_state_change=_capture_state,
-    )
-    config = CrawlerRunConfig(
-        cache_mode=CacheMode.BYPASS, wait_until="domcontentloaded",
-        deep_crawl_strategy=strategy, stream=False, verbose=False,
-        mean_delay=TRAVERSAL_MEAN_DELAY_S, max_range=TRAVERSAL_MAX_RANGE_S,
-        semaphore_count=TRAVERSAL_CONCURRENCY, prefetch=True,
-    )
-    browser_config = BrowserConfig(headless=True, verbose=False)
-
-    async with AsyncWebCrawler(config=browser_config) as crawler:
-        results = await crawler.arun(url=seed_url, config=config)
-
-    stop_reason = _determine_stop_reason(captured.get("state"), max_pages)
-    fetched = [r.url for r in results if r.success]
-    pages_fetched = len(fetched)
-    pages_failed = len(results) - pages_fetched
-
-    frontier_leftover = []
-    if "state" in captured:
-        frontier_leftover = [item["url"] for item in captured["state"].get("pending", [])]
-
-    return fetched, frontier_leftover, stop_reason, pages_fetched, pages_failed
-
-
-# "max_pages_reached" if the captured state's own pages_crawled count met/exceeded max_pages, else
-# "frontier_exhausted". state is the SAME dict discovery.py's own on_state_change callback already
-# captures (see _traverse) — crawl4ai's officially documented crash-recovery surface
-# (resume_state/on_state_change/export_state, since crawl4ai 0.8.0) carries pages_crawled in that
-# same state, so no private strategy attribute needs reading here anymore. state is None when no
-# URL was ever successfully processed (the callback never fired) — pages_crawled defaults to 0,
-# matching a fresh strategy's own starting value.
-def _determine_stop_reason(state: dict | None, max_pages: int) -> str:
-    pages_crawled = state.get("pages_crawled", 0) if state else 0
-    if pages_crawled >= max_pages:
-        return "max_pages_reached"
-    return "frontier_exhausted"
-
-
-# Is url an explicit-version duplicate of an already-known SEED (never of another traversal
-# find — narrowly the case the navtree feeder's own version union already handles, not a general
-# URL-equivalence mechanism)? version_keys is None for a version-less site, skipping this entirely
-# — zero extra work, byte-identical to a site with no navtree version list at all. Uses the SAME
-# canonicalize_version_url the navtree feeder's own union already applies, imported not
-# reimplemented, so a genuinely new URL that happens to contain no matching version segment is
-# guaranteed a no-op (returns url unchanged) rather than a guess. Returns the matching canonical
-# seed URL, or None.
-def _resolve_canonical_alias(url: str, seeds: dict, version_keys: list | None) -> str | None:
-    if not version_keys:
-        return None
-    canonical = canonicalize_version_url(url, version_keys)
-    if canonical != url and canonical in seeds:
-        return canonical
-    return None
-
-
-# Build the final DiscoveredURL list: every seed tagged with its own source and whether ITS OWN
-# fetch attempt succeeded; every genuinely new successfully-fetched traversal URL tagged
-# "traversal"/fetched=True; every frontier-leftover URL (found, never attempted — the page budget
-# ran out first) tagged "traversal"/fetched=False. First-write-wins across all three groups (a
-# URL already accounted for by an earlier group is never duplicated or re-tagged by a later one).
-# A traversal/frontier-leftover URL that canonicalizes to an already-known seed (see
-# _resolve_canonical_alias) gets canonical_url set to that seed's own URL — the canonical seed's
-# own entry is never touched, and the duplicate keeps its own real source/fetched status; it is
-# never dropped, only labeled (see DOCS.md Gotchas for why annotating after a real, confirmed
-# fetch was chosen over preventing the fetch).
-def _merge_results(seeds: dict, fetched: list, frontier_leftover: list,
-                   version_keys: list | None = None) -> list:
-    fetched_set = set(fetched)
-    urls = []
-    seen = set()
-    for url, source in seeds.items():
-        urls.append(DiscoveredURL(url=url, source=source, fetched=url in fetched_set))
-        seen.add(url)
-    for url in fetched:
-        if url not in seen:
-            canonical_url = _resolve_canonical_alias(url, seeds, version_keys)
-            urls.append(DiscoveredURL(url=url, source="traversal", fetched=True, canonical_url=canonical_url))
-            seen.add(url)
-    for url in frontier_leftover:
-        if url not in seen:
-            canonical_url = _resolve_canonical_alias(url, seeds, version_keys)
-            urls.append(DiscoveredURL(url=url, source="traversal", fetched=False, canonical_url=canonical_url))
-            seen.add(url)
-    return urls
