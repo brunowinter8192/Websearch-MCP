@@ -15,12 +15,16 @@ from src.crawler.pipe_scraper_constants import DOWNLOAD_DELAY, CONCURRENCY_PER_D
 from src.crawler.pipe_scraper_config import _build_configs, _extract_pipe_config_stamp
 # From src/crawler/pipe_scraper_acquisition.py: per-URL engine executors (chromium + camoufox)
 from src.crawler.pipe_scraper_acquisition import _scrape_one, _scrape_one_camoufox
-# From src/crawler/pipe_scraper_report.py: /tmp scrape report + console summary
-from src.crawler.pipe_scraper_report import _domain_from_urls, _write_tmp_report, _print_summary
+# From src/crawler/pipe_scraper_report.py: /tmp scrape report + onward-links file + console summary
+from src.crawler.pipe_scraper_report import (
+    _domain_from_urls, _write_tmp_report, _print_summary, _collect_onward_links,
+    _write_onward_links_file,
+)
 
 # ORCHESTRATOR
 
-# Scrape URL list with Scrapy-style per-domain pacing — write per-URL md files + /tmp report + JSONL log
+# Scrape URL list with Scrapy-style per-domain pacing — write per-URL md files + /tmp report +
+# /tmp onward-links file (chromium engine only) + JSONL log
 async def scrape_urls_workflow(
     urls: list[str],
     output_dir: Path,
@@ -34,8 +38,11 @@ async def scrape_urls_workflow(
     results = await _scrape_all(urls, output_dir, download_delay, concurrency_per_domain,
                                  engine, block_images)
     wall_s = time.time() - t0
-    _print_summary(results, wall_s)
-    _write_tmp_report(_domain_from_urls(urls), results)
+    domain = _domain_from_urls(urls)
+    onward_links = _collect_onward_links(urls, results, engine)
+    _print_summary(results, wall_s, onward_links)
+    _write_tmp_report(domain, results)
+    _write_onward_links_file(domain, onward_links)
     return results
 
 

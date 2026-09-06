@@ -217,7 +217,7 @@ distinguish once no page is fetched by discovery itself).
 beyond `src.crawler.discovery`/`src.crawler.seed_feeders_scope`, no network in the pure-logic
 section.
 
-### test_pipe_scraper.py (971 LOC)
+### test_pipe_scraper.py (1201 LOC)
 **Purpose:** `src/crawler/pipe_scraper*.py` — config stamp extraction off real
 BrowserConfig/CrawlerRunConfig, live crawl4ai `AsyncPlaywrightCrawlerStrategy`/`StealthAdapter`
 wiring guard, `pipe_scrape_logger.log_pipe_scrape` fail-soft JSONL, `_scrape_all` (run_id sharing,
@@ -235,7 +235,23 @@ proof (see `src/scraper/DOCS.md`'s Gotchas for the acquisition-primitive fix thi
 camoufox engine's `acquisition_error` fact (`try_scrape_camoufox`'s own
 `"budget_exhausted"`/`"browser_missing"`/`"exception"`) is asserted directly in the JSONL record
 (`test_scrape_all_camoufox_acquisition_error_is_logged_as_its_own_fact`), replacing the removed
-`outcome="error"` mapping test.
+`outcome="error"` mapping test. Onward-link collection (the milestone that moved discovery.py's
+removed browser traversal's job onto pages already being fetched — see `src/crawler/DOCS.md`'s
+Gotchas): `_onward_link_identity` (query/fragment stripped, scheme/host lowercased, including the
+real motivating case — two `/login?returnTo=...` variants collapsing to one key);
+`_extract_onward_links` (unions crawl4ai's own internal/external buckets, `host_key`-restricts to
+the page's own host with `www.`/apex collapsed but sibling/child subdomains rejected,
+`_NON_PAGE_EXTENSIONS` drops asset links, dedups within the page, degrades to `[]` when the result
+has no `.links` attribute at all); `_collect_onward_links` (excludes the run's own input URLs
+after identical normalization, dedups run-wide preserving first-seen order, ignores a result with
+no `'links'` key at all, returns `None` — not `[]` — for the camoufox engine regardless of what any
+individual result happens to carry); `_write_onward_links_file` (one URL per line, an empty file
+for an empty list, no file at all for `None`, real `/tmp` writes cleaned up per test via a
+fixture); `_print_summary`'s new onward-link wording (a plain count, or the explicit
+"not collected (camoufox engine)" string — never a bare `0` a reader could mistake for "chromium
+looked and found nothing"); and the wiring itself — `_scrape_one` populates `'links'` from a fake
+result carrying a real `.links` attribute, `_scrape_one_camoufox`'s own return dict is asserted to
+never carry a `'links'` key at all, the engine-scope distinction the milestone requires.
 
 ## Gotchas
 Any file under this directory that resolves its own path to locate the repo root (subprocess
