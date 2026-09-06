@@ -115,4 +115,4 @@ description:
 
 ## Step 4 — Report
 
-**Report that the cleanup is done.**
+**Report that the cleanup is done, and go idle.**
