@@ -92,6 +92,7 @@ The user-chat language does not apply here — a German conversation still gets 
    ```
 
 2. Sample the copied files and confirm they carry no chrome.
+   - Report anything you find and stop.
 
 3. Diff the domain's URLs in the collection against the full discovery list.
 
