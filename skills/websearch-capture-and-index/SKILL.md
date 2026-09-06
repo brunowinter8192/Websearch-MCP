@@ -75,7 +75,7 @@ description:
 
 ### Stage 2 — One script per class
 
-1. Write `/tmp/clean_<class>_<domain>.py`, ~20-30 LOC, `python3`.
+1. Write `/tmp/clean_<class>_<domain>.py`, `python3`.
    - Dry-run is the default, `--apply` is its own separate run.
 
 2. Have the script write two things.
@@ -115,6 +115,4 @@ description:
 
 ## Step 4 — Report
 
-**Per class: the anchor, files touched, spans removed, chars removed, and the `cut_` path.**
-
-**A file that holds no content after cleaning is named, kept on disk, and left for the main agent.**
+**Report that the cleanup is done.**
