@@ -60,6 +60,9 @@ The user-chat language does not apply here — a German conversation still gets 
 
 ### Step 2 — Cull Review
 
+**Input, handed over by the worker.**
+- `/tmp/<domain>_urls.txt` holds the full discovery list, one URL per line.
+
 1. Shrink the list by pattern: keep one language, drop app routes and API reference. No judgment, pure matching.
 2. Read every remaining line in full, with the Read tool.
 3. Write the kept URLs back into the `/tmp` list file yourself, then give the worker the go. It scrapes that file.
