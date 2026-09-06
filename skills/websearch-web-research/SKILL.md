@@ -71,10 +71,9 @@ worker-cli spawn capture-<collection_lower> /tmp/spawn-<name>.md <current_projec
 
 ### Step 4 — Cull Review
 
-When the worker stops at its cull gate it reports the URL-list path + a per-section breakdown. Review it against what the user actually needs this session — drop sections that are valid content but off-topic (e.g. a GitHub REST capture aimed at search/contents/git-trees does not need `actions`/`enterprise-admin`/`scim`). This is YOUR call, not the worker's.
-
-**YOU edit the `/tmp` URL-list file itself — never send the worker patterns to apply.**
-Strip the unwanted URLs from the file, then tell the worker the resulting line count and give it go.
+1. Shrink the list by pattern: keep one language, drop app routes and API reference. No judgment, pure matching.
+2. Read every remaining line in full, with the Read tool.
+3. Write the kept URLs back into the `/tmp` list file yourself, then give the worker the go. It scrapes that file.
 
 ### Step 5 — Funnel Report
 
