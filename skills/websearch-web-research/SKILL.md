@@ -65,7 +65,16 @@ The user-chat language does not apply here — a German conversation still gets 
 
 1. Shrink the list by pattern: keep one language, drop app routes and API reference. No judgment, pure matching.
 2. Read every remaining line in full, with the Read tool.
-3. Write the kept URLs back into the `/tmp` list file yourself, then give the worker the go. It scrapes that file.
+3. Write the kept URLs to `/tmp/<domain>_urls_culled.txt` yourself, and leave `/tmp/<domain>_urls.txt` untouched.
+   - The worker's own link split compares against the full discovery list, so it has to survive the cull.
+
+4. Confirm every kept URL appears in `/tmp/<domain>_urls.txt`.
+
+   ```bash
+   comm -23 <(sort /tmp/<domain>_urls_culled.txt) <(sort /tmp/<domain>_urls.txt)
+   ```
+
+5. Give the worker the go and name `/tmp/<domain>_urls_culled.txt` as the file to scrape.
 
 ### Step 3 — Funnel Report
 
