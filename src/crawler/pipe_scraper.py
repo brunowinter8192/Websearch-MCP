@@ -15,7 +15,7 @@ from src.crawler.pipe_scraper_constants import DOWNLOAD_DELAY, CONCURRENCY_PER_D
 from src.crawler.pipe_scraper_config import _build_configs, _extract_pipe_config_stamp
 # From src/crawler/pipe_scraper_acquisition.py: per-URL engine executors (chromium + camoufox)
 from src.crawler.pipe_scraper_acquisition import _scrape_one, _scrape_one_camoufox
-# From src/crawler/pipe_scraper_report.py: /tmp outcome report + console summary
+# From src/crawler/pipe_scraper_report.py: /tmp scrape report + console summary
 from src.crawler.pipe_scraper_report import _domain_from_urls, _write_tmp_report, _print_summary
 
 # ORCHESTRATOR
@@ -80,7 +80,7 @@ async def _scrape_all(
             )
     return [
         r if isinstance(r, dict)
-        else {'url': urls[i], 'outcome': 'error', 'wall_ms': 0, 'bytes': 0, 'status_code': None}
+        else {'url': urls[i], 'wall_ms': 0, 'bytes': 0, 'status_code': None}
         for i, r in enumerate(raw)
     ]
 
