@@ -112,9 +112,11 @@ The user-chat language does not apply here — a German conversation still gets 
 5. Index the collection.
 
    ```bash
-   rag-cli index --collection <collection>
+   PYTHONUNBUFFERED=1 rag-cli index --collection <collection> > /tmp/<collection>_index.log 2>&1
    ```
 
-6. Read the index log in full.
+6. Go idle once that command has been run, and never poll it.
 
-7. Tell the user the error count, "bei X URLs ging was schief", and nothing else.
+7. Read `/tmp/<collection>_index.log` in full.
+
+8. Tell the user the error count, "bei X URLs ging was schief", and nothing else.
