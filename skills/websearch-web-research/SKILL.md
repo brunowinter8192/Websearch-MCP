@@ -37,19 +37,15 @@ The user-chat language does not apply here — a German conversation still gets 
 
 ### Step 1 — Source
 
-1. Drill down to the seed URL via `search_web` → `search_engine_drilldown`.
-
-2. Spawn the worker and hand it that seed URL.
-
-### Step 2 — Collection
-
 1. Ask the user for the target collection, and never pick it yourself.
    > "Target collection: `<project>-reference`. OUTPUT_DIR: `~/Documents/ai/Meta/ClaudeCode/cli/rag-cli/data/documents/<project>-reference/`. Confirm or override?"
+   - `<current_project>-reference` is the default on offer, and it may be another project's reference collection.
 
-2. Offer `<current_project>-reference` as the default.
-   - It may be another project's reference collection.
+2. Drill down to the seed URL via `search_web` → `search_engine_drilldown`.
 
-### Step 3 — Spawn
+3. Spawn the worker and hand it that seed URL.
+
+### Step 2 — Spawn
 
 Spawn the worker. It activates the `websearch-capture-and-index` skill and runs the pipe: Discovery → URL Selection → **STOP (cull review, your gate)** → Scrape → Cleanup → Index. You provide the seed, collection, output dir.
 
@@ -69,13 +65,13 @@ STOP at your skill's Step 3 (cull review) — report the URL-list path + per-sec
 worker-cli spawn capture-<collection_lower> /tmp/spawn-<name>.md <current_project_root> sonnet
 ```
 
-### Step 4 — Cull Review
+### Step 3 — Cull Review
 
 1. Shrink the list by pattern: keep one language, drop app routes and API reference. No judgment, pure matching.
 2. Read every remaining line in full, with the Read tool.
 3. Write the kept URLs back into the `/tmp` list file yourself, then give the worker the go. It scrapes that file.
 
-### Step 5 — Funnel Report
+### Step 4 — Funnel Report
 
 1. Receive the worker's funnel report.
 
